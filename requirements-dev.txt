@@ -1,0 +1,5 @@
+# Extra requirements for running the test suite ("./a2kit test").  Install with:
+#   python3 -m pip install -r requirements-dev.txt
+# You also need cc65 and make installed with your system package manager (see docs/INSTALL.md).
+-r requirements.txt
+py65              # 6502 simulator used by the tests

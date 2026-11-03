@@ -1,0 +1,15 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Your own conversions and scratch output
+out/
+
+# Assembler intermediates (the built .bin files and the boot disk ARE committed,
+# so people without cc65 can use a2kit straight away)
+*.o
+
+# Temporary files from docs/make_pdfs.py
+docs/.*.pdfbuild.*

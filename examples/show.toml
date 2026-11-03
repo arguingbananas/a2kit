@@ -1,0 +1,21 @@
+# A starter show. Asset paths are relative to this file.
+# Run:  ./a2kit show plan examples/show.toml
+#       ./a2kit show send examples/show.toml --port /dev/ttyUSB0 --install
+
+[[scene]]
+image = "logo.png"      # HGR page 1
+hold  = 3.0             # stay on it for 3 seconds
+
+[[scene]]
+audio = "jingle.wav"    # plays after the logo's 3 s hold, over the same picture (about 1.7 s)
+
+[[scene]]
+image = "sphere.png"    # HGR page 2: shows how a grey ramp dithers
+hold  = 3.0
+
+[[scene]]
+audio = "chirp.wav"
+gain  = 1.0
+
+[[scene]]
+wait = 1.0
