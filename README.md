@@ -47,3 +47,7 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | `receiver.bin`, `sequencer.bin`, `video.bin`, `boot.bin` | Built 6502 programs (rebuild with `./a2kit build`) |
 | `examples/` | Starter assets and `make_examples.py`, which regenerates them |
 | `docs/` | The guides above, the workflow diagram, and `make_pdfs.py` |
+
+## License
+
+MIT; see [LICENSE](LICENSE). The boot disk contains only a2kit's own code (no Apple DOS or ROM), and the example pictures and sounds are generated from scratch by `examples/make_examples.py`, so everything here can be shared under the same terms.
