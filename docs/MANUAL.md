@@ -124,7 +124,7 @@ export A2KIT_BAUD=115200          # Linux/macOS; on Windows: set A2KIT_BAUD=1152
 ./a2kit ping --port /dev/ttyS0    # now at 115200
 ```
 
-Start with `./a2kit ping`: at 115200 it should still say `Link OK`, with a speed-test rate near 10,000 bytes/s. If it reports damaged packets, try a shorter cable or go back to the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
+Start with `./a2kit ping`: at 115200 it should still say `Link OK`, with a speed-test rate of about 7,800 bytes/s on a port like the tested one (about 68% of the line rate: at this speed the port's 2.2 ms per packet is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back). If it reports damaged packets, try a shorter cable or go back to the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
 
 Video: convert with the speed you'll play at (`./a2kit video … --baud 115200`), since the byte budget per frame comes from it. A clip converted for 19200 plays fine at 115200; one converted for 115200 runs late at 19200 (`stream` warns you).
 
