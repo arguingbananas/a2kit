@@ -20,8 +20,11 @@ from py65.memory import ObservableMemory
 import send, mkdisk
 from testlib import expect, finish
 
-img = open(os.path.join(ROOT, "a2kit-boot.dsk"), "rb").read()
-receiver = open(os.path.join(ROOT, "receiver.bin"), "rb").read()
+BAUD = int(sys.argv[1]) if len(sys.argv) > 1 else 19200       # which disk: 19200 or 115200
+SUFFIX = "" if BAUD == 19200 else "-%d" % BAUD
+print("disk: a2kit-boot%s.dsk" % SUFFIX)
+img = open(os.path.join(ROOT, "a2kit-boot%s.dsk" % SUFFIX), "rb").read()
+receiver = open(os.path.join(ROOT, "receiver%s.bin" % SUFFIX), "rb").read()
 
 # ---------------------------------------------------------------- the image itself
 SEC = 256
@@ -30,7 +33,7 @@ expect(len(img) == 143360, "image is a 140 KB 5.25-inch disk (143360 bytes)")
 expect(all(sector(s) == sector(1) for s in range(1, 16)), "track 0 sectors 1-15 are identical")
 expect(not any(img[16 * SEC:]), "tracks 1-34 are empty")
 try:
-    built = mkdisk.build_image(open(os.path.join(ROOT, "boot.bin"), "rb").read())
+    built = mkdisk.build_image(open(os.path.join(ROOT, "boot%s.bin" % SUFFIX), "rb").read())
 except ValueError as e:
     built = None
     print("  mkdisk refused boot.bin: %s" % e)
@@ -60,6 +63,8 @@ def boot(order, max_steps=3_000_000, script=None):
         io.append(a); return 0
     mem.subscribe_to_read(range(0xC000, 0xC100), io_read)
     mem.subscribe_to_write([ACIA_D], lambda a, v: (tx.append(v), None)[1])
+    ctrl = []
+    mem.subscribe_to_write([0xC0AB], lambda a, v: (ctrl.append(v), None)[1])
 
     # Monitor routine stand-ins (just the effects the boot code relies on)
     rom = {COUT: [0x6C, 0x36, 0x00],                                  # JMP (CSW)
@@ -88,10 +93,10 @@ def boot(order, max_steps=3_000_000, script=None):
         if pc == MONZ: st["outcome"] = "monitor"; break
         if script: script(st["steps"], "".join(screen_text), rx, key, mem)
         mpu.step(); st["steps"] += 1
-    return dict(outcome=st["outcome"], text="".join(screen_text), tx=tx, calls=calls, io=io, mem=mem)
+    return dict(outcome=st["outcome"], text="".join(screen_text), tx=tx, calls=calls, io=io, mem=mem, ctrl=ctrl)
 
 # ---------------------------------------------------------------- 1. boot alone, both orders
-BANNER = "A2KIT RX READY"
+BANNER = "A2KIT RX READY %d" % BAUD           # the banner names the disk's speed
 # The receiver clears any pending key just after its banner (a key typed while
 # it starts is ignored), so the scripted key presses come a moment later.
 SETTLE = 20000          # steps after the banner before "pressing" a key
@@ -109,7 +114,9 @@ for name, order in (("DOS 3.3 order", DOS_ORDER), ("ProDOS order", PRODOS_ORDER)
     expect(moved == receiver, "%s: receiver.bin moved byte-for-byte to $0800" % name)
     expect(0xC0E8 in r["io"], "%s: drive motor turned off (slot 6: $C0E8)" % name)
     expect(r["calls"][:2] == [SETVID, SETKBD] and INIT in r["calls"], "%s: I/O hooks reset before any output" % name)
-    expect(r["text"].count(BANNER) == 1, "%s: banner printed once" % name)
+    expect(r["text"].count(BANNER) == 1, "%s: banner printed once, naming the speed" % name)
+    want = {19200: 0x1F, 115200: 0x10}[BAUD]
+    expect(r["ctrl"] == [want], "%s: 6551 control register set to $%02X for %d baud" % (name, want, BAUD))
 
 # ---------------------------------------------------------------- 2. sessions in a row, no retyping
 # session 1: a picture to $2000, end packet with address 0 -> picture shown, key -> back to listening
@@ -150,4 +157,4 @@ expect(r["outcome"] == "monitor", "a key while idle ends in the Monitor")
 
 # ---------------------------------------------------------------- 3. the ROM model's assumption, stated
 expect(sector(0)[0] == 2, "boot sector asks the ROM for exactly 2 sectors")
-finish("test_boot")
+finish("test_boot" + SUFFIX)

@@ -7,6 +7,8 @@
   4      2     payload length in bytes
   6      2     cycle budget per frame (0 = not timing critical)
 """
+import argparse
+import os
 import struct
 
 MAGIC = b"A2"
@@ -100,3 +102,39 @@ def frame_audio_pages(frame):
         elif 0 < b < 0x7F:
             i += b
     return pages
+
+
+# Line speeds the receiver can be built for (runtime/config.inc). The Makefile
+# builds 19200 (receiver.bin, a2kit-boot.dsk) and 115200 (receiver-115200.bin,
+# a2kit-boot-115200.dsk). Set A2KIT_BAUD=115200 once instead of passing --baud.
+BAUDS = (115200, 19200, 9600, 4800, 2400, 1200)
+
+
+def _baud(text):
+    try:
+        b = int(text)
+    except ValueError:
+        b = None
+    if b not in BAUDS:
+        raise argparse.ArgumentTypeError("%s is not a speed the receiver can use (%s)" % (
+            text, ", ".join(str(x) for x in BAUDS)))
+    return b
+
+
+def default_baud():
+    """A2KIT_BAUD if set, else 19200."""
+    env = os.environ.get("A2KIT_BAUD")
+    if not env:
+        return 19200
+    try:
+        return _baud(env)
+    except argparse.ArgumentTypeError as e:
+        raise SystemExit("A2KIT_BAUD: %s" % e)
+
+
+def add_baud_arg(ap):
+    """--baud for every command that talks to (or plans for) the receiver."""
+    d = default_baud()
+    ap.add_argument("--baud", type=_baud, default=d,
+                    help="line speed; must match the number in the receiver's banner "
+                         "(default %d%s)" % (d, ", from A2KIT_BAUD" if os.environ.get("A2KIT_BAUD") else "; or set A2KIT_BAUD"))

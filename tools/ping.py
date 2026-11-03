@@ -132,18 +132,21 @@ def report(res, baud, chunk, out=print):
     if res["sent"] and res["none"] == res["sent"]:
         out("No reply at all. Check, in order:")
         out("  - the receiver is running: its banner A2KIT RX READY is on the Apple II's screen")
+        out("  - --baud (%d) is the number in that banner (19200, or 115200 with a2kit-boot-115200.dsk)" % baud)
         out("  - --port names the right port, and nothing else (such as ADTPro) has it open")
         out("  - the cable: a null-modem adapter may be needed, or the card's jumper block turned round")
         out("  - the adapter is RS-232, not a 3.3 V / 5 V USB-TTL board")
         out("  - the card is in the slot set in runtime/config.inc (2 unless you changed it)")
     elif res["other"] and not res["ack"]:
         out("Bytes come back, but not the receiver's replies (%s)." % ", ".join("$%02X" % b for b in sorted(res["others"])))
-        out("The speed probably doesn't match: --baud here must equal the receiver's (19200 unless")
-        out("runtime/config.inc was changed). Otherwise suspect the wiring or the signal levels.")
+        out("The speed probably doesn't match: --baud (%d) must be the number in the receiver's" % baud)
+        out("banner, A2KIT RX READY 19200 or 115200. Otherwise suspect the wiring or the signal levels.")
     elif res["nak"] or res["other"]:
         out("The link works but some packets arrive damaged: noise, a long or poor cable, or a")
         out("marginal adapter. Uploads will retry, but slowly. Try --chunk 64 or 32 for uploads,")
         out("a shorter cable, or a lower baud rate (User Manual, Troubleshooting).")
+        if baud > 19200:
+            out("At %d baud, the 19200 disk (a2kit-boot.dsk, --baud 19200) is the first thing to try." % baud)
     elif res["none"]:
         out("Some packets got no reply: a loose connection, or the receiver stopped (a key pressed?).")
     if ok:
@@ -161,7 +164,7 @@ def report(res, baud, chunk, out=print):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", required=True, help="serial port, e.g. /dev/ttyS0, /dev/ttyUSB0, COM3")
-    ap.add_argument("--baud", type=int, default=19200, help="must match the receiver (default 19200)")
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--count", type=int, default=10, help="pings to send (default 10)")
     ap.add_argument("--speed", type=int, default=16, help="packets in the speed test (default 16; 0 skips it)")
     ap.add_argument("--chunk", type=int, default=128, help="bytes per speed-test packet, 1-255 (default 128)")

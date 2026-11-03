@@ -36,9 +36,10 @@ These are the places most likely to need adjusting, and what to change if they d
 3. ~~**Add `./a2kit ping`.**~~ **Done:** it checks the link, writes a visible counter to the Apple II's screen, measures the port's delay and the real upload rate, and says in plain words what kind of fault it found.
 4. **Add previews for video and sound.** `video --preview out.gif` would render the frames exactly as the player will draw them (including frames that haven't caught up yet). `audio --preview out.wav` would render what the speaker will actually produce. Both let you judge a clip without the hardware.
 5. **Add pixel-shape correction.** Apple II pixels aren't square, so circles come out roughly 9 % narrow on a 4:3 screen. Add an `--aspect` option (on by default once checked on a real monitor).
-6. **Compress uploads.** A dithered picture compresses well. A small 6502 decompressor (several well-tested ones exist, such as ZX0 or LZSA) could roughly halve picture upload times.
-7. **Handle a lost final acknowledgement.** If the reply to the last packet is lost, the computer reports an error even though the Apple II carried on. Treat a missing final ACK as "probably started" and say so, instead of failing.
-8. **Update the docs with what was measured.** Mostly done: the Apple II+ is marked tested and the measured numbers are in the Installation Guide. Still to add: a photo or pinout of the working cable and the card's jumper setting.
+6. **Run the line at 115200 baud.** Built, waiting for a hardware test: `a2kit-boot-115200.dsk` runs the Super Serial Card from its crystal (as ADTPro does), six times the line speed. The simulator shows the receiver needs about 63 of the 88.6 cycles each byte allows and the video player about 67. Still to do: `./a2kit ping --baud 115200` on the real machine, then a picture, the show and the video; if it holds up, make 115200 the default.
+7. **Compress uploads.** A dithered picture compresses well. A small 6502 decompressor (several well-tested ones exist, such as ZX0 or LZSA) could roughly halve picture upload times.
+8. **Handle a lost final acknowledgement.** If the reply to the last packet is lost, the computer reports an error even though the Apple II carried on. Treat a missing final ACK as "probably started" and say so, instead of failing.
+9. **Update the docs with what was measured.** Mostly done: the Apple II+ is marked tested and the measured numbers are in the Installation Guide. Still to add: a photo or pinout of the working cable and the card's jumper setting.
 
 ## 3. Bigger features
 

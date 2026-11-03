@@ -12,8 +12,10 @@ Packet protocol (host -> Apple II), one packet at a time, each ACKed:
 
 Apple II replies one byte: $06 ACK, $15 NAK (host resends, up to --retries).
 
-Note: the Super Serial Card's 6551 tops out at 19200 baud, so that's the
-default. Per-packet ACKs keep the 1 MHz CPU from being overrun.
+Speed: 19200 baud by default, the fastest the 6551's own baud-rate generator
+gives; 115200 with the receiver built for it (a2kit-boot-115200.dsk). --baud,
+or A2KIT_BAUD, must match the number in the receiver's banner. Per-packet ACKs
+keep the 1 MHz CPU from being overrun.
 
 Destinations are checked first: the tool refuses to write over zero page and
 the stack ($0000-$01FF), the receiver itself ($0800-$0AFF) or I/O and ROM
@@ -120,7 +122,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--port", required=True, help="e.g. /dev/ttyUSB0")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--addr", type=lambda s: int(s, 0), help="load address, e.g. 0x2000")
     ap.add_argument("--exec", dest="exec_addr", type=lambda s: int(s, 0), default=0,
                     help="JSR to this address when done (default 0: display HGR page 1)")

@@ -77,7 +77,7 @@ The `video` command prints how many bytes each frame needs and warns if the pict
 
 ## Step 3. Start the receiver on the Apple II
 
-The receiver is a 286-byte program that listens on the serial card. There are two ways to start it.
+The receiver is a 292-byte program that listens on the serial card. There are two ways to start it.
 
 ### Option A: boot the a2kit disk (easiest)
 
@@ -87,7 +87,7 @@ It has no DOS on it, so all of the Apple II's memory stays free.
 1. Get the image onto something your Apple II can boot: copy it to a Floppy Emu's SD card, write it to a real floppy, or open it in an emulator.
    The [Installation Guide](INSTALL.md#5-the-boot-disk) lists the ways.
 2. Connect the serial cable, put the disk in drive 1 (slot 6) and turn the Apple II on (or type `PR#6` at the BASIC prompt).
-3. The screen clears and shows `A2KIT RX READY (ANY KEY QUITS)`.
+3. The screen clears and shows `A2KIT RX READY 19200 (ANY KEY QUITS)`. The number is the line speed in baud.
 
 Booted this way, the receiver **starts listening again by itself after every session**, on a freshly cleared screen, so you never type `0800G`.
 Pressing a key while it is waiting drops you into the Monitor; type `980G` there to start it again.
@@ -100,16 +100,18 @@ Pressing a key while it is waiting drops you into the Monitor; type `980G` there
    ./a2kit mon receiver.bin
    ```
 
-   You get 36 lines like `0800:A9 00 85 EC A4 EC B9 FE`, then a last line, `0800G`.
+   You get 37 lines like `0800:A9 00 85 EC A4 EC B9 FE`, then a last line, `0800G`.
 
 2. On the Apple II, get to the Monitor prompt (`*`). From BASIC that's `CALL -151`.
 3. Type the lines exactly as printed, pressing Return after each one. **Don't type the last line yet.**
-4. Check your typing: type `0800.091D` and compare the dump with the printed lines.
-5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY (ANY KEY QUITS)`.
+4. Check your typing: type `0800.0923` and compare the dump with the printed lines.
+5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY 19200 (ANY KEY QUITS)`.
 
 Typed in, the receiver stops after each session, so type `0800G` again before every send.
 
 Either way, the receiver is now waiting. Leave it running and go back to your computer.
+
+**Faster:** `a2kit-boot-115200.dsk` is the same receiver at 115200 baud, six times the speed (a picture in about 1 s instead of about 5). Once everything works at 19200, boot it and add `--baud 115200` to the commands, or run `export A2KIT_BAUD=115200` once. See [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud) in the User Manual.
 
 ## Step 4. Check the link, then send your first picture
 

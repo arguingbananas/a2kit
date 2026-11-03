@@ -8,7 +8,7 @@ If you just want the shortest path, the **minimum install** (Python plus two pac
 a2kit has two halves:
 
 - **On your computer:** a set of Python command-line tools (`./a2kit …`) that convert and send files. This is what you install.
-- **On the Apple II:** small 6502 programs. The finished ones are **already included** (`receiver.bin`, `sequencer.bin`, `video.bin`), along with **`a2kit-boot.dsk`**, a disk that boots straight into the receiver. Without the disk you type the receiver in once per power-up; the other programs are uploaded for you. You only need a 6502 assembler if you want to change them.
+- **On the Apple II:** small 6502 programs. The finished ones are **already included** (`receiver.bin`, `sequencer.bin`, `video.bin`), along with **`a2kit-boot.dsk`**, a disk that boots straight into the receiver (and `a2kit-boot-115200.dsk`, the same at six times the speed). Without the disk you type the receiver in once per power-up; the other programs are uploaded for you. You only need a 6502 assembler if you want to change them.
 
 ## 2. Requirements at a glance
 
@@ -21,7 +21,7 @@ a2kit has two halves:
 | **numpy** | Video and audio conversion | **Yes** | 2.4, 2.5 |
 | **pyserial** | Sending to the Apple II | **Yes** (for sending) | 3.5 |
 | **py65** | Running the tests | Only for `./a2kit test` | 1.2 |
-| **cc65** (`ca65`, `ld65`) | Rebuilding the 6502 programs | Only if you change them, or the slot or baud rate in `runtime/config.inc` | 2.19 |
+| **cc65** (`ca65`, `ld65`) | Rebuilding the 6502 programs | Only if you change them, or the slot or speed in `runtime/config.inc` | 2.19 |
 | **make** | `./a2kit build`, `./a2kit test` | Only with cc65 | GNU Make 4.3 |
 | **ffmpeg** | Video files such as `.mp4` | Optional (GIFs and frame folders don't need it) | 6.1 |
 | **pandoc** + **Chrome/Chromium** | Rebuilding the PDF docs | Optional | pandoc 3.1, Chrome 153 |
@@ -52,7 +52,7 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 | The starter show's upload | about 15 s | 14.9 s |
 | Bouncing ball with sound | about 7.6 s, no damage after any of the 15 sound bursts | 7.7 s |
 
-**Not yet tried on real hardware:** a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer or busier videos, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
+**Not yet tried on real hardware:** 115200 baud (`a2kit-boot-115200.dsk`; checked cycle by cycle in the simulator only); a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer or busier videos, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
 ### Hardware
 
@@ -81,8 +81,8 @@ You need no Apple II at all to convert files and look at previews.
 - **Memory: 48K.** Shows and video with sound keep their sound in memory up to `$BFFF`.
 - **Speed: the normal 1.02 MHz.** The sound and the pauses in a show are timed by counting CPU cycles. On a faster machine (an accelerator card, a IIgs in Fast mode, a IIc Plus at full speed), sound plays at the wrong pitch and pauses are too short, so switch the accelerator off or set normal speed.
   Both the original 6502 and the 65C02 (enhanced IIe, IIc) are fine: the timed code takes the same number of cycles on each.
-- **Serial card: an Apple Super Serial Card**, or a compatible card built on the 6551 chip, in **slot 2**. The slot and baud rate can be changed in `runtime/config.inc` (then run `./a2kit build`).
-  The card's baud DIP switches don't matter: a2kit sets the speed itself (19200 baud, 8 data bits, no parity, 1 stop bit).
+- **Serial card: an Apple Super Serial Card**, or a compatible card built on the 6551 chip, in **slot 2**. The slot can be changed in `runtime/config.inc` (then run `./a2kit build`).
+  The card's baud DIP switches don't matter: a2kit sets the speed itself (19200 baud, or 115200 with `a2kit-boot-115200.dsk`; 8 data bits, no parity, 1 stop bit). 115200 runs the card's 6551 straight from its crystal, as ADTPro does, and needs no modification; a short, sound cable matters more at that speed.
   Some cards have been refitted with a modern WDC 65C51 chip, which always reports its transmitter as ready. a2kit only ever sends one reply byte at a time, long after the previous one has gone, so it shouldn't be affected, but this is untested.
 - **Display:** any. A monochrome or green-screen monitor shows the pictures best; colour monitors and TVs add coloured fringes to hi-res graphics.
 - **Sound:** the built-in speaker. No sound card is needed (a Mockingboard isn't used).
@@ -220,7 +220,7 @@ sudo usermod -aG dialout $USER      # Debian/Ubuntu; the group is "uucp" on Arch
 
 ### Cabling
 
-The Super Serial Card needs a cable or adapter set (DB-25 on the card's side, usually DB-9 on the adapter's) that connects its transmit, receive and ground lines to your USB-to-RS-232 adapter, normally with transmit and receive crossed (a *null-modem* arrangement). The right wiring depends on your card's jumper-block position and your adapter, so check your card's manual. Settings on the computer side are **19200 baud, 8 data bits, no parity, 1 stop bit**, and a2kit sets them for you.
+The Super Serial Card needs a cable or adapter set (DB-25 on the card's side, usually DB-9 on the adapter's) that connects its transmit, receive and ground lines to your USB-to-RS-232 adapter, normally with transmit and receive crossed (a *null-modem* arrangement). The right wiring depends on your card's jumper-block position and your adapter, so check your card's manual. Settings on the computer side are **19200 baud (or 115200), 8 data bits, no parity, 1 stop bit**, and a2kit sets them for you. Built-in 16550 ports and common USB adapters all handle 115200.
 
 Depending on the card's jumpers and your cable, the card's handshake inputs (CTS, DCD, DSR) may also need to be held active before it will send or receive. If the receiver banner is showing on the Apple II but uploads fail with `no ACK`, suspect wiring, jumpers and handshake lines first.
 
@@ -238,7 +238,7 @@ It should end with `Link OK`, and the Apple II's bottom line should read `A2KIT 
 
 ## 5. The boot disk
 
-`a2kit-boot.dsk` boots an Apple II straight into the receiver, so you don't type it in. It is a standard 140 KB 5.25-inch image (35 tracks, 16 sectors, DOS 3.3 order). Any of these will do:
+`a2kit-boot.dsk` boots an Apple II straight into the receiver, so you don't type it in. `a2kit-boot-115200.dsk` is the same at 115200 baud (see [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud)); everything below applies to both. It is a standard 140 KB 5.25-inch image (35 tracks, 16 sectors, DOS 3.3 order). Any of these will do:
 
 | Way | What to do |
 |---|---|

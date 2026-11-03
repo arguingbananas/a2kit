@@ -70,9 +70,9 @@ On Windows, run commands as `python tools\a2kit.py COMMAND …` in place of `./a
 ### 2.2 The Apple II
 
 You need a 48K Apple II, II+ or IIe running at its normal 1.02 MHz, with a **Super Serial Card in slot 2**, connected to your computer's RS-232 serial port (built in, or a USB-to-RS-232 adapter). The full list, including the IIc, the IIgs, speed, memory and the cable, is under [Hardware](INSTALL.md#hardware) in the Installation Guide.
-Everything here assumes slot 2 and 19200 baud. Both are set in one file, `runtime/config.inc`: change `SLOT` (or the baud rate), run `./a2kit build` (needs cc65), and retype the new `receiver.bin`. If you change the baud rate, pass the same `--baud` to `send`, `show`, `stream` and `video`.
+Everything here assumes slot 2. The slot is set in `runtime/config.inc`: change `SLOT`, run `./a2kit build` (needs cc65), and boot the new disk or retype the new `receiver.bin`.
 
-The serial settings are 19200 baud, 8 data bits, no parity, 1 stop bit. The Apple II programs set these in software, so the card's baud DIP switches don't matter
+The serial settings are 19200 baud (or 115200, see [2.4](#24-line-speed-19200-or-115200-baud)), 8 data bits, no parity, 1 stop bit. The receiver sets these in software, so the card's baud DIP switches don't matter
 to a2kit; the card's wiring jumpers (which swap the transmit and receive lines) do. See [Troubleshooting](#10-troubleshooting) if nothing arrives.
 
 ### 2.3 Start the receiver on the Apple II (once per power-up)
@@ -81,7 +81,7 @@ to a2kit; the card's wiring jumpers (which swap the transmit and receive lines) 
 There is no DOS on it, so the memory DOS would use (`$9600–$BFFF`) stays free for sound. See the [Installation Guide](INSTALL.md#5-the-boot-disk) for getting it onto a floppy, a Floppy Emu or an emulator.
 
 1. Connect the cable, put the disk in drive 1 of the disk controller (normally slot 6), and power on, or type `PR#6` at the BASIC prompt.
-2. The screen clears and shows `A2KIT RX READY (ANY KEY QUITS)`.
+2. The screen clears and shows `A2KIT RX READY 19200 (ANY KEY QUITS)`. The number is the line speed; `a2kit-boot-115200.dsk` shows `115200` (see [2.4](#24-line-speed-19200-or-115200-baud)).
 
 The booted receiver **restarts itself after every session**: a picture, a show or a video ends and it is listening again on a freshly cleared screen, with no typing.
 A key pressed while it is waiting drops you into the Monitor; `980G` (or `CALL 2432` from BASIC) starts it again.
@@ -89,11 +89,11 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 
 **Option B: type it in.**
 
-1. `./a2kit mon receiver.bin` prints 36 lines of Monitor input (`0800:A9 00 85 …`) and a final `0800G`.
+1. `./a2kit mon receiver.bin` prints 37 lines of Monitor input (`0800:A9 00 85 …`) and a final `0800G`. For 115200 baud, use `receiver-115200.bin`.
 2. On the Apple II, reach the Monitor prompt `*` (from BASIC: `CALL -151`).
-3. Type the 36 address lines, pressing Return after each. Leave out the `0800G` for now.
-4. Verify: type `0800.091D` and compare the dump against what you typed.
-5. Connect the cable and type `0800G`. You should see `A2KIT RX READY (ANY KEY QUITS)`.
+3. Type the 37 address lines, pressing Return after each. Leave out the `0800G` for now.
+4. Verify: type the range `mon` printed at the end (`0800.0923` for `receiver.bin`) and compare the dump against what you typed.
+5. Connect the cable and type `0800G`. You should see `A2KIT RX READY 19200 (ANY KEY QUITS)`.
 
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
 To get the boot disk's restart-by-itself behaviour on a typed-in receiver, also type `0980:20 2F FB 20 58 FC 20 00 08 90 F5 4C 69 FF` and start it with `980G` instead of `0800G`.
@@ -105,6 +105,28 @@ Things to know (both options):
 - It is happiest on a machine booted straight to the Monitor with no disk system loaded. DOS and ProDOS use memory at the top of RAM that audio also needs.
 
 ---
+
+### 2.4 Line speed: 19200 or 115200 baud
+
+a2kit comes with two receivers and two boot disks. Everything else (the sequencer, the video player and your converted files) works with either.
+
+| Disk | Receiver | Banner | Speed |
+|---|---|---|---|
+| `a2kit-boot.dsk` | `receiver.bin` | `A2KIT RX READY 19200` | 19200 baud: the tested default, and the fastest the 6551's own baud-rate generator gives |
+| `a2kit-boot-115200.dsk` | `receiver-115200.bin` | `A2KIT RX READY 115200` | 115200 baud: six times the line speed. A picture uploads in about 1 s instead of about 5, the starter show in about 3 s instead of 15, and video gets six times as many bytes per frame |
+
+At 115200 the receiver turns the card's baud-rate generator off and runs straight from its 1.8432 MHz crystal (crystal ÷ 16 = 115200), the same setting ADTPro uses on an unmodified Super Serial Card. At that speed a byte arrives every 88.6 cycles of the Apple II's clock and the card holds only one, so the receiver and the video player must read each byte before the next one lands. The simulator tests check that cycle by cycle: the receiver needs about 63 cycles per byte and the video player about 67.
+
+Tell the computer which speed the receiver uses, since the two ends must match. Either pass `--baud 115200` to `ping`, `send`, `show`, `stream` and `video`, or set it once:
+
+```bash
+export A2KIT_BAUD=115200          # Linux/macOS; on Windows: set A2KIT_BAUD=115200
+./a2kit ping --port /dev/ttyS0    # now at 115200
+```
+
+Start with `./a2kit ping`: at 115200 it should still say `Link OK`, with a speed-test rate near 10,000 bytes/s. If it reports damaged packets, try a shorter cable or go back to the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
+
+Video: convert with the speed you'll play at (`./a2kit video … --baud 115200`), since the byte budget per frame comes from it. A clip converted for 19200 plays fine at 115200; one converted for 115200 runs late at 19200 (`stream` warns you).
 
 ## 3. `a2kit image`
 
@@ -176,7 +198,7 @@ You **don't** need to run it before using sound in a show or video, because thos
 
 **What it does:** turns an animation into a *delta stream*: for each frame, only the screen bytes that changed. It can also add sound.
 
-**Why deltas:** a full screen is 8 KB but the cable carries about 1.9 KB a second. So each frame gets a small byte budget (about 300 bytes at 6 frames a second),
+**Why deltas:** a full screen is 8 KB but the cable carries about 1.9 KB a second at 19200 baud (about 11.5 KB at 115200). So each frame gets a small byte budget (about 300 bytes at 6 frames a second, about 1,800 at 115200),
 spent on the changes that matter most first. Anything that doesn't fit stays pending and is sent on later frames, so the picture catches up rather than losing detail for good.
 
 **Steps**
@@ -210,7 +232,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `-o`, `--output FILE` | Output stream (required). Use `.a2v`. |
 | `--fps N` | Playback frames per second, a whole number from 1 to 60 (default 6). Higher fps means fewer bytes per frame. |
 | `--src-fps N` | The frame rate of your *input*, if different (default: same as `--fps`). Example: a folder shot at 24 fps played at 6 fps is `--src-fps 24 --fps 6`, which keeps every 4th frame. |
-| `--baud N` | The link speed used to work out the byte budget (default 19200). |
+| `--baud N` | The link speed used to work out the byte budget: 19200 (default) or 115200 ([2.4](#24-line-speed-19200-or-115200-baud)). |
 | `--budget N` | Set the bytes-per-frame budget directly, overriding the baud-based default. |
 | `--dither ordered` / `atkinson` / `threshold` | `ordered` (default) gives stable dots that don't shimmer between frames and keep the changes small. `atkinson` looks better on stills but flickers in motion. |
 | `--crop` | Fill the screen instead of letterboxing. |
@@ -242,7 +264,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 2. Edit it. Paths are relative to the script file.
 3. Check it: `./a2kit show plan myshow.toml`. It prints one line per piece (address, size, what it is), the total size and the estimated upload time.
 4. Make sure the receiver is listening (boot disk: it is; typed in: `0800G`).
-5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Use `--install` the first time after a power-up; later shows don't need it as long as the sequencer is still in memory. It names each piece as it uploads it, then reports how long the upload took (about 15 s for the starter show at 19200 baud).
+5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Use `--install` the first time after a power-up; later shows don't need it as long as the sequencer is still in memory. It names each piece as it uploads it, then reports how long the upload took (about 15 s for the starter show at 19200 baud, about 3 s at 115200).
 6. Watch. Press any key to stop between scenes (sound cannot be interrupted once it starts).
 
 **The script format**
@@ -280,7 +302,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 - About 40 scene entries (a `hold` counts as one extra).
 - If you break a limit, `plan` stops with a message such as `only two image scenes fit` or `audio doesn't fit below $C000`.
 
-**Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 19200), `--install`, `--rtscts`.
+**Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 19200, or `A2KIT_BAUD`), `--install`, `--rtscts`.
 
 > If you send a show **without** `--install` and the sequencer isn't in memory, the Apple II will jump into empty memory and misbehave. After a power cycle always use `--install`.
 
@@ -309,7 +331,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | Option | Meaning |
 |---|---|
 | `--port PORT` | Serial port (required), e.g. `/dev/ttyUSB0`, `COM3`. |
-| `--baud N` | Host port speed (default 19200). The Apple II side is fixed at 19200. |
+| `--baud N` | Line speed: must be the number in the receiver's banner, 19200 (default) or 115200. `A2KIT_BAUD` sets the default. |
 | `--addr A` | Load address, like `0x2000`. Optional for picture blocks (they load to `$2000`); required for anything else. |
 | `--exec A` | When the upload finishes, run the code at this address. The default, 0, instead shows hi-res page 1 until a key is pressed. |
 | `--raw` | Send the file as-is, with no a2kit header (needs `--addr`). |
@@ -343,7 +365,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | Option | Meaning |
 |---|---|
 | `--port PORT` | Serial port (required). |
-| `--baud N` | Host port speed (default 19200). |
+| `--baud N` | Line speed: the number in the receiver's banner, 19200 (default) or 115200. `A2KIT_BAUD` sets the default. |
 | `--install` | Upload the video player (and any sound) first. Use it every time unless the player is already running. **Required** for clips with sound. |
 | `--rtscts` | Hardware flow control on your port. |
 
@@ -379,10 +401,10 @@ It writes to the bottom text line (`$07D0–$07F7`) and to the first `--chunk` b
 
 Each ping prints its round trip, split into two parts:
 
-- **line and Apple II:** the time the bytes need on the cable at 19200 baud, plus the receiver's work. This part is fixed.
+- **line and Apple II:** the time the bytes need on the cable at the `--baud` speed, plus the receiver's work. This part is fixed.
 - **port:** whatever is left. This is the delay your computer's serial port adds before the reply reaches the program.
 
-After the pings, a **speed test** sends `--speed` full packets and reports the real upload rate, as bytes per second, as a share of the line rate (1,920 bytes/s), and as the time an 8 KB picture would take.
+After the pings, a **speed test** sends `--speed` full packets and reports the real upload rate, as bytes per second, as a share of the line rate (1,920 bytes/s at 19200 baud, 11,520 at 115200), and as the time an 8 KB picture would take.
 
 The verdict at the end is one of these:
 
@@ -390,13 +412,13 @@ The verdict at the end is one of these:
 |---|---|
 | `Link OK` | Every packet was acknowledged. If your port adds more than 5 ms per packet, it also says how much faster uploads would be without that (see below). |
 | `No reply at all` | Nothing came back. It lists what to check, in order: the receiver, the port name, the cable and jumpers, the adapter type, the slot. |
-| `Bytes come back, but not the receiver's replies` | Usually a speed mismatch: `--baud` must match the receiver (19200 unless `runtime/config.inc` was changed). Otherwise wiring or signal levels. |
+| `Bytes come back, but not the receiver's replies` | Usually a speed mismatch: `--baud` must be the number in the receiver's banner (19200, or 115200 with `a2kit-boot-115200.dsk`). Otherwise wiring or signal levels. |
 | `some packets arrive damaged` | NAKs: the Apple II got packets that failed their checksum. Noise, a long or poor cable, or a marginal adapter. |
 | `Some packets got no reply` | A loose connection, or the receiver stopped (a key pressed on the Apple II). |
 
 The exit code is 0 when every packet was acknowledged, 1 otherwise, so ping can be used in scripts.
 
-**Options:** `--port` (required), `--baud` (default 19200), `--count` pings (default 10), `--speed` speed-test packets (default 16; 0 skips it), `--chunk` bytes per speed-test packet (1–255, default 128), `--timeout` seconds to wait for each reply (default 1.0).
+**Options:** `--port` (required), `--baud` (default 19200, or `A2KIT_BAUD`), `--count` pings (default 10), `--speed` speed-test packets (default 16; 0 skips it), `--chunk` bytes per speed-test packet (1–255, default 128), `--timeout` seconds to wait for each reply (default 1.0).
 
 **If the port delay is high**
 
@@ -412,10 +434,11 @@ Larger packets also help, since each one pays the delay once: `./a2kit send --ch
 
 ### `a2kit disk`
 
-Makes the boot disk image. A ready-made `a2kit-boot.dsk` comes with a2kit, so you only need this after rebuilding the receiver (for example after changing the slot or baud rate in `runtime/config.inc`; `./a2kit build` remakes the image too).
+Makes the boot disk image. Ready-made `a2kit-boot.dsk` (19200 baud) and `a2kit-boot-115200.dsk` come with a2kit, so you only need this after rebuilding the receivers (for example after changing the slot in `runtime/config.inc`; `./a2kit build` remakes both images too).
 
 ```bash
 ./a2kit disk                       # writes a2kit-boot.dsk
+./a2kit disk --baud 115200         # writes a2kit-boot-115200.dsk
 ./a2kit disk -o myboot.dsk         # another name; .po works too
 ```
 
@@ -438,7 +461,7 @@ The bigger programs (`sequencer.bin`, `video.bin`) are uploaded for you by `--in
 
 ### `a2kit build`
 
-Assembles the three 6502 programs (`receiver.bin`, `sequencer.bin`, `video.bin`) from the sources in `runtime/`. Needs cc65 and make. Built copies are already included, so you only need this if you change the sources or the settings in `runtime/config.inc` (slot, baud rate).
+Assembles the 6502 programs (`receiver.bin` and `receiver-115200.bin`, `sequencer.bin`, `video.bin`) and both boot disks from the sources in `runtime/`. Needs cc65 and make. Built copies are already included, so you only need this if you change the sources or the slot in `runtime/config.inc`.
 
 ### `a2kit test`
 
@@ -454,10 +477,10 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare `0800.091D` with the printed lines). |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0923`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
-| Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Lower the speed: in `runtime/config.inc` set `ACIA_CTRL_VALUE = $1E` (9600 baud), run `./a2kit build`, retype the receiver, and pass `--baud 9600` to `send`, `show`, `stream` and `video`. |
+| Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. At 115200, go back to the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
 | `show send` hangs or the machine misbehaves | Forgot `--install` after a power-up. Or something else is using memory at `$0B00–$1000` or `$6000–$BFFF`. |
 | `sequencer.bin not found` | Run `./a2kit build` (needs cc65). |
 | Sound is too high-pitched and pauses are too short | The machine runs faster than 1.02 MHz (an accelerator card, a IIgs in Fast mode, a IIc Plus at full speed). Set it to normal speed. |
@@ -512,7 +535,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Address | Used for |
 |---|---|
-| `$0800–$091D` | Receiver (286 bytes) |
+| `$0800–$0924` | Receiver (292 bytes; 293 for the 115200 one) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
@@ -539,8 +562,8 @@ The receiver holds each packet in a buffer and only copies it into memory after 
 | Sound in a show or video | about 6 seconds in total |
 | Sound quality | 4 bits at about 7972 Hz (one-bit speaker) |
 | Images in a show | 2 |
-| Video frame size | about 300 bytes at 6 fps (budget = baud ÷ 10 ÷ fps × 0.95) |
-| Serial speed | 19200 baud (the 6551's maximum) |
+| Video frame size | about 300 bytes at 6 fps and 19200 baud, about 1,800 at 115200 (budget = baud ÷ 10 ÷ fps × 0.95) |
+| Serial speed | 19200 baud, or 115200 with the 115200 receiver ([2.4](#24-line-speed-19200-or-115200-baud)) |
 | Tested on | a 1979 Apple II+, Super Serial Card II, Floppy Emu, Linux on a built-in serial port ([details](INSTALL.md#tested-setup)); and the simulator test suite |
 
 ### 11.5 Regenerating the starter assets

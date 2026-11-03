@@ -3,6 +3,7 @@ and the real video.bin in a py65 6502 with a UART model (one byte every 532
 cycles at 19200 baud, counting overruns).
   1. video only: screen must equal the encoder's model; stress at higher rates
   2. with speaker audio bursts: clicks decode back to the source samples
+  2b. the same at 115200 baud, plus how much faster bytes could come
   3. fault injection: dropped / corrupted / inserted bytes must cost at most
      one frame of damage, never write outside $2000-$3FFF, and never read
      audio from outside $6000-$BFFF; plus boundary cases for both limits
@@ -208,6 +209,45 @@ sched0, _ = host.plan_stream(afr, fps, 19200, quiet_for_bursts=False)
 r = run_6502(from_plan(sched0), audio)
 print("negative: host doesn't stay quiet for bursts -> overruns %d, screen == model: %s" % (r["over"], r["screen"] == bytes(aref)))
 expect(r["over"] > 0, "negative control: without the quiet time bytes are lost (so the test can see the difference)")
+
+print("--- 2b. at 115200 baud (a2kit-boot-115200.dsk) ---")
+FAST = 115200
+fps, ffr, _ = convert(["--baud", str(FAST)])
+fbudget = int(FAST / 10 / fps * 0.95)
+fref = np.zeros(0x2000, np.uint8)
+for f in ffr: ref_decode(f, fref)
+print("frames: %d | largest frame %d bytes (budget %d, %.0fx the 19200 budget)" % (len(ffr), max(map(len, ffr)), fbudget, fbudget / budget))
+expect(max(map(len, ffr)) <= fbudget, "115200: every frame fits its byte budget")
+sched, total = host.plan_stream(ffr, fps, FAST)
+r = run_6502(from_plan(sched, FAST))
+print("6502 player, host schedule at %d baud (%.1f s): overruns %d, screen == model: %s, stray %d" % (
+    FAST, total, r["over"], r["screen"] == bytes(fref), len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])))
+expect(r["over"] == 0 and r["screen"] == bytes(fref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"],
+       "115200, host schedule: no overruns, right picture, no stray access")
+cpb = a2hdr.CPU_HZ * 10 / FAST
+r = run_6502(arrivals(PRE + b"".join(ffr) + END, cpb))
+print("   back-to-back at %.1f cycles a byte: overruns %d, screen ok: %s" % (cpb, r["over"], r["screen"] == bytes(fref)))
+expect(r["over"] == 0 and r["screen"] == bytes(fref), "115200: keeps up with bytes back to back")
+fps, fafr, faudio = convert(["--baud", str(FAST), "--audio", os.path.join(tmp, "s.wav")])
+far = np.zeros(0x2000, np.uint8)
+for f in fafr: ref_decode(f, far)
+sched, total = host.plan_stream(fafr, fps, FAST)
+r = run_6502(from_plan(sched, FAST), faudio)
+e1, e2 = r["edges"][0::2], r["edges"][1::2]
+nib = [(e2[k] - e1[k] - 3) // 5 - 1 for k in range(len(e1))]
+want = [x for b in faudio for x in (b >> 4, b & 15)]
+print("with audio bursts (%.1f s): overruns %d, screen == model: %s, audio exact: %s" % (total, r["over"], r["screen"] == bytes(far), nib == want))
+expect(r["over"] == 0 and r["screen"] == bytes(far) and nib == want and not r["stray"],
+       "115200 with audio bursts: no overruns, right picture, exact sound")
+# headroom: squeeze the spacing until the player loses bytes
+stress = PRE + b"".join(ffr[:8]) + END
+lo, hi = 20.0, cpb
+while hi - lo > 1:
+    mid = (lo + hi) / 2
+    over = run_6502(arrivals(stress, mid))["over"]
+    lo, hi = (mid, hi) if over else (lo, mid)
+print("player keeps up with bytes as close as %.0f cycles apart (115200 delivers one every %.1f)" % (hi, cpb))
+expect(hi < 0.85 * cpb, "the player has at least 15%% headroom at 115200")
 
 print("--- 3. fault injection (video-only stream, first 22 frames) ---")
 K = 22

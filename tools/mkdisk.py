@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """mkdisk: make a bootable 5.25" disk image that starts the a2kit receiver.
 
-  mkdisk.py                       # writes a2kit-boot.dsk
+  mkdisk.py                       # writes a2kit-boot.dsk (receiver at 19200 baud)
+  mkdisk.py --baud 115200         # writes a2kit-boot-115200.dsk
   mkdisk.py -o myboot.po          # same image, any name
 
 Boot it on the Apple II (in a Disk II drive, a Floppy Emu, or an emulator)
@@ -15,7 +16,9 @@ so all of RAM stays free. Only track 0 is used. Because the second boot sector
 is written to every one of sectors 1-15, the image boots whether a tool treats
 it as DOS order (.dsk/.do) or ProDOS order (.po).
 
-Needs boot.bin (built from runtime/boot.s and receiver.bin by "a2kit build").
+Needs boot.bin, or boot-115200.bin for --baud 115200 (both built from
+runtime/boot.s and the receivers by "a2kit build"). The receiver's banner
+shows its speed: A2KIT RX READY 19200 or A2KIT RX READY 115200.
 """
 import argparse
 import os
@@ -43,9 +46,14 @@ def build_image(boot):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-o", "--output", default="a2kit-boot.dsk", help="image to write (default a2kit-boot.dsk)")
-    ap.add_argument("--boot", default=os.path.join(ROOT, "boot.bin"), help="boot sectors (default: boot.bin)")
+    ap.add_argument("--baud", type=int, choices=(19200, 115200), default=19200,
+                    help="the receiver's line speed (default 19200)")
+    ap.add_argument("-o", "--output", help="image to write (default a2kit-boot.dsk, or a2kit-boot-115200.dsk)")
+    ap.add_argument("--boot", help="boot sectors (default: boot.bin, or boot-115200.bin)")
     a = ap.parse_args()
+    suffix = "" if a.baud == 19200 else "-%d" % a.baud
+    a.output = a.output or "a2kit-boot%s.dsk" % suffix
+    a.boot = a.boot or os.path.join(ROOT, "boot%s.bin" % suffix)
     if not os.path.exists(a.boot):
         sys.exit("%s not found; run: a2kit build" % a.boot)
     img = build_image(open(a.boot, "rb").read())

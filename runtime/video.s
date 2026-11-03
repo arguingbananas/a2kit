@@ -2,7 +2,8 @@
 ;
 ; Reads a delta stream from the serial port and applies it straight to the
 ; screen. There is no flow control: bytes arrive at line rate (one per ~532
-; cycles at 19200 baud) and every code path below finishes well inside that.
+; cycles at 19200 baud, one per ~88.6 at 115200) and every path from one byte
+; to the next finishes inside that (tools/test_video.py checks both speeds).
 ;
 ; Stream grammar. The key property: every DATA byte (literal bytes, long-skip
 ; arguments, audio page counts) is < $80, and every byte >= $80 is a control
@@ -38,13 +39,11 @@
 ; Loads at $0E00 (player routine at $1000). Build: ca65 -I runtime runtime/video.s -o video.o
 ;                        ld65 -C runtime/video.cfg video.o -o video.bin
 
-        .include "config.inc"           ; SLOT and baud rate
+        .include "config.inc"           ; SLOT
 AUDIO_BASE = $60                ; audio data starts at $6000
 
 ACIA_DATA = $C088
 ACIA_STAT = $C089
-ACIA_CMD  = $C08A
-ACIA_CTRL = $C08B
 
 KBD     = $C000
 KBDSTRB = $C010
@@ -90,13 +89,8 @@ clr:    lda #0
         bit LOWSCR
         bit HIRES
 
-        ldx #SLOTX
-        sta ACIA_STAT,x         ; programmed reset
-        lda #$0B
-        sta ACIA_CMD,x
-        lda #ACIA_CTRL_VALUE    ; baud rate, 8N1 (config.inc)
-        sta ACIA_CTRL,x
-        bit KBDSTRB
+        ldx #SLOTX              ; the serial card is left exactly as the receiver
+        bit KBDSTRB             ; set it up, so one player works at any speed
         lda #0
         sta aptr
         lda #AUDIO_BASE
