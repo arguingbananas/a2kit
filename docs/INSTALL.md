@@ -52,7 +52,21 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 | The starter show's upload | about 15 s | 14.9 s |
 | Bouncing ball with sound | about 7.6 s, no damage after any of the 15 sound bursts | 7.7 s |
 
-**Not yet tried on real hardware:** 115200 baud (`a2kit-boot-115200.dsk`; checked cycle by cycle in the simulator only); a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer or busier videos, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
+**Measured at 115200 baud** on the same setup, booting `a2kit-boot-115200.dsk` (3 November 2026):
+
+| | Measured | Predicted |
+|---|---|---|
+| `ping` round trip (40-byte packet) | 5.5 ms, of which 0.6 ms is the port | not predicted |
+| Upload speed | about 8,730 bytes/s, 76% of the line rate | about 7,800 bytes/s, 68% |
+| An 8 KB picture | 0.9 s | about 1.0 s |
+| The starter show's upload | 2.9 s | about 3.0 s |
+| Bouncing ball with sound | about 7.7 s, 15 sound bursts | 7.7 s |
+| Stress clip: 52 frames at the full 1,824 bytes/frame (95% of the line), no sound | about 15 s, test card clean afterwards | 15.0 s |
+| The same clip with the jingle, in 27 sound bursts | about 18 s, 27 bursts on schedule, test card clean afterwards | 18.1 s |
+
+The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms), which is why uploads beat the prediction. The stress clip was made for this test and isn't in `examples/`: eight large moving rings and a spinning cross, ending on a still grid that would show any leftover damage.
+
+**Not yet tried on real hardware:** a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
 ### Hardware
 

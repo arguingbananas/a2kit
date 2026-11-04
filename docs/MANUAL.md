@@ -113,7 +113,7 @@ a2kit comes with two receivers and two boot disks. Everything else (the sequence
 | Disk | Receiver | Banner | Speed |
 |---|---|---|---|
 | `a2kit-boot.dsk` | `receiver.bin` | `A2KIT RX READY 19200` | 19200 baud: the tested default, and the fastest the 6551's own baud-rate generator gives |
-| `a2kit-boot-115200.dsk` | `receiver-115200.bin` | `A2KIT RX READY 115200` | 115200 baud: six times the line speed. A picture uploads in about 1 s instead of about 5, the starter show in about 3 s instead of 15, and video gets six times as many bytes per frame |
+| `a2kit-boot-115200.dsk` | `receiver-115200.bin` | `A2KIT RX READY 115200` | 115200 baud: six times the line speed. Measured on the [tested setup](INSTALL.md#tested-setup), a picture uploads in 0.9 s instead of 4.8, the starter show in 2.9 s instead of 15, and video gets six times as many bytes per frame |
 
 At 115200 the receiver turns the card's baud-rate generator off and runs straight from its 1.8432 MHz crystal (crystal ÷ 16 = 115200), the same setting ADTPro uses on an unmodified Super Serial Card. At that speed a byte arrives every 88.6 cycles of the Apple II's clock and the card holds only one, so the receiver and the video player must read each byte before the next one lands. The simulator tests check that cycle by cycle: the receiver needs about 63 cycles per byte and the video player about 67.
 
@@ -124,7 +124,7 @@ export A2KIT_BAUD=115200          # Linux/macOS; on Windows: set A2KIT_BAUD=1152
 ./a2kit ping --port /dev/ttyS0    # now at 115200
 ```
 
-Start with `./a2kit ping`: at 115200 it should still say `Link OK`, with a speed-test rate of about 7,800 bytes/s on a port like the tested one (about 68% of the line rate: at this speed the port's 2.2 ms per packet is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back). If it reports damaged packets, try a shorter cable or go back to the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
+Start with `./a2kit ping`: at 115200 it should still say `Link OK`, with a speed-test rate of about 8,700 bytes/s on a port like the tested one (about 76% of the line rate: even at the 0.6 ms per packet measured at this speed, the port is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back). If it reports damaged packets, try a shorter cable or go back to the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
 
 Video: convert with the speed you'll play at (`./a2kit video … --baud 115200`), since the byte budget per frame comes from it. A clip converted for 19200 plays fine at 115200; one converted for 115200 runs late at 19200 (`stream` warns you).
 

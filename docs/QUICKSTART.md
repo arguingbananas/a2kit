@@ -111,7 +111,7 @@ Typed in, the receiver stops after each session, so type `0800G` again before ev
 
 Either way, the receiver is now waiting. Leave it running and go back to your computer.
 
-**Faster:** `a2kit-boot-115200.dsk` is the same receiver at 115200 baud, six times the speed (a picture in about 1 s instead of about 5). Once everything works at 19200, boot it and add `--baud 115200` to the commands, or run `export A2KIT_BAUD=115200` once. See [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud) in the User Manual.
+**Faster:** `a2kit-boot-115200.dsk` is the same receiver at 115200 baud, six times the line speed (a picture in 0.9 s instead of 4.8). Once everything works at 19200, boot it and add `--baud 115200` to the commands, or run `export A2KIT_BAUD=115200` once. See [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud) in the User Manual.
 
 ## Step 4. Check the link, then send your first picture
 
