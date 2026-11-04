@@ -78,8 +78,8 @@ bad_cases = [(hex(a), n) for a, n, want in cases if refused(a, n) != want]
 print("destination guard: %d cases, wrong: %s" % (len(cases), bad_cases or "none"))
 expect(not bad_cases, "send.check_range allows and refuses the right ranges")
 # 5. the upload-time model agrees with what a real Apple II+ measured
-pic = send.upload_seconds([8192])
-starter = send.upload_seconds([332, 8192, 6912, 8192, 2048, 48])       # show send --install, examples/show.toml
+pic = send.upload_seconds([8192], 19200)
+starter = send.upload_seconds([332, 8192, 6912, 8192, 2048, 48], 19200)       # show send --install, examples/show.toml
 print("upload model: 8 KB picture %.2f s (measured about 4.8 s), starter show %.1f s (measured about 15 s)" % (pic, starter))
 expect(4.6 < pic < 5.0 and 14.5 < starter < 15.5, "upload-time model matches the real-hardware measurements")
 finish("test_a2kit")

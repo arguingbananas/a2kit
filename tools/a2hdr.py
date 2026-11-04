@@ -105,9 +105,10 @@ def frame_audio_pages(frame):
 
 
 # Line speeds the receiver can be built for (runtime/config.inc). The Makefile
-# builds 19200 (receiver.bin, a2kit-boot.dsk) and 115200 (receiver-115200.bin,
-# a2kit-boot-115200.dsk). Set A2KIT_BAUD=115200 once instead of passing --baud.
+# builds 115200 (receiver.bin, a2kit-boot.dsk) and 19200 (receiver-19200.bin,
+# a2kit-boot-19200.dsk). Set A2KIT_BAUD=19200 once instead of passing --baud.
 BAUDS = (115200, 19200, 9600, 4800, 2400, 1200)
+DEFAULT_BAUD = 115200
 
 
 def _baud(text):
@@ -122,10 +123,10 @@ def _baud(text):
 
 
 def default_baud():
-    """A2KIT_BAUD if set, else 19200."""
+    """A2KIT_BAUD if set, else DEFAULT_BAUD."""
     env = os.environ.get("A2KIT_BAUD")
     if not env:
-        return 19200
+        return DEFAULT_BAUD
     try:
         return _baud(env)
     except argparse.ArgumentTypeError as e:

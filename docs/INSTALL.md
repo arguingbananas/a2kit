@@ -8,7 +8,7 @@ If you just want the shortest path, the **minimum install** (Python plus two pac
 a2kit has two halves:
 
 - **On your computer:** a set of Python command-line tools (`./a2kit …`) that convert and send files. This is what you install.
-- **On the Apple II:** small 6502 programs. The finished ones are **already included** (`receiver.bin`, `sequencer.bin`, `video.bin`), along with **`a2kit-boot.dsk`**, a disk that boots straight into the receiver (and `a2kit-boot-115200.dsk`, the same at six times the speed). Without the disk you type the receiver in once per power-up; the other programs are uploaded for you. You only need a 6502 assembler if you want to change them.
+- **On the Apple II:** small 6502 programs. The finished ones are **already included** (`receiver.bin`, `sequencer.bin`, `video.bin`), along with **`a2kit-boot.dsk`**, a disk that boots straight into the receiver (and `a2kit-boot-19200.dsk`, the same at a sixth of the speed, as a fallback). Without the disk you type the receiver in once per power-up; the other programs are uploaded for you. You only need a 6502 assembler if you want to change them.
 
 ## 2. Requirements at a glance
 
@@ -33,8 +33,8 @@ a2kit was first run on real hardware on 2 November 2026, on this setup:
 | Part | Tested with |
 |---|---|
 | Apple II | 1979 Apple II+, 48K |
-| Serial card | Super Serial Card II in slot 2, at 19200 baud |
-| Disk | Floppy Emu, booting `a2kit-boot.dsk` |
+| Serial card | Super Serial Card II in slot 2, at 19200 and 115200 baud |
+| Disk | Floppy Emu, booting the 19200 and 115200 disks |
 | Computer | Dell Optiplex 790, Linux Mint, Python 3.12 |
 | Serial port | The computer's built-in serial port (`/dev/ttyS0`, a 16550A); no USB adapter |
 | Display | A colour TV on composite video, with its colour turned off |
@@ -42,7 +42,7 @@ a2kit was first run on real hardware on 2 November 2026, on this setup:
 **What worked:** booting the disk straight into the receiver; `ping`; a picture upload; the starter show with sound; the bouncing-ball video with and without sound. All the sounds (the jingle, the chirp and the boings between video frames) played from the built-in speaker. Measured from a recording of the jingle, the notes were within about 0.5% of their intended pitch, the once-every-64 ms page-change tick wasn't measurable, and the main artefact was a high whine at the 7,972 Hz sample rate.
 Two problems turned up and were fixed: a show that used hi-res page 2 ended on a screen of garbage (it now ends on text page 1), and the booted receiver's banners piled up session after session (it now clears the screen each time).
 
-**Measured on that setup:**
+**Measured on that setup at 19200 baud:**
 
 | | Measured | Predicted |
 |---|---|---|
@@ -52,7 +52,7 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 | The starter show's upload | about 15 s | 14.9 s |
 | Bouncing ball with sound | about 7.6 s, no damage after any of the 15 sound bursts | 7.7 s |
 
-**Measured at 115200 baud** on the same setup, booting `a2kit-boot-115200.dsk` (3 November 2026):
+**Measured at 115200 baud** on the same setup, booting the 115200 disk (3 November 2026), now `a2kit-boot.dsk`:
 
 | | Measured | Predicted |
 |---|---|---|
@@ -64,7 +64,7 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 | Stress clip: 52 frames at the full 1,824 bytes/frame (95% of the line), no sound | about 15 s, test card clean afterwards | 15.0 s |
 | The same clip with the jingle, in 27 sound bursts | about 18 s, 27 bursts on schedule, test card clean afterwards | 18.1 s |
 
-The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms), which is why uploads beat the prediction. The stress clip was made for this test and isn't in `examples/`: eight large moving rings and a spinning cross, ending on a still grid that would show any leftover damage.
+The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms), which is why uploads beat the prediction. The stress clip is `examples/stress` ([Quick Start](QUICKSTART.md#step-6-play-the-animation)): eight large moving rings and a spinning cross, ending on a still grid that would show any leftover damage.
 
 **Not yet tried on real hardware:** a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
@@ -96,7 +96,7 @@ You need no Apple II at all to convert files and look at previews.
 - **Speed: the normal 1.02 MHz.** The sound and the pauses in a show are timed by counting CPU cycles. On a faster machine (an accelerator card, a IIgs in Fast mode, a IIc Plus at full speed), sound plays at the wrong pitch and pauses are too short, so switch the accelerator off or set normal speed.
   Both the original 6502 and the 65C02 (enhanced IIe, IIc) are fine: the timed code takes the same number of cycles on each.
 - **Serial card: an Apple Super Serial Card**, or a compatible card built on the 6551 chip, in **slot 2**. The slot can be changed in `runtime/config.inc` (then run `./a2kit build`).
-  The card's baud DIP switches don't matter: a2kit sets the speed itself (19200 baud, or 115200 with `a2kit-boot-115200.dsk`; 8 data bits, no parity, 1 stop bit). 115200 runs the card's 6551 straight from its crystal, as ADTPro does, and needs no modification; a short, sound cable matters more at that speed.
+  The card's baud DIP switches don't matter: a2kit sets the speed itself (115200 baud, or 19200 with `a2kit-boot-19200.dsk`; 8 data bits, no parity, 1 stop bit). 115200 runs the card's 6551 straight from its crystal, as ADTPro does, and needs no modification; a short, sound cable matters more at that speed.
   Some cards have been refitted with a modern WDC 65C51 chip, which always reports its transmitter as ready. a2kit only ever sends one reply byte at a time, long after the previous one has gone, so it shouldn't be affected, but this is untested.
 - **Display:** any. A monochrome or green-screen monitor shows the pictures best; colour monitors and TVs add coloured fringes to hi-res graphics.
 - **Sound:** the built-in speaker. No sound card is needed (a Mockingboard isn't used).
@@ -234,7 +234,7 @@ sudo usermod -aG dialout $USER      # Debian/Ubuntu; the group is "uucp" on Arch
 
 ### Cabling
 
-The Super Serial Card needs a cable or adapter set (DB-25 on the card's side, usually DB-9 on the adapter's) that connects its transmit, receive and ground lines to your USB-to-RS-232 adapter, normally with transmit and receive crossed (a *null-modem* arrangement). The right wiring depends on your card's jumper-block position and your adapter, so check your card's manual. Settings on the computer side are **19200 baud (or 115200), 8 data bits, no parity, 1 stop bit**, and a2kit sets them for you. Built-in 16550 ports and common USB adapters all handle 115200.
+The Super Serial Card needs a cable or adapter set (DB-25 on the card's side, usually DB-9 on the adapter's) that connects its transmit, receive and ground lines to your USB-to-RS-232 adapter, normally with transmit and receive crossed (a *null-modem* arrangement). The right wiring depends on your card's jumper-block position and your adapter, so check your card's manual. Settings on the computer side are **115200 baud (or 19200), 8 data bits, no parity, 1 stop bit**, and a2kit sets them for you. Built-in 16550 ports and common USB adapters all handle 115200.
 
 Depending on the card's jumpers and your cable, the card's handshake inputs (CTS, DCD, DSR) may also need to be held active before it will send or receive. If the receiver banner is showing on the Apple II but uploads fail with `no ACK`, suspect wiring, jumpers and handshake lines first.
 
@@ -252,7 +252,7 @@ It should end with `Link OK`, and the Apple II's bottom line should read `A2KIT 
 
 ## 5. The boot disk
 
-`a2kit-boot.dsk` boots an Apple II straight into the receiver, so you don't type it in. `a2kit-boot-115200.dsk` is the same at 115200 baud (see [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud)); everything below applies to both. It is a standard 140 KB 5.25-inch image (35 tracks, 16 sectors, DOS 3.3 order). Any of these will do:
+`a2kit-boot.dsk` boots an Apple II straight into the receiver, so you don't type it in. `a2kit-boot-19200.dsk` is the same at 19200 baud (see [Line speed](MANUAL.md#24-line-speed-115200-or-19200-baud)); everything below applies to both. It is a standard 140 KB 5.25-inch image (35 tracks, 16 sectors, DOS 3.3 order). Any of these will do:
 
 | Way | What to do |
 |---|---|

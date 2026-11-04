@@ -20,8 +20,8 @@ from py65.memory import ObservableMemory
 import send, mkdisk
 from testlib import expect, finish
 
-BAUD = int(sys.argv[1]) if len(sys.argv) > 1 else 19200       # which disk: 19200 or 115200
-SUFFIX = "" if BAUD == 19200 else "-%d" % BAUD
+BAUD = int(sys.argv[1]) if len(sys.argv) > 1 else 115200      # which disk: 115200 or 19200
+SUFFIX = "" if BAUD == 115200 else "-%d" % BAUD
 print("disk: a2kit-boot%s.dsk" % SUFFIX)
 img = open(os.path.join(ROOT, "a2kit-boot%s.dsk" % SUFFIX), "rb").read()
 receiver = open(os.path.join(ROOT, "receiver%s.bin" % SUFFIX), "rb").read()

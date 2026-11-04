@@ -28,11 +28,17 @@ for c in cmds:
     r = subprocess.run(c, shell=True, cwd=work, capture_output=True, text=True)
     outputs[c] = r.stdout + r.stderr
     check("runs: " + (c if len(c) < 56 else c[:53] + "..."), r.returncode == 0, r.stderr[-200:])
-for f in ("logo.a2b", "logo_preview.png", "sphere.a2b", "sphere_preview.png", "bounce.a2v", "bounce_sound.a2v", "a2kit-boot.dsk"):
+for f in ("logo.a2b", "logo_preview.png", "sphere.a2b", "sphere_preview.png", "bounce.a2v", "bounce_sound.a2v", "stress.a2v", "stress_sound.a2v", "a2kit-boot.dsk"):
     check("produces out/" + f, os.path.getsize(os.path.join(work, "out", f)) > 0 if os.path.exists(os.path.join(work, "out", f)) else False)
 for c, o in outputs.items():
     if "a2kit video" in c:
         check("video has nothing left unsent: " + os.path.basename(c.split("-o")[1].split()[0]), "unsent screen bytes after last frame: 0" in o, o[-160:])
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import a2hdr
+for f, bursts in (("stress.a2v", 0), ("stress_sound.a2v", 27)):
+    _, _fr, _ = a2hdr.parse_stream(open(os.path.join(work, "out", f), "rb").read())
+    check(f + " really fills the 115200 byte budget", sum(1800 <= len(x) <= 1824 for x in _fr) >= 50, str([len(x) for x in _fr][:5]))
+    check(f + " has %d sound bursts" % bursts, sum(1 for x in _fr if a2hdr.frame_audio_pages(x)) == bursts)
 plan = [o for c, o in outputs.items() if "show plan" in c]
 check("show plan lists 2 images, 2 sounds and the scene table", bool(plan) and plan[0].count("HGR page") == 2 and plan[0].count(".wav") == 2 and "scene table" in plan[0])
 

@@ -7,7 +7,7 @@
 Type the printed lines at the Monitor prompt (*), then run the program with the
 last line (0800G for the receiver). CALL -151 gets you to the Monitor from
 BASIC. To check your typing before running it, type the range shown on stderr
-(for receiver.bin: 0800.091D) and compare the dump with the printed lines.
+(for receiver.bin: 0800.0924) and compare the dump with the printed lines.
 """
 import argparse
 import sys

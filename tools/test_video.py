@@ -42,7 +42,7 @@ w.writeframes((0.7 * np.sin(2 * np.pi * (200 * t + 900 * t * t)) * 32767).astype
 
 def convert(extra=(), src=None):
     out = os.path.join(tmp, "clip.a2v")
-    r = subprocess.run([sys.executable, os.path.join(HERE, "videoconv.py"), src or FR, "-o", out, "--fps", "6", *extra], check=True, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, os.path.join(HERE, "videoconv.py"), src or FR, "-o", out, "--fps", "6", "--baud", "19200", *extra], check=True, capture_output=True, text=True)
     print("  " + r.stderr.strip().replace("\n", "\n  "))
     return a2hdr.parse_stream(open(out, "rb").read())
 
@@ -210,7 +210,7 @@ r = run_6502(from_plan(sched0), audio)
 print("negative: host doesn't stay quiet for bursts -> overruns %d, screen == model: %s" % (r["over"], r["screen"] == bytes(aref)))
 expect(r["over"] > 0, "negative control: without the quiet time bytes are lost (so the test can see the difference)")
 
-print("--- 2b. at 115200 baud (a2kit-boot-115200.dsk) ---")
+print("--- 2b. at 115200 baud (a2kit-boot.dsk) ---")
 FAST = 115200
 fps, ffr, _ = convert(["--baud", str(FAST)])
 fbudget = int(FAST / 10 / fps * 0.95)

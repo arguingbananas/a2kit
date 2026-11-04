@@ -62,6 +62,10 @@ mkdir -p out
 # The same animation with a "boing" sound added between frames.
 ./a2kit video examples/frames -o out/bounce_sound.a2v --fps 6 --audio examples/boing.wav
 
+# A stress test at the full byte budget, without and with sound (see Step 6). Hard edges, so no dithering.
+./a2kit video examples/stress -o out/stress.a2v --fps 6 --dither threshold
+./a2kit video examples/stress -o out/stress_sound.a2v --fps 6 --dither threshold --audio examples/jingle.wav
+
 # A whole show (two pictures and two sounds): convert everything and print the upload plan.
 ./a2kit show plan examples/show.toml
 
@@ -77,7 +81,7 @@ The `video` command prints how many bytes each frame needs and warns if the pict
 
 ## Step 3. Start the receiver on the Apple II
 
-The receiver is a 292-byte program that listens on the serial card. There are two ways to start it.
+The receiver is a 293-byte program that listens on the serial card. There are two ways to start it.
 
 ### Option A: boot the a2kit disk (easiest)
 
@@ -87,7 +91,7 @@ It has no DOS on it, so all of the Apple II's memory stays free.
 1. Get the image onto something your Apple II can boot: copy it to a Floppy Emu's SD card, write it to a real floppy, or open it in an emulator.
    The [Installation Guide](INSTALL.md#5-the-boot-disk) lists the ways.
 2. Connect the serial cable, put the disk in drive 1 (slot 6) and turn the Apple II on (or type `PR#6` at the BASIC prompt).
-3. The screen clears and shows `A2KIT RX READY 19200 (ANY KEY QUITS)`. The number is the line speed in baud.
+3. The screen clears and shows `A2KIT RX READY 115200 (ANY KEY QUITS)`. The number is the line speed in baud.
 
 Booted this way, the receiver **starts listening again by itself after every session**, on a freshly cleared screen, so you never type `0800G`.
 Pressing a key while it is waiting drops you into the Monitor; type `980G` there to start it again.
@@ -104,14 +108,14 @@ Pressing a key while it is waiting drops you into the Monitor; type `980G` there
 
 2. On the Apple II, get to the Monitor prompt (`*`). From BASIC that's `CALL -151`.
 3. Type the lines exactly as printed, pressing Return after each one. **Don't type the last line yet.**
-4. Check your typing: type `0800.0923` and compare the dump with the printed lines.
-5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY 19200 (ANY KEY QUITS)`.
+4. Check your typing: type `0800.0924` and compare the dump with the printed lines.
+5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver stops after each session, so type `0800G` again before every send.
 
 Either way, the receiver is now waiting. Leave it running and go back to your computer.
 
-**Faster:** `a2kit-boot-115200.dsk` is the same receiver at 115200 baud, six times the line speed (a picture in 0.9 s instead of 4.8). Once everything works at 19200, boot it and add `--baud 115200` to the commands, or run `export A2KIT_BAUD=115200` once. See [Line speed](MANUAL.md#24-line-speed-19200-or-115200-baud) in the User Manual.
+**If the link is unreliable:** `a2kit-boot-19200.dsk` is the same receiver at 19200 baud, a sixth of the line speed (a picture in 4.8 s instead of 0.9). Boot it and add `--baud 19200` to the commands, or run `export A2KIT_BAUD=19200` once. See [Line speed](MANUAL.md#24-line-speed-115200-or-19200-baud) in the User Manual.
 
 ## Step 4. Check the link, then send your first picture
 
@@ -128,7 +132,7 @@ the summary should end with `Link OK`. If it doesn't, its last lines say what ki
 ```bash
 ./a2kit send out/logo.a2b --port /dev/ttyUSB0
 ```
- It takes roughly 5 to 10 seconds. When it finishes, the logo appears on the Apple II screen.
+ It takes about a second. When it finishes, the logo appears on the Apple II screen.
 Press any key on the Apple II to go back to text.
 
 If you typed the receiver in, type `0800G` again now; the boot disk's receiver is already listening.
@@ -157,6 +161,14 @@ A ball bounces across the screen for about eight seconds, with the "boing" sound
 with the individual bounces: the sound plays in order, in short bursts between frames, because the Apple II can't listen to the cable and drive the speaker at the same time
 (see [the manual](MANUAL.md#5-a2kit-video)).
 
+**A harder test:** `out/stress.a2v` sends as much as the line allows at 115200 baud, and `out/stress_sound.a2v` adds the jingle in 27 short bursts:
+
+```bash
+./a2kit stream out/stress.a2v --port /dev/ttyUSB0 --install
+```
+
+For about 8 seconds, rings and a spinning cross move all over the screen, looking smeared because each frame can only redraw part of what changed. Then a still grid with a circle stays up for about 7 seconds. The grid is what to check: bytes lost during the motion would show up on it as stray marks or gaps. These clips are made for 115200 baud and run late at 19200.
+
 ## Step 7. Make your own
 
 - **A picture:** `./a2kit image mypic.png -o out/mypic.a2b --preview out/mypic_preview.png`, then look at the preview.
@@ -175,6 +187,7 @@ All of these were generated by `examples/make_examples.py` and are free to use a
 | `examples/sphere.png` | Shaded ball on a checkered floor | Seeing how grey dithers to dots |
 | `examples/frames/f00.png … f35.png` | 36 frames of a bouncing ball | `video` from a folder |
 | `examples/bounce.gif` | The same animation as a GIF | `video` from a GIF |
+| `examples/stress/f000.png … f089.png` | 90 frames: moving rings, then a still test grid | Testing the link at the full byte budget |
 | `examples/jingle.wav` | Six-note rising jingle, 1.7 s | Sound in a show |
 | `examples/boing.wav` | Three "boing" sounds, 0.9 s | Sound in a video (`--audio`) |
 | `examples/chirp.wav` | Rising chirp, 0.5 s | A short effect |

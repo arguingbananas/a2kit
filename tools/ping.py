@@ -67,7 +67,7 @@ def picture_estimate(turnaround, chunk, baud):
     return sum(wire_seconds(n + 7, baud) + apple_seconds(n) + turnaround for n in sizes)
 
 
-def run(port, baud=19200, count=10, speed=16, chunk=128, out=print, clock=time.perf_counter, sleep=time.sleep):
+def run(port, baud=a2hdr.DEFAULT_BAUD, count=10, speed=16, chunk=128, out=print, clock=time.perf_counter, sleep=time.sleep):
     """Ping, then speed-test. Returns a dict of results (also printed through out)."""
     res = {"sent": 0, "ack": 0, "nak": 0, "other": 0, "none": 0, "others": set(),
            "rtt": [], "turnaround": [], "speed": None, "speed_sent": 0, "speed_ack": 0}
@@ -132,7 +132,7 @@ def report(res, baud, chunk, out=print):
     if res["sent"] and res["none"] == res["sent"]:
         out("No reply at all. Check, in order:")
         out("  - the receiver is running: its banner A2KIT RX READY is on the Apple II's screen")
-        out("  - --baud (%d) is the number in that banner (19200, or 115200 with a2kit-boot-115200.dsk)" % baud)
+        out("  - --baud (%d) is the number in that banner (115200, or 19200 with a2kit-boot-19200.dsk)" % baud)
         out("  - --port names the right port, and nothing else (such as ADTPro) has it open")
         out("  - the cable: a null-modem adapter may be needed, or the card's jumper block turned round")
         out("  - the adapter is RS-232, not a 3.3 V / 5 V USB-TTL board")
@@ -140,13 +140,13 @@ def report(res, baud, chunk, out=print):
     elif res["other"] and not res["ack"]:
         out("Bytes come back, but not the receiver's replies (%s)." % ", ".join("$%02X" % b for b in sorted(res["others"])))
         out("The speed probably doesn't match: --baud (%d) must be the number in the receiver's" % baud)
-        out("banner, A2KIT RX READY 19200 or 115200. Otherwise suspect the wiring or the signal levels.")
+        out("banner, A2KIT RX READY 115200 or 19200. Otherwise suspect the wiring or the signal levels.")
     elif res["nak"] or res["other"]:
         out("The link works but some packets arrive damaged: noise, a long or poor cable, or a")
         out("marginal adapter. Uploads will retry, but slowly. Try --chunk 64 or 32 for uploads,")
         out("a shorter cable, or a lower baud rate (User Manual, Troubleshooting).")
         if baud > 19200:
-            out("At %d baud, the 19200 disk (a2kit-boot.dsk, --baud 19200) is the first thing to try." % baud)
+            out("At %d baud, the 19200 disk (a2kit-boot-19200.dsk, --baud 19200) is the first thing to try." % baud)
     elif res["none"]:
         out("Some packets got no reply: a loose connection, or the receiver stopped (a key pressed?).")
     if ok:

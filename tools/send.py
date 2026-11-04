@@ -12,8 +12,8 @@ Packet protocol (host -> Apple II), one packet at a time, each ACKed:
 
 Apple II replies one byte: $06 ACK, $15 NAK (host resends, up to --retries).
 
-Speed: 19200 baud by default, the fastest the 6551's own baud-rate generator
-gives; 115200 with the receiver built for it (a2kit-boot-115200.dsk). --baud,
+Speed: 115200 baud by default; 19200 with the receiver built for it
+(a2kit-boot-19200.dsk), the fastest the 6551's own baud-rate generator gives. --baud,
 or A2KIT_BAUD, must match the number in the receiver's banner. Per-packet ACKs
 keep the 1 MHz CPU from being overrun.
 
@@ -45,7 +45,7 @@ PROTECTED = ((0x0000, 0x01FF, "zero page and stack"),
 TURNAROUND = 0.0025     # seconds per packet the port and program add (2.2 ms measured on a built-in 16550)
 
 
-def upload_seconds(sizes, baud=19200, chunk=128, turnaround=TURNAROUND):
+def upload_seconds(sizes, baud=a2hdr.DEFAULT_BAUD, chunk=128, turnaround=TURNAROUND):
     """Expected time to upload blocks of these sizes and end the session.
 
     Each packet costs its bytes plus 7 (header, checksum, reply) on the line,

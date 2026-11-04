@@ -18,7 +18,7 @@
 ; There is no DOS on the disk, so all of RAM stays free for a2kit.
 ;
 ; Build (needs receiver.bin): ca65 --bin-include-dir . runtime/boot.s -o boot.o
-; or, for 115200 (needs receiver-115200.bin): add -D BAUD=115200 and write boot-115200.bin
+; or, for 19200 (needs receiver-19200.bin): add -D BAUD=19200 and write boot-19200.bin
 ;                             ld65 -C runtime/boot.cfg boot.o -o boot.bin
 
 RECEIVER = $0800        ; where receiver.bin is assembled to run
@@ -38,13 +38,10 @@ MONZ     = $FF69        ; Monitor: command loop ("*" prompt), as CALL -151
         jmp boot
 
 payload:
-.ifndef BAUD
-BAUD = 19200
-.endif
-.if BAUD = 19200
-        .incbin "receiver.bin"
-.else
+.ifdef BAUD
         .incbin .sprintf("receiver-%d.bin", BAUD)
+.else
+        .incbin "receiver.bin"
 .endif
 payload_end:
 RXSIZE = payload_end - payload

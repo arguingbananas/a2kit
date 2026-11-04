@@ -3,12 +3,12 @@
 
 SLOT      = 2           ; Super Serial Card slot (1-7)
 
-; Line speed. The Makefile builds two receivers: the default here (19200) and
-; one with -D BAUD=115200. Pass the matching --baud to the a2kit commands (or
-; set A2KIT_BAUD once). The video player and the sequencer keep whatever speed
+; Line speed. The Makefile builds two receivers: the default here (115200) and
+; one with -D BAUD=19200. If you use another speed, pass the matching --baud to
+; the a2kit commands (or set A2KIT_BAUD once). The video player and the sequencer keep whatever speed
 ; the receiver set, so only the receiver and boot disk differ between speeds.
 .ifndef BAUD
-BAUD = 19200
+BAUD = 115200
 .endif
 
 ; 6551 control register: 1 stop bit, 8 data bits, and the rate in the low 4 bits.
