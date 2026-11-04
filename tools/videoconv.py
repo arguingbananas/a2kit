@@ -2,7 +2,8 @@
 """videoconv: turn a video / animated GIF / folder of frames into an a2kit
 delta stream for runtime/video.s.
 
-Why deltas: a screen is 8 KB but the serial link moves ~1.9 KB/s (19200 baud).
+Why deltas: a screen is 8 KB but the serial link moves ~1.9 KB/s at 19200 baud
+(~11.5 KB/s at 115200).
 So each frame sends only the screen bytes that changed, as many as fit in a
 per-frame byte budget, most-changed first. Whatever doesn't fit stays pending
 and is sent on later frames, so the picture converges instead of dropping
@@ -10,7 +11,7 @@ detail permanently. Ordered (Bayer) dithering is the default because, unlike
 error diffusion, it doesn't shimmer between frames and keeps the deltas small.
 
   videoconv.py clip.gif -o clip.a2v --fps 6
-  videoconv.py frames/ -o clip.a2v --fps 8 --baud 19200
+  videoconv.py frames/ -o clip.a2v --fps 8 --baud 115200
   videoconv.py movie.mp4 -o clip.a2v --fps 6      (needs ffmpeg on PATH)
 
 Scrub (--scrub N): every frame also re-sends N screen bytes from a cursor that
@@ -198,7 +199,7 @@ def main():
     ap.add_argument("-o", "--output", required=True)
     ap.add_argument("--fps", type=int, default=6, help="playback frames per second, a whole number 1-60 (default 6)")
     ap.add_argument("--src-fps", type=float, help="frame rate of the input (default: same as --fps)")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--budget", type=int, help="bytes per frame (default: what the baud rate allows)")
     ap.add_argument("--dither", choices=["ordered", "atkinson", "threshold"], default="ordered")
     ap.add_argument("--crop", action="store_true")

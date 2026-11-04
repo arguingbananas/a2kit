@@ -79,7 +79,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--port", required=True)
-    ap.add_argument("--baud", type=int, default=19200, help="must match the player's build (default 19200)")
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="upload the player (and any audio) through the receiver first")
     ap.add_argument("--rtscts", action="store_true")
     a = ap.parse_args()

@@ -11,8 +11,14 @@
 ;                       addr  = 0 -> ACK, show HGR page 1, wait for a key
 ; Press any key while idle to quit.
 ;
-; Loads at $0800, staging buffer at $0A00. 8N1; slot and baud in config.inc.
-; Build:  ca65 -I runtime runtime/receiver.s -o receiver.o
+; Loads at $0800, staging buffer at $0A00. 8N1; slot and speed in config.inc.
+; The banner shows the speed it was built for, so a mismatch is easy to spot.
+;
+; At 115200 baud a byte arrives every 88.6 cycles and the 6551 holds only one,
+; so each byte must be read before the next one finishes arriving. rxb and the
+; loops that call it are kept short enough for that (tools/test_speed.py checks
+; it cycle by cycle).
+; Build:  ca65 -I runtime [-D BAUD=115200] runtime/receiver.s -o receiver.o
 ;         ld65 -C runtime/receiver.cfg receiver.o -o receiver.bin
 
         .include "hdr.inc"
@@ -58,7 +64,7 @@ start:
         sta ACIA_STAT,x         ; programmed reset
         lda #$0B                ; no parity, RTS low, IRQs off, DTR on
         sta ACIA_CMD,x
-        lda #ACIA_CTRL_VALUE    ; baud rate, 8 bits, 1 stop, internal clock (config.inc)
+        lda #ACIA_CTRL_VALUE    ; line speed, 8 bits, 1 stop (config.inc)
         sta ACIA_CTRL,x
         bit KBDSTRB             ; clear any pending keypress
 
@@ -178,4 +184,4 @@ txb:    pha
         sta ACIA_DATA,x
         rts
 
-msg:    .byte "A2KIT RX READY (ANY KEY QUITS)", $0D, 0
+msg:    .byte .sprintf("A2KIT RX READY %d (ANY KEY QUITS)", BAUD), $0D, 0

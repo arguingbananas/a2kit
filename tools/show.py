@@ -157,7 +157,7 @@ def main():
     ap.add_argument("command", choices=["plan", "send"])
     ap.add_argument("project")
     ap.add_argument("--port")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="also upload the sequencer")
     ap.add_argument("--rtscts", action="store_true")
     a = ap.parse_args()
