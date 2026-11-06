@@ -4,7 +4,8 @@
 ; its own aligned segment. Do not edit without re-running tools/test_sequencer.py.
 ;
 ; The includer defines: SPKR, aptr (2 bytes, low byte 0), apages, atmp, atmp2.
-; Call: aptr = page-aligned data, apages = number of 256-byte pages, jsr play.
+; Call: aptr = page-aligned data, apages = number of 256-byte pages, jsr splay.
+; (splay, below play, can hop into a language card; play is main RAM or as-is.)
 ;
 ; Data: 4-bit samples, two per byte (high nibble first), page aligned.
 ; Each sample n (0-15) toggles the speaker, waits 5(n+1)-1 cycles, toggles
@@ -65,4 +66,39 @@ play:   ldy #0
         inc aptr+1
         dec apages
         bne @byte
+        rts
+
+; Play apages pages from aptr, wherever they are. Sound runs from main RAM up to
+; $BFFF and carries on at $D000 in bank 2 of a language card, skipping the I/O
+; at $C000-$CFFF. The card is only switched in around the pages that are in it,
+; and ROM is back before this returns, so a machine with no card never sees the
+; switches. The hop costs a few dozen cycles once, less than one 128-cycle sample.
+LC_RAM  = $C080                 ; read card RAM, bank 2; no writes
+LC_ROM  = $C082                 ; read ROM; no writes
+
+splay:  lda aptr+1
+        cmp #$C0
+        bne @chk
+        lda #$D0                ; the last burst stopped exactly at $C000
+        sta aptr+1
+@chk:   cmp #$C0
+        bcs @card               ; already up in the card
+        clc
+        adc apages              ; A = the page it would end at
+        cmp #$C1
+        bcc play                ; all in main RAM
+        sbc #$C0                ; (carry is set) A = pages past $C000
+        pha
+        eor #$FF
+        sec
+        adc apages              ; apages - that = pages below $C000
+        sta apages
+        jsr play
+        lda #$D0
+        sta aptr+1
+        pla
+        sta apages
+@card:  bit LC_RAM
+        jsr play
+        bit LC_ROM
         rts

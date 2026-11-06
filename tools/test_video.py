@@ -6,7 +6,7 @@ cycles at 19200 baud, counting overruns).
   2b. the same at 115200 baud, plus how much faster bytes could come
   3. fault injection: dropped / corrupted / inserted bytes must cost at most
      one frame of damage, never write outside $2000-$3FFF, and never read
-     audio from outside $6000-$BFFF; plus boundary cases for both limits
+     audio from outside $6000-$BFFF or the language card; plus boundary cases for both limits
   4. scrub heals what a fault leaves behind
 Section 2 drives the simulated serial line from stream.plan_stream, the same
 schedule the real host uses, so the host's burst timing is what is tested."""
@@ -284,8 +284,8 @@ case("skip walks off the screen, then good frame",
      lambda r: r["screen"][:2] == b"AB" and r["lost"])
 case("audio burst, bad check byte",
      b"\xFE\x7F\x70\x00\xFE" + lit(0x55) + END, lambda r: r["screen"][0] == 0x55 and r["lost"])
-case("audio burst, valid check but runs past $BFFF",
-     b"\xFE\x7F\x70\x25\xFE" + lit(0x66) + END, lambda r: r["screen"][0] == 0x66 and r["lost"])
+case("audio burst, valid check but runs past what a language card holds",
+     b"\xFE\x7F\x70\x25\xFE" + lit(0x66) + END, lambda r: r["screen"][0] == 0x66 and r["lost"], pokes={0x0C: 0x80})
 case("lone $80 mid-stream (not an end of stream)",
      b"\xFE" + lit(0x11) + b"\x80" + lit(1, 2, 3, 4, 5) + b"\xFE" + lit(0x22) + END,
      lambda r: r["screen"][0] == 0x22)
@@ -308,9 +308,9 @@ case("a burst right after a run that ends at $3FFF still plays",
      b"\xFE" + skip_to(0x3FF8) + bytes([8]) + bytes(8) + b"\x7F\x01" + bytes([0x01 ^ 0x55]) + b"\xFE" + lit(0x46) + END,
      lambda r: r["screen"][0] == 0x46 and len(r["edges"]) == 1024 and not r["lost"], audio_ok=True,
      pause_after=(16, 512 * a2hdr.SPEAKER_PLAYER_CYCLES + 5000))
-case("burst one page past $BFFF is refused",
+case("burst past the card's last page is refused",
      b"\xFE\x7F\x02" + bytes([0x02 ^ 0x55]) + b"\xFE" + lit(0x45) + END,
-     lambda r: r["screen"][0] == 0x45 and r["lost"], pokes={0x0C: 0xBF})
+     lambda r: r["screen"][0] == 0x45 and r["lost"], pokes={0x0C: 0xFE})
 
 # random faults: drop / corrupt / insert one byte
 frng = np.random.default_rng(11)

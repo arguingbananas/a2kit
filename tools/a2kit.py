@@ -8,6 +8,7 @@
   a2kit send   FILE --port DEV       upload one block through the receiver
   a2kit stream OUT.a2v --port DEV    play a video stream
   a2kit ping   --port DEV            check the serial link and measure its speed
+  a2kit lcprobe --port DEV           test a language card (16K of extra RAM) in slot 0
   a2kit mon    FILE                  print a binary as Monitor entry lines
   a2kit disk   [--baud 19200]        make a disk that boots straight into the receiver
   a2kit build                        assemble the 6502 programs (needs cc65)
@@ -38,10 +39,11 @@ TOOLS = {
     "send": ("send", "upload a block"),
     "stream": ("stream", "play a video stream"),
     "ping": ("ping", "check and measure the serial link"),
+    "lcprobe": ("lcprobe", "test a language card"),
     "mon": ("bin2mon", "binary -> Monitor lines"),
     "disk": ("mkdisk", "bootable receiver disk image"),
 }
-BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "boot.bin", "a2kit-boot.dsk",
+BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "lcprobe.bin", "boot.bin", "a2kit-boot.dsk",
             "receiver-19200.bin", "boot-19200.bin", "a2kit-boot-19200.dsk")
 
 

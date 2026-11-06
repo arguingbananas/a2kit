@@ -5,7 +5,8 @@ and generated from code, so you can edit the parameters and re-run:
     python3 examples/make_examples.py
 
 Writes: logo.png, sphere.png, frames/f00..f35.png, bounce.gif,
-        stress/f000..f089.png, jingle.wav, boing.wav, chirp.wav, show.toml
+        stress/f000..f089.png, jingle.wav, boing.wav, chirp.wav, long.wav,
+        show.toml, long_show.toml
 """
 import math
 import os
@@ -186,6 +187,26 @@ wait = 1.0
 ''')
 
 
+def make_long():
+    """A rising scale of half-second notes, 9.1 s in all: too long for main RAM, so
+    it needs a language card. The sound reaches the card at 6.2 s, partway through
+    a note, so anything wrong there is easy to hear."""
+    notes = [220 * 2 ** (k / 12) for k in range(18)]
+    x = np.concatenate([tone(f, 0.5, decay=0.5) for f in notes] + [tone(notes[-1], 0.1, decay=0.5)])
+    write_wav("long.wav", x)
+    with open(OUT("long_show.toml"), "w") as f:
+        f.write('''# A long sound that needs a language card in slot 0 (check with: a2kit lcprobe).
+# Run:  ./a2kit show plan examples/long_show.toml --language-card
+#       ./a2kit show send examples/long_show.toml --port /dev/ttyUSB0 --install --language-card
+
+[[scene]]
+image = "sphere.png"
+
+[[scene]]
+audio = "long.wav"
+''')
+
+
 if __name__ == "__main__":
-    make_logo(); make_sphere(); make_frames(); make_stress(); make_audio(); make_show()
+    make_logo(); make_sphere(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
     print("examples written to", HERE)

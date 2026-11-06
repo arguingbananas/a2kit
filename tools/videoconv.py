@@ -22,7 +22,8 @@ of each frame's budget. Off by default; 8-16 is cheap insurance on a flaky link.
 Audio (--audio clip.wav): the speaker player can't listen to the serial port,
 so audio plays in bursts between frames while the video stream pauses. It
 keeps its place between bursts, so nothing is dropped; the show just gets
-longer by the audio's duration. Audio lives in RAM ($6000-$BFFF, ~6 s max).
+longer by the audio's duration. Audio lives in RAM ($6000-$BFFF, ~6 s max), or
+~9 s with --language-card and a language card in slot 0.
 --burst-pages sets how many 64 ms pages play per burst (default 1; raised
 automatically if there are more bursts than frames).
 """
@@ -207,6 +208,7 @@ def main():
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
+    a2hdr.add_language_card_arg(ap)
     a = ap.parse_args()
 
     if not 1 <= a.fps <= 60:
@@ -226,8 +228,10 @@ def main():
     if a.audio:
         audio = audioconv.convert(a.audio)
         P = len(audio) // 256
-        if P > 96:
-            sys.exit("audio is %d pages; only 96 (6 s) fit in $6000-$BFFF. Use a shorter clip." % P)
+        if P > a2hdr.audio_pages_limit(a.language_card):
+            sys.exit("audio is %d pages; only %d fit. Use a shorter clip%s." % (
+                P, a2hdr.audio_pages_limit(a.language_card),
+                "" if a.language_card else ", or --language-card if you have one in slot 0"))
         B = min(len(imgs), -(-P // max(1, a.burst_pages)))      # number of bursts
         for i in range(B):
             bursts[(i * len(imgs)) // B] = P // B + (1 if i < P % B else 0)

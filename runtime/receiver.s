@@ -11,6 +11,8 @@
 ;                       addr  = 0 -> ACK, show HGR page 1, wait for a key
 ; Press any key while idle to quit.
 ;
+; With a language card in slot 0, $D000-$FFFF writes land in its RAM (bank 2).
+;
 ; Loads at $0800, staging buffer at $0A00. 8N1; slot and speed in config.inc.
 ; The banner shows the speed it was built for, so a mismatch is easy to spot.
 ;
@@ -36,6 +38,7 @@ TXTSET  = $C051                 ; text on
 MIXCLR  = $C052                 ; full screen
 LOWSCR  = $C054                 ; page 1
 HIRES   = $C057
+LC_WRITE = $C081                ; read twice: read ROM, write a language card's RAM (bank 2)
 COUT    = $FDED
 
 ; zero page the Apple II monitor and Applesoft leave free
@@ -66,6 +69,8 @@ start:
         sta ACIA_CMD,x
         lda #ACIA_CTRL_VALUE    ; line speed, 8 bits, 1 stop (config.inc)
         sta ACIA_CTRL,x
+        bit LC_WRITE            ; packets for $D000 and up go to a language card; ROM
+        bit LC_WRITE            ; stays readable, and with no card these do nothing
         bit KBDSTRB             ; clear any pending keypress
 
 packet:

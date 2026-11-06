@@ -1,0 +1,9 @@
+# A long sound that needs a language card in slot 0 (check with: a2kit lcprobe).
+# Run:  ./a2kit show plan examples/long_show.toml --language-card
+#       ./a2kit show send examples/long_show.toml --port /dev/ttyUSB0 --install --language-card
+
+[[scene]]
+image = "sphere.png"
+
+[[scene]]
+audio = "long.wav"
