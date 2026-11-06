@@ -14,7 +14,7 @@ can show and play, and send them over a Super Serial Card.
 | [Installation Guide](docs/INSTALL.md) | Requirements, per-system setup, finding the serial port |
 | [Quick Start](docs/QUICKSTART.md) | Purpose, workflow diagram, first picture on screen |
 | [User Manual](docs/MANUAL.md) | Every command and option, formats, memory map, troubleshooting |
-| [Roadmap](docs/ROADMAP.md) | What to do after the first real-hardware test |
+| [Roadmap](docs/ROADMAP.md) | Current status, known problems and what comes next |
 
 PDF copies of all three are in `docs/` (keep them in one folder so the links between them work).
 Starter assets are in [`examples/`](examples/).
