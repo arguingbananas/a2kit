@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `peek`, `crash`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-ramload-disk-mon-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -378,7 +378,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `peek`, `crash`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -459,6 +459,24 @@ The report gives the registers, the vectors at `$03F0`, the stack above S, and w
 Both commands need the receiver running from a disk built with these features. An older one just doesn't answer. A marker sent while nothing has the port open is lost, but the report is still there to read later.
 
 The receiver sends read replies back-to-back, so these commands may not work on a card refitted with a WDC 65C51, which always reports its transmitter as ready.
+
+### `a2kit ramload`
+
+Starts a new build of the receiver on a running one, over the serial line, so you can try it without copying a disk image to an SD card or rewriting a floppy.
+
+```bash
+./a2kit build
+./a2kit ramload --port /dev/ttyUSB0
+```
+
+The new receiver restarts as if it had just booted: the screen clears and shows its banner. If it can answer read requests, the tool then checks the code in memory against the image and says whether it matches.
+
+This only changes memory. **A reboot or power-off brings back whatever is on the disk**, so copy the new `a2kit-boot.dsk` to the disk when you want to keep it.
+
+- The receiver must be listening, so close anything else using the port first, such as `a2kit crash --watch`.
+- It overwrites `$2000–$21FF` and `$6000–$601A`, and it can't start over a crashed machine that has stopped answering.
+- `--boot FILE` loads another 512-byte boot image. Use one built for the speed you're running at; `--baud 19200` picks `boot-19200.bin` by default.
+- `--disk-slot` names the disk card's slot, if it isn't 6. The boot code uses it to turn off that drive's motor.
 
 ### `a2kit disk`
 

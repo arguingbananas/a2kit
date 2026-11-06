@@ -39,6 +39,7 @@ test: all
 	python3 tools/test_receiver.py receiver-19200.bin
 	python3 tools/test_crash.py
 	python3 tools/test_crash.py receiver-19200.bin
+	python3 tools/test_ramload.py
 	python3 tools/test_speed.py
 	python3 tools/test_sequencer.py
 	python3 tools/test_video.py
