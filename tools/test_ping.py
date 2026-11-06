@@ -157,7 +157,7 @@ expect(res["ack"] == 3 and res["speed_ack"] == 4 and code == 0, "real receiver a
 expect(screen == ping.apple_text("A2KIT PING 3 OF 3"), "real receiver wrote the ping text to the bottom line ($07D0)")
 expect(scratch == want, "speed-test data landed at $4000")
 expect(not sim.exited, "the receiver is still listening afterwards (ping never ends the session)")
-touched = [a for a in range(0xC000) if sim.mem[a] and not (0x0000 <= a <= 0x01FF or 0x0300 <= a <= 0x0303
+touched = [a for a in range(0xC000) if sim.mem[a] and not (0x0000 <= a <= 0x01FF or 0x0300 <= a <= 0x0303 or 0x03F0 <= a <= 0x03F1
            or 0x0800 <= a <= 0x0AFF or ping.TEXT_LINE <= a < ping.TEXT_LINE + 40 or ping.SPEED_ADDR <= a < ping.SPEED_ADDR + 128
            )]
 expect(not touched, "ping writes nowhere except the text line and the scratch bytes")

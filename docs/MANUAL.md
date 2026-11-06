@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-disk-mon-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -89,10 +89,10 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 
 **Option B: type it in.**
 
-1. `./a2kit mon receiver.bin` prints 37 lines of Monitor input (`0800:A9 00 85 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
+1. `./a2kit mon receiver.bin` prints 47 lines of Monitor input (`0800:A9 00 85 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
 2. On the Apple II, reach the Monitor prompt `*` (from BASIC: `CALL -151`).
-3. Type the 37 address lines, pressing Return after each. Leave out the `0800G` for now.
-4. Verify: type the range `mon` printed at the end (`0800.0924` for `receiver.bin`) and compare the dump against what you typed.
+3. Type the 47 address lines, pressing Return after each. Leave out the `0800G` for now.
+4. Verify: type the range `mon` printed at the end (`0800.0970` for `receiver.bin`) and compare the dump against what you typed.
 5. Connect the cable and type `0800G`. You should see `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
@@ -378,7 +378,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `disk`, `mon`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -432,6 +432,34 @@ Uploads wait for a one-byte reply after every packet, so a port that holds repli
 
 Larger packets also help, since each one pays the delay once: `./a2kit send --chunk 255`.
 
+### `a2kit peek`
+
+Reads Apple II memory through the running receiver and prints it like the Monitor's dump.
+
+```bash
+./a2kit peek BD00 16 --port /dev/ttyUSB0
+./a2kit peek 2000 8192 --port /dev/ttyUSB0 -o screen.bin
+```
+
+Addresses are in hex, and the length is 16 bytes if you leave it out. `-o` also saves the bytes to a file.
+`$C000–$CFFF` is refused, because just reading a soft switch can change the machine's state. `$D000–$FFFF` reads ROM, not a language card.
+
+### `a2kit crash`
+
+If a program hits `BRK`, the receiver keeps the Monitor's saved registers, prints them on the screen as usual, and goes on listening instead of stopping at the `*` prompt. A key still drops to the Monitor.
+
+```bash
+./a2kit crash --port /dev/ttyUSB0            # report any crash since the receiver started
+./a2kit crash --port /dev/ttyUSB0 --watch    # stay connected and log a crash when it happens
+```
+
+The report gives the registers, the vectors at `$03F0`, the stack above S, and whether the receiver's own code still matches `receiver.bin`.
+`--watch` checks every 30 seconds (`--interval` changes that), logs each crash with its time, and also logs when the Apple II stops answering, which is all you'll see from a hang or a crash that never reaches `BRK`. It keeps the port open until you stop it.
+
+Both commands need the receiver running from a disk built with these features. An older one just doesn't answer. A marker sent while nothing has the port open is lost, but the report is still there to read later.
+
+The receiver sends read replies back-to-back, so these commands may not work on a card refitted with a WDC 65C51, which always reports its transmitter as ready.
+
 ### `a2kit disk`
 
 Makes the boot disk image. Ready-made `a2kit-boot.dsk` (115200 baud) and `a2kit-boot-19200.dsk` come with a2kit, so you only need this after rebuilding the receivers (for example after changing the slot in `runtime/config.inc`; `./a2kit build` remakes both images too).
@@ -477,7 +505,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0923`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0970`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
 | Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Use the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
@@ -535,7 +563,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Address | Used for |
 |---|---|
-| `$0800–$0924` | Receiver (293 bytes; 292 for the 19200 one) |
+| `$0800–$0970` | Receiver (369 bytes; 368 for the 19200 one) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
@@ -546,12 +574,16 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$4000–$5FFF` | Hi-res page 2 |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s) |
 
-Zero page `$06–$0F` and `$EB–$ED` are used by these programs. The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
+Zero page `$06–$0F`, `$CE` and `$EB–$EF` are used by these programs, and the receiver points the Monitor's BRK vector (`$03F0–$03F1`) at its crash handler. The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
 
 ### 11.3 Upload protocol (`send`, `show send`, `--install`)
 
 Packet from computer: `$A5 seq len addr_lo addr_hi data… checksum`. The checksum is the XOR of every byte after the `$A5`. The Apple II answers `$06` (ACK) or `$15` (NAK). A packet with `len` 0 ends the session; its address is what to run (0 means show hi-res page 1).
 The receiver holds each packet in a buffer and only copies it into memory after the checksum passes, so a corrupted address can't overwrite anything.
+
+A read request is `$A6 count 0 addr_lo addr_hi checksum`, with the checksum over the four bytes after the `$A6` and a `count` of 0 meaning 256. The Apple II answers `$06`, the bytes, then their XOR, or `$15` if the checksum is bad.
+
+If a program hits `BRK`, the Monitor saves the registers (PC at `$3A–$3B`; A, X, Y, P and S at `$45–$49`) and the receiver's handler sends `$C3`, sets `$CE` to `$C3`, prints the registers and goes on listening. A key then drops to the Monitor. Starting the receiver again clears `$CE`.
 
 ### 11.4 Limits at a glance
 

@@ -12,6 +12,13 @@ Packet protocol (host -> Apple II), one packet at a time, each ACKed:
 
 Apple II replies one byte: $06 ACK, $15 NAK (host resends, up to --retries).
 
+Read request (host -> Apple II), for a2kit peek and a2kit crash:
+
+  $A6 count 0 addr_lo addr_hi checksum
+
+  count     1-255 bytes; 0 means 256
+  reply     $06, the bytes, then the XOR of the bytes; or $15 for a bad checksum
+
 Speed: 115200 baud by default; 19200 with the receiver built for it
 (a2kit-boot-19200.dsk), the fastest the 6551's own baud-rate generator gives. --baud,
 or A2KIT_BAUD, must match the number in the receiver's banner. Per-packet ACKs
@@ -29,6 +36,8 @@ import time
 import a2hdr
 
 SYNC = 0xA5
+READ_SYNC = 0xA6
+CRASH_MARK = 0xC3       # the receiver's crash handler sends this by itself, at any moment
 ACK = 0x06
 NAK = 0x15
 
@@ -80,6 +89,58 @@ def make_packet(seq, addr, data):
     for b in body:
         ck ^= b
     return bytes([SYNC]) + body + bytes([ck])
+
+
+def make_read_packet(addr, count):
+    """A read request for count bytes (1-256) at addr. It has a write packet's
+    shape with no data, and the count where the sequence number goes."""
+    body = bytes([count & 0xFF, 0]) + struct.pack("<H", addr)
+    ck = 0
+    for b in body:
+        ck ^= b
+    return bytes([READ_SYNC]) + body + bytes([ck])
+
+
+def check_read_range(addr, length):
+    """Raise ValueError if [addr, addr+length) is off the end of memory or
+    touches I/O: just reading a soft switch can change the machine's state."""
+    if length <= 0:
+        raise ValueError("nothing to read (length %d)" % length)
+    end = addr + length - 1
+    if addr < 0 or end > 0xFFFF:
+        raise ValueError("$%04X + %d bytes runs past $FFFF" % (addr, length))
+    if addr <= 0xCFFF and end >= 0xC000:
+        raise ValueError("$%04X-$%04X would read I/O ($C000-$CFFF), which can change the machine's state" % (addr, end))
+
+
+def read_memory(port, addr, length, retries=5):
+    """Read Apple II memory through the receiver; returns the bytes."""
+    check_read_range(addr, length)
+    out = bytearray()
+    while len(out) < length:
+        count = min(length - len(out), 256)
+        at = addr + len(out)
+        for attempt in range(retries):
+            port.reset_input_buffer()
+            port.write(make_read_packet(at, count))
+            port.flush()
+            reply = port.read(1)
+            if reply and reply[0] == CRASH_MARK:
+                reply = port.read(1)
+            if reply and reply[0] == ACK:
+                body = port.read(count + 1)
+                ck = 0
+                for b in body:
+                    ck ^= b
+                if len(body) == count + 1 and ck == 0:
+                    out += body[:-1]
+                    break
+            while port.read(64):        # let a late reply finish, or it would answer the retry
+                pass
+        else:
+            raise IOError("no good reply to a read of $%04X after %d tries; "
+                          "is the receiver running, and from a disk built with read support?" % (at, retries))
+    return bytes(out)
 
 
 class Sender:

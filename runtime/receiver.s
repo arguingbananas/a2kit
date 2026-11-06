@@ -11,6 +11,13 @@
 ;                       addr  = 0 -> ACK, show HGR page 1, wait for a key
 ; Press any key while idle to quit.
 ;
+; Read request: $A6 count 0 addr_lo addr_hi checksum (count 0 = 256 bytes).
+; Replies ACK, the bytes, then their XOR; or NAK if the checksum is bad.
+;
+; Crash report: the receiver points the Monitor's BRK vector at "crash", which
+; sends $C3, sets the crash flag, prints the registers and keeps listening, so
+; the PC can read what the Monitor saved. A key still drops to the Monitor.
+;
 ; Loads at $0800, staging buffer at $0A00. 8N1; slot and speed in config.inc.
 ; The banner shows the speed it was built for, so a mismatch is easy to spot.
 ;
@@ -37,12 +44,19 @@ MIXCLR  = $C052                 ; full screen
 LOWSCR  = $C054                 ; page 1
 HIRES   = $C057
 COUT    = $FDED
+BRKVEC  = $03F0                 ; Monitor: where BRK goes after saving the registers
+INSDS1  = $F882                 ; Monitor: print the saved PC
+RGDSP1  = $FADA                 ; Monitor: print the saved registers
+MON     = $FF65                 ; Monitor: command loop
 
 ; zero page the Apple II monitor and Applesoft leave free
 ptr     = $06                   ; 2 bytes: destination address
 cnt     = $08                   ; packet data length
 sum     = $09                   ; running XOR checksum
+crashed = $CE                   ; $C3 after a crash, 0 from each normal start (tools/send.py)
 tmo     = $EC                   ; 2 bytes: timeout counter / banner index
+kind    = $EE                   ; sync byte of the current packet
+seq     = $EF                   ; seq byte of the current packet: the count, in a read request
 
 buf     = $0A00                 ; packet staging buffer (255 bytes max)
 
@@ -51,32 +65,28 @@ buf     = $0A00                 ; packet staging buffer (255 bytes max)
 start:
         ; banner
         lda #0
+        sta crashed
         sta tmo
 @ban:   ldy tmo
         lda msg,y
-        beq @init
+        beq @rdy
         ora #$80
         jsr COUT
         inc tmo
         bne @ban
-
-@init:  ldx #SLOTX              ; X holds the slot offset from here on
-        sta ACIA_STAT,x         ; programmed reset
-        lda #$0B                ; no parity, RTS low, IRQs off, DTR on
-        sta ACIA_CMD,x
-        lda #ACIA_CTRL_VALUE    ; line speed, 8 bits, 1 stop (config.inc)
-        sta ACIA_CTRL,x
-        bit KBDSTRB             ; clear any pending keypress
+@rdy:   jsr init
 
 packet:
         jsr getsync
         bcc @go
         rts                     ; key pressed: quit
 @go:
+        sta kind
         lda #0
         sta sum
-        jsr rxb                 ; seq (not used, but part of the checksum)
+        jsr rxb                 ; seq (only a read request uses it)
         bcs packet
+        sta seq
         jsr rxb                 ; len
         bcs packet
         sta cnt
@@ -108,14 +118,16 @@ cplp:   lda buf,y
         cpy cnt
         bne cplp
         lda #PKT_ACK
-        jsr txb
-        jmp packet
+        bne reply
 nak:    lda #PKT_NAK
-        jsr txb
+reply:  jsr txb
         jmp packet
 
 ; end marker received
-fin:    lda #PKT_ACK
+fin:    lda kind
+        cmp #PKT_READ
+        beq rdmem
+        lda #PKT_ACK
         jsr txb
         ldy #0                  ; ~1 ms so the ACK finishes leaving the UART
 @dly:   dey
@@ -137,6 +149,46 @@ show:   bit TXTCLR
         bit TXTSET
 quit:   rts
 
+; read request: ACK, seq bytes from ptr (0 = 256), their XOR (sum is 0 here)
+rdmem:  lda #PKT_ACK
+        jsr txb
+        ldy #0
+@lp:    lda (ptr),y
+        jsr txb
+        eor sum
+        sta sum
+        iny
+        cpy seq
+        bne @lp
+        lda sum
+        jmp reply
+
+; BRK arrives here with the registers saved by the Monitor. The marker goes
+; first and doesn't wait for the 6551, so neither a damaged screen hook nor a
+; dead line can stop the rest. This never returns to the crashed program.
+crash:  jsr init
+        lda #PKT_CRASH
+        sta crashed
+        sta ACIA_DATA,x
+        jsr INSDS1
+        jsr RGDSP1
+        ldx #SLOTX
+        jsr packet
+        jmp MON
+
+init:   ldx #SLOTX              ; X holds the slot offset from here on
+        sta ACIA_STAT,x         ; programmed reset
+        lda #$0B                ; no parity, RTS low, IRQs off, DTR on
+        sta ACIA_CMD,x
+        lda #ACIA_CTRL_VALUE    ; line speed, 8 bits, 1 stop (config.inc)
+        sta ACIA_CTRL,x
+        lda #<crash
+        sta BRKVEC
+        lda #>crash
+        sta BRKVEC+1
+        bit KBDSTRB             ; clear any pending keypress
+        rts
+
 ; wait for the $A5 sync byte; carry set if a key was pressed instead
 getsync:
 @wait:  lda KBD
@@ -146,8 +198,10 @@ getsync:
         beq @wait
         lda ACIA_DATA,x
         cmp #PKT_SYNC
+        beq @sync
+        cmp #PKT_READ
         bne @wait
-        clc
+@sync:  clc
         rts
 @key:   bit KBDSTRB
         sec
