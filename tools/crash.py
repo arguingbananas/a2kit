@@ -24,6 +24,7 @@ import send
 CRASH_FLAG = 0x00CE     # holds send.CRASH_MARK after a crash
 PC_SAVE = 0x003A        # Monitor: PCL, PCH
 REG_SAVE = 0x0045       # Monitor: A, X, Y, P, S
+STACK = 0x0100
 VECTORS = 0x03F0
 RECEIVER = 0x0800
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -41,11 +42,8 @@ def report(port, baud=a2hdr.DEFAULT_BAUD):
     # the stacked PC is 2 past a BRK; the Monitor's display shows it the same way
     lines = ["%04X- A=%02X X=%02X Y=%02X P=%02X S=%02X   (BRK at $%04X)" % (pc, a, x, y, p, s, (pc - 2) & 0xFFFF),
              "vectors:"] + peek.dump(VECTORS, send.read_memory(port, VECTORS, 16))
-    lines.append("stack above S:")
-    if s < 0xFF:
-        lines += peek.dump(0x0101 + s, send.read_memory(port, 0x0101 + s, 0xFF - s))
-    else:
-        lines.append("(empty)")
+    lines.append("stack page (the handler's own calls are just below $0120):")
+    lines += peek.dump(STACK, send.read_memory(port, STACK, 256))
     name = "receiver.bin" if baud == a2hdr.DEFAULT_BAUD else "receiver-%d.bin" % baud
     code = open(os.path.join(ROOT, name), "rb").read()
     now = send.read_memory(port, RECEIVER, len(code))

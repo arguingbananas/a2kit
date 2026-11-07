@@ -175,14 +175,26 @@ for cpu_name, cpu in (("6502", MPU6502), ("65C02", MPU65C02)):
     print(cpu_name, "report:", *lines, sep="\n  ")
     expect(lines[0].startswith("BD02- A=00 X=20 Y=28 ") and "S=F3" in lines[0] and "BRK at $BD00" in lines[0], "%s: the report shows what the Monitor would" % cpu_name)
     expect(any("11 22 33 44" in l for l in lines), "%s: the report includes the stack above S" % cpu_name)
+    expect(len([l for l in lines if l[:2] == "01"]) == 32, "%s: the report includes the whole stack page" % cpu_name)
     expect(lines[-1] == "receiver code: matches " + NAME, "%s: undamaged receiver code is recognised" % cpu_name)
-    m.mem[0x0900] ^= 0xFF
-    expect("1 bytes differ" in crash.report(m, BAUD)[-1] and "$0900" in crash.report(m, BAUD)[-1], "%s: damaged receiver code is reported with its address" % cpu_name)
-    m.mem[0x0900] ^= 0xFF
+    banner = 0x0800 + len(code) - 2             # in the text, so the damage doesn't stop the receiver
+    m.mem[banner] ^= 0xFF
+    expect("1 bytes differ" in crash.report(m, BAUD)[-1] and "$%04X" % banner in crash.report(m, BAUD)[-1], "%s: damaged receiver code is reported with its address" % cpu_name)
+    m.mem[banner] ^= 0xFF
     m.tx.clear(); m.write(send.make_packet(0, 0x4000, b"\x5A")); m.read(1)
     expect(m.mem[0x4000] == 0x5A, "%s: uploads still work after a crash" % cpu_name)
     m.calls.clear(); m.key = 0x9B; m.step(5000)
     expect(m.calls == [MON], "%s: a key after a crash drops to the Monitor" % cpu_name)
+
+# the handler's calls leave what the crashed program had near S alone. Only the
+# BRK and the Monitor's save write there, in the 5 bytes below S.
+for s0 in (0xD2, 0x60):
+    m = idle()
+    for i in range(0x30, 0x100):
+        m.mem[0x0100 + i] = i ^ 0x5A
+    crash_at(m, 0x0000, 0, 0x20, 1, 0x37, s0)
+    changed = [i for i in range(0x30, 0x100) if m.mem[0x0100 + i] != i ^ 0x5A]
+    expect(changed == list(range(s0 - 4, s0 + 1)), "crash with S=$%02X: only the 5 bytes the BRK and the Monitor push change (%s)" % (s0, changed))
 
 # a wild crash with very little stack left and the slot offset gone from X
 m = idle(); m.tx.clear()

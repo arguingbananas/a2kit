@@ -59,6 +59,7 @@ kind    = $EE                   ; sync byte of the current packet
 seq     = $EF                   ; seq byte of the current packet: the count, in a read request
 
 buf     = $0A00                 ; packet staging buffer (255 bytes max)
+CRASH_S = $20                   ; the crash handler's stack pointer
 
         .segment "CODE"
 
@@ -165,8 +166,12 @@ rdmem:  lda #PKT_ACK
 
 ; BRK arrives here with the registers saved by the Monitor. The marker goes
 ; first and doesn't wait for the 6551, so neither a damaged screen hook nor a
-; dead line can stop the rest. This never returns to the crashed program.
-crash:  jsr init
+; dead line can stop the rest. This never returns to the crashed program. It
+; moves to its own part of the stack page, so its calls don't overwrite what the
+; crashed program left near S (the Monitor has saved S itself).
+crash:  ldx #CRASH_S
+        txs
+        jsr init
         lda #PKT_CRASH
         sta crashed
         sta ACIA_DATA,x
