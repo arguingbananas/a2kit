@@ -258,6 +258,20 @@ expect(any("BD02- A=00" in l for l in log), "watch logs the crash's registers")
 
 log = []
 m = idle(); m.timeout = 20000
+class Again(Switch):
+    """Crashes at the second poll, and again (at a different place) at the fourth."""
+    def write(self, d):
+        if d[0] == send.READ_SYNC and d[3] == crash.CRASH_FLAG:
+            self.n += 1
+            if self.n == 2: crash_at(self.m, 0x0000, 0, 0x20, 1, 0x37, 0xD2)
+            if self.n == 4: crash_at(self.m, 0x0322, 8, 0x20, 1, 0xB4, 0x1B)
+        self.m.write(d)
+crash.watch(Again(m, 0, None), BAUD, 30, out=log.append, stamp=lambda: "T", clock=Clock(), polls=6)
+expect(log.count("T CRASH") == 2 and any("0002- " in l for l in log) and any("0324- " in l for l in log),
+       "watch logs a second crash after the first, once each")
+
+log = []
+m = idle(); m.timeout = 20000
 crash.watch(Switch(m, 2, lambda s: setattr(s, "dead", True)), BAUD, 30, out=log.append, stamp=lambda: "T", clock=Clock(), polls=4)
 expect(log.count("T NOT ANSWERING") == 1 and "T CRASH" not in log, "watch logs silence once when a hang sends nothing")
 

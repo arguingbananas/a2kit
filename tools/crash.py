@@ -57,12 +57,13 @@ def watch(port, baud=a2hdr.DEFAULT_BAUD, interval=30.0, out=print, stamp=lambda:
           clock=time.monotonic, polls=None):
     """Poll until interrupted (or for `polls` polls, for tests), logging each change."""
     out("%s watching; polling every %g s" % (stamp(), interval))
-    alive, reported = None, False
+    alive, reported = None, None        # reported: the saved PC and registers last logged
     while polls is None or polls > 0:
         if polls is not None:
             polls -= 1
         try:
             is_crashed = crashed(port)
+            saved = send.read_memory(port, PC_SAVE, 2) + send.read_memory(port, REG_SAVE, 5) if is_crashed else None
         except IOError:
             if alive is not False:
                 out("%s NOT ANSWERING" % stamp())
@@ -73,11 +74,11 @@ def watch(port, baud=a2hdr.DEFAULT_BAUD, interval=30.0, out=print, stamp=lambda:
             elif alive is None:
                 out("%s answering" % stamp())
             alive = True
-            if is_crashed and not reported:
+            if is_crashed and saved != reported:        # a later BRK changes what the Monitor saved
                 out("%s CRASH" % stamp())
                 for line in report(port, baud):
                     out("  " + line)
-            reported = is_crashed
+            reported = saved
         until = clock() + interval
         while clock() < until:                  # any marker cuts the wait short
             if port.read(1) == bytes([send.CRASH_MARK]):
