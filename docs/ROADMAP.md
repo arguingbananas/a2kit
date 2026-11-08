@@ -73,7 +73,7 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 - [x] The receiver keeps interrupts off at its start and after a crash
 - [x] The canary, as a scratch script, found a failing RAM bank on real hardware. `a2kit canary` itself then ran on the Apple II over a USB adapter (8 Nov): the fill and checks, a changed byte and its return to the pattern, a stack-page wipe, and a real `BRK` were all logged correctly
 - [ ] Boot the new `a2kit-boot.dsk` from the SD card
-- [ ] Rerun `ping`, a picture, a show and the video with sound, and compare timings
+- [x] Rerun `ping`, a picture, a show and the video with sound, and compare timings (8 Nov, the current receiver loaded with `ramload`, over the USB adapter: all clean, timings in the [Installation Guide](INSTALL.md#tested-setup))
 - [ ] Add the hardware results to the docs, rebuild the PDFs, and open a PR
 
 **Known limits:** a crash that never reaches `BRK` shows up only as silence. The `BRK` itself and the Monitor's register save overwrite the 5 stack bytes just below S. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
@@ -158,7 +158,7 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **First hardware test** (2 November 2026, Apple II+). Everything worked after two fixes: a show ending on text page 2, and banners piling up on the booted receiver's screen.
 - **`./a2kit ping`:** checks the link, measures the port's delay and the real upload rate, and names the kind of fault.
 - **Built-in serial ports:** documented, and part of the tested setup.
-- **A USB-to-RS-232 adapter** (8 November 2026, an FTDI FT232R, on `feature/crash-reporter`). On its default 16 ms latency timer, uploads ran at about 8,000 bytes/s with 128- or 255-byte packets, because each packet took a whole number of 16 ms periods. With the timer at 1 ms they ran at 8,546 and 9,119 bytes/s, against 8,743 and 9,157 on the built-in port. `a2kit ping` now sets the 1 ms timer itself on Linux, with no `sudo`, and judges how much a slow port costs from its speed test.
+- **A USB-to-RS-232 adapter** (8 November 2026, an FTDI FT232R, on `feature/crash-reporter`). On its default 16 ms latency timer, uploads ran at about 8,000 bytes/s with 128- or 255-byte packets, because each packet took a whole number of 16 ms periods. With the timer at 1 ms they ran at 8,546 and 9,119 bytes/s, against 8,743 and 9,157 on the built-in port. Every a2kit command now sets the 1 ms timer itself on Linux, with no `sudo`, and `ping` judges how much a slow port costs from its speed test. A picture, the starter show and all four videos, with and without sound, then ran cleanly over the adapter, looking and sounding the same as on the built-in port.
 - **115200 baud** (3 November 2026). Now the default, with `a2kit-boot-19200.dsk` as the fallback. Ping, a picture, the show and the video all ran, including a stress clip at the full byte budget with and without sound.
 - **Measured results:** in the [Installation Guide](INSTALL.md#tested-setup).
 - **Version control:** the project is on GitHub.
