@@ -77,6 +77,17 @@ The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms
 
 With the 16 ms timer the adapter passes received bytes on only when the timer runs out, so every packet takes a whole number of 16 ms periods. A 128-byte packet needs about 14 ms and takes one period (128 bytes / 16 ms = 8,000 bytes/s); a 255-byte packet needs about 27 ms and takes two (7,970 bytes/s), which is why larger packets didn't help. At 1 ms the adapter is within about 0.5 ms per packet of the built-in port. a2kit now sets the 1 ms timer itself whenever a command opens the port (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping)).
 
+**Everything else over the USB adapter** (8 November 2026). After the adapter had been unplugged and plugged back in, so with its timer back at 16 ms until the first command set it to 1 ms, each Quick Start step ran with no retries, and the receiver was listening again afterwards with no crash recorded. The pictures, sounds and videos all looked and sounded right, and the stress clip's final grid was clean:
+
+| | Over USB | Built-in port |
+|---|---|---|
+| An 8 KB picture (`send out/logo.a2b`) | 1.0 s; 0.9 s with `--chunk 255` | 0.9 s |
+| The starter show, with `--install` | 3.4 s from start to finish | 2.9 s upload |
+| Bouncing ball, without and with sound | 7.2 s and 9.3 s from start to finish, for 6.0 s and 7.7 s clips; 15 sound bursts | about 7.7 s with sound |
+| Stress clip, without and with the jingle | 16.2 s and 20.1 s from start to finish, for 15.0 s and 18.1 s clips; 27 sound bursts | about 15 s and 18 s |
+
+The USB times run from starting the command to its end, so they include starting the tool and uploading the player and any sound; the built-in figures were timed from playback. Video itself sends without waiting for replies, so the port's delay doesn't affect it.
+
 **Not yet tried on real hardware:** a USB-to-RS-232 adapter other than the FTDI one above; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
 ### Hardware
