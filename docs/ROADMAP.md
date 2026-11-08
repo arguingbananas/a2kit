@@ -8,7 +8,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 8 Novemb
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
 | Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
-| Crash reporter, `peek` and `ramload` | Branch `feature/crash-reporter` | Pushed; crash reports, hang logging and `ramload` seen working on hardware |
+| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed; crash reports, hang logging and `ramload` seen working on hardware |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
 | This roadmap | Branch `docs/roadmap` | Docs only; can merge at any time |
@@ -50,11 +50,10 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 **Restarting after a hang without losing the evidence:** don't switch off. Press Ctrl-Reset, then type `CALL -151`. The first Reset after power-up runs an Applesoft cold start, which zeros `$0800–$0802`, so type `800:78 A9 00` to put the receiver's first bytes back. Type `48:04` so `G` starts with interrupts off, then `980G`, and dump memory before anything else.
 
 **Next steps, changing one thing at a time:**
-1. **Done:** a run with the RAMCard removed, under a canary check (a scratch script for now). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. It found the failing bank above.
-2. **Next:** reseat the bit-0 chip of the `$8000–$BFFF` row, or swap it with its neighbour in the same row, and run the canary again for several days. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, it's the socket. Don't swap it into the `$0000–$3FFF` row, which holds the receiver. Then replace the chip and see whether the hangs stop.
+1. **Done:** a run with the RAMCard removed, under a canary check (then a scratch script, now `a2kit canary` on `feature/crash-reporter`). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. It found the failing bank above.
+2. **Next:** reseat the bit-0 chip of the `$8000–$BFFF` row, or swap it with its neighbour in the same row, and run `a2kit canary` again for several days. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, it's the socket. Don't swap it into the `$0000–$3FFF` row, which holds the receiver. Then replace the chip and see whether the hangs stop.
 3. If the machine still fails with good RAM, write a standalone Apple II memory tester that keeps the stack, zero page and screen busy and checks the rest of RAM for writes in the wrong place, with no serial and no a2kit running. That's the control that would rule a2kit out.
 4. Then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then), the power supply's voltages, and a fan to test the heat idea.
-5. The canary has proved useful, so make it an `a2kit` command.
 
 ## 2. Finish the work in progress
 
@@ -62,7 +61,7 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 ### Crash reporter (`feature/crash-reporter`)
 
-Adds `a2kit peek`, `a2kit crash` with `--watch`, and `a2kit ramload`.
+Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit ramload`.
 
 - [x] Simulator tests pass
 - [x] The Monitor addresses it relies on match the real ROM
@@ -72,6 +71,7 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, and `a2kit ramload`.
 - [x] Hangs were logged with the right time (6 and 7 Nov)
 - [x] The handler keeps to its own part of the stack, so a report shows what the crashed program left
 - [x] The receiver keeps interrupts off at its start and after a crash
+- [x] The canary, as a scratch script, found a failing RAM bank on real hardware; `a2kit canary` itself has only run in the simulator so far
 - [ ] Boot the new `a2kit-boot.dsk` from the SD card
 - [ ] Rerun `ping`, a picture, a show and the video with sound, and compare timings
 - [ ] Add the hardware results to the docs, rebuild the PDFs, and open a PR
