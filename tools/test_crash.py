@@ -330,11 +330,21 @@ print("canary log:", *log, sep="\n  ")
 text = "\n".join(log)
 expect("T filled $7F00-$80FF (512 bytes)" in text and "first check: 0 byte(s) differ" in text, "canary fills the region and finds it intact")
 expect(all(m.mem[a] == canary.expected(a) for a in range(0x7F00, 0x8100)), "canary's fill wrote the pattern")
-expect(text.count("CANARY:") == 1 and "  $8080 expected %02X now 00 (xor %02X)" % (canary.expected(0x8080), canary.expected(0x8080)) in text,
-       "canary logs a changed byte once, with what it should be and the changed bits")
-expect("  bits changed: " + " ".join("D%d" % b for b in range(8) if canary.expected(0x8080) >> b & 1) in text,
-       "canary sums up which data bits changed")
+x = canary.expected(0x8080)
+expect(text.count("CANARY:") == 1 and "  $8080 expected %02X now 00 (xor %02X: %s)" % (x, x, canary.bit_names(x)) in text,
+       "canary logs a changed byte once, with what it should be and its changed bits")
 expect("STACK PAGE: " in text, "canary logs a wiped stack page")
 expect("back to the pattern: $8080" in text, "canary logs a byte that goes back to the pattern")
 expect(text.count("T CRASH") == 1 and "BD02- A=00" in text, "canary logs a crash like crash --watch")
+
+# more changes than are listed: the rest are counted per bit, as from one failing chip
+mem = bytearray(canary.pattern(0x8000, 0x8100))
+for i in range(0, 0x100, 2):
+    mem[i] ^= 0x01                              # D0 in 128 bytes
+mem[1] ^= 0x80                                  # and D7 in one
+log = []
+canary.Canary(lambda a, n: bytes(mem) if a == 0x8000 else bytes(n), log.append, lambda: "T", 0x8000, 0x8100).check()
+expect(sum(l.startswith("  $") for l in log) == canary.MAX_LINES and
+       "  ... and %d more; in all 129, bits changed: D0 in 128, D7 in 1" % (129 - canary.MAX_LINES) in log,
+       "canary lists the first changes and counts every change per bit (%s)" % [l for l in log if "more" in l])
 finish("test_crash " + NAME)

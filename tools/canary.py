@@ -38,6 +38,11 @@ def expected(addr):
     return ((addr & 0xFF) + (addr >> 8) + 0x5A) & 0xFF
 
 
+def bit_names(x):
+    """'D0 D3' for the set bits of x."""
+    return " ".join("D%d" % b for b in range(8) if x >> b & 1)
+
+
 def pattern(lo, hi):
     return bytes(expected(a) for a in range(lo, hi))
 
@@ -60,13 +65,12 @@ class Canary:
         if new:
             self.out("%s CANARY: %d byte(s) changed (%d differ in all)" % (self.stamp(), len(new), len(bad)))
             for a in sorted(new)[:MAX_LINES]:
-                self.out("  $%04X expected %02X now %02X (xor %02X)" % (a, expected(a), new[a], expected(a) ^ new[a]))
+                x = expected(a) ^ new[a]
+                self.out("  $%04X expected %02X now %02X (xor %02X: %s)" % (a, expected(a), new[a], x, bit_names(x)))
             if len(new) > MAX_LINES:
-                self.out("  ... and %d more" % (len(new) - MAX_LINES))
-            bits = 0
-            for a, v in new.items():
-                bits |= expected(a) ^ v
-            self.out("  bits changed: %s" % " ".join("D%d" % b for b in range(8) if bits >> b & 1))
+                counts = [sum((expected(a) ^ v) >> b & 1 for a, v in new.items()) for b in range(8)]
+                self.out("  ... and %d more; in all %d, bits changed: %s" % (len(new) - MAX_LINES, len(new),
+                         ", ".join("D%d in %d" % (b, n) for b, n in enumerate(counts) if n)))
         if healed:
             self.out("%s canary: %d byte(s) back to the pattern: %s" % (
                 self.stamp(), len(healed), " ".join("$%04X" % a for a in sorted(healed)[:MAX_LINES])))

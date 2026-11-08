@@ -473,7 +473,7 @@ Fills free RAM with a known pattern, then reads it back every few minutes and lo
 
 It fills `$0B00–$BFFF`, the 45 KB that the receiver, the Monitor and the text screen don't use, which takes about 5 seconds at 115200. Each byte's value comes from its address, so neighbouring bytes differ, and so do bytes at the same place in another 16K bank. Each check logs:
 
-- **`CANARY:`** with each newly changed byte (up to 40 listed), what it should be, what it is now, and the xor of the two, then a `bits changed:` line summing up which data bits were involved.
+- **`CANARY:`** with each newly changed byte (up to 40 listed): what it should be, what it is now, the xor of the two, and the data bits that changed, as in `$9000 expected EA now EB (xor 01: D0)`. When more than 40 bytes changed, a last line counts all of them per bit, such as `in all 1473, bits changed: D0 in 1473`.
 - **`back to the pattern:`** for bytes that changed earlier but now read correctly again. Bytes that come and go like this point at a chip that can't hold its data, rather than a single stray write.
 - **`STACK PAGE:`** when the number of zero bytes in `$0100–$01FF` jumps by 16 or more, as in a stack wipe.
 
