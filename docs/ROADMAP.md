@@ -71,7 +71,7 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 - [x] Hangs were logged with the right time (6 and 7 Nov)
 - [x] The handler keeps to its own part of the stack, so a report shows what the crashed program left
 - [x] The receiver keeps interrupts off at its start and after a crash
-- [x] The canary, as a scratch script, found a failing RAM bank on real hardware; `a2kit canary` itself has only run in the simulator so far
+- [x] The canary, as a scratch script, found a failing RAM bank on real hardware. `a2kit canary` itself then ran on the Apple II over a USB adapter (8 Nov): the fill and checks, a changed byte and its return to the pattern, a stack-page wipe, and a real `BRK` were all logged correctly
 - [ ] Boot the new `a2kit-boot.dsk` from the SD card
 - [ ] Rerun `ping`, a picture, a show and the video with sound, and compare timings
 - [ ] Add the hardware results to the docs, rebuild the PDFs, and open a PR
