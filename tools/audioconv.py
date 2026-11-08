@@ -7,6 +7,7 @@ to fit in RAM, so in practice a few seconds.
 
   audioconv.py clip.wav -o clip.a2b
   audioconv.py clip.wav -o clip.a2b --max-seconds 5 --gain 1.5
+  audioconv.py speech.wav -o speech.a2b --compress
 """
 import argparse
 import sys
@@ -54,6 +55,30 @@ def resample(x, rate, target):
     return np.interp(t_out, np.arange(len(x)), x)
 
 
+def compress(x, rate, highpass=150.0, threshold_db=-40.0, ratio=10.0, release=0.1):
+    """Even out speech for the 4-bit speaker. Speech has rare loud peaks and is mostly
+    much quieter, and the samples are scaled to the loudest peak, so most of it
+    would use only a level or two either side of the middle. This cuts the bass the
+    speaker can't play, then turns down everything above threshold_db (relative to
+    the peak) by ratio. The level it follows jumps up at once on a peak, so no peak
+    slips through to set the scale, and falls back over `release` seconds. The
+    caller scales the result to full volume afterwards."""
+    if not len(x):
+        return x
+    x = x - lowpass(x, rate, highpass)
+    peak = np.max(np.abs(x))
+    if peak == 0:
+        return x
+    x = x / peak
+    down = 1 - np.exp(-1 / (release * rate))
+    env, level = np.empty(len(x)), 0.0
+    for i, v in enumerate(np.abs(x)):
+        level = v if v > level else level + (v - level) * down
+        env[i] = level
+    over = np.maximum(20 * np.log10(np.maximum(env, 1e-6)) - threshold_db, 0)
+    return x * 10 ** (-over * (1 - 1 / ratio) / 20)
+
+
 def quantize(x, dither=True, seed=1):
     v = (x + 1.0) / 2.0 * 15.0
     if dither:
@@ -72,9 +97,13 @@ def pack_nibbles(n):
     return bytes(data)
 
 
-def convert(path, gain=1.0, max_seconds=None, dither=True):
+def convert(path, gain=1.0, max_seconds=None, dither=True, compress_speech=False):
     x, rate = load_wav(path)
     x = resample(x, rate, a2hdr.SPEAKER_RATE)
+    if compress_speech:
+        if max_seconds:
+            x = x[: int(max_seconds * a2hdr.SPEAKER_RATE)]     # only work on what's kept
+        x = compress(x, a2hdr.SPEAKER_RATE)
     peak = np.max(np.abs(x)) if len(x) else 0
     if peak > 0:
         x = x / peak * 0.95
@@ -94,9 +123,10 @@ def main():
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--no-dither", action="store_true")
+    ap.add_argument("--compress", action="store_true", help="even out the volume; makes speech much clearer")
     ap.add_argument("--raw", action="store_true")
     a = ap.parse_args()
-    data = convert(a.input, a.gain, a.max_seconds, not a.no_dither)
+    data = convert(a.input, a.gain, a.max_seconds, not a.no_dither, a.compress)
     out = data if a.raw else a2hdr.pack(a2hdr.TYPE_AUDIO, data, a2hdr.SPEAKER_PLAYER_CYCLES)
     open(a.output, "wb").write(out)
     print("wrote %s: %d bytes, %.1f s" % (a.output, len(out), len(data) * 2 / a2hdr.SPEAKER_RATE), file=sys.stderr)
