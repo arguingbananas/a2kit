@@ -64,6 +64,8 @@ CRASH_S = $20                   ; the crash handler's stack pointer
         .segment "CODE"
 
 start:
+        sei                     ; nothing here uses interrupts, and the IRQ vector
+                                ; at $03FE is whatever power-up left there
         ; banner
         lda #0
         sta crashed
@@ -169,7 +171,8 @@ rdmem:  lda #PKT_ACK
 ; dead line can stop the rest. This never returns to the crashed program. It
 ; moves to its own part of the stack page, so its calls don't overwrite what the
 ; crashed program left near S (the Monitor has saved S itself).
-crash:  ldx #CRASH_S
+crash:  sei                     ; the Monitor's PLP brought back the crashed I flag
+        ldx #CRASH_S
         txs
         jsr init
         lda #PKT_CRASH

@@ -186,6 +186,12 @@ for cpu_name, cpu in (("6502", MPU6502), ("65C02", MPU65C02)):
     m.calls.clear(); m.key = 0x9B; m.step(5000)
     expect(m.calls == [MON], "%s: a key after a crash drops to the Monitor" % cpu_name)
 
+# interrupts stay off: the receiver doesn't use them, and the IRQ vector is junk
+m = Machine(); m.mpu.p &= ~0x04; m.step(20000)
+expect(m.mpu.p & 0x04, "the receiver turns interrupts off when it starts, whatever it was started with")
+m = idle(); crash_at(m, 0xBD00, 0, 0x20, 0x28, 0x33, 0xF7)
+expect(m.mpu.p & 0x04, "interrupts stay off after a crash taken with them on")
+
 # the handler's calls leave what the crashed program had near S alone. Only the
 # BRK and the Monitor's save write there, in the 5 bytes below S.
 for s0 in (0xD2, 0x60):
