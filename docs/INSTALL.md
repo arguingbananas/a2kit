@@ -181,7 +181,7 @@ python -m pip install -r requirements.txt
 ```
 
 Activate the environment (`source .venv/bin/activate`) in each new terminal before using a2kit.
-If you also want to run the tests, install `requirements-dev.txt` instead, which adds `py65`.
+If you also want to run the tests, install `requirements-dev.txt` instead, which adds `py65` (and `pypdf`, used only to rebuild these PDFs).
 
 > **Careful:** the package is called **`pyserial`**. A different package called `serial` exists and will *not* work. If you see `No module named 'serial'` after installing something, run `python3 -m pip uninstall serial` and install `pyserial`.
 

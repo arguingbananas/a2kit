@@ -61,7 +61,7 @@ your file --(convert)--> .a2b / .a2v file --(send)--> serial cable --> Apple II
 Full instructions, with per-system commands and troubleshooting, are in the [Installation Guide](INSTALL.md). In short:
 
 1. Install Python 3.11 or newer.
-2. `python3 -m pip install -r requirements.txt` (pillow, numpy, pyserial), preferably inside a virtual environment. Use `requirements-dev.txt` to add `py65` for the tests.
+2. `python3 -m pip install -r requirements.txt` (pillow, numpy, pyserial), preferably inside a virtual environment. Use `requirements-dev.txt` to add `py65` for the tests and `pypdf` for rebuilding the PDFs.
 3. Optional: **cc65** and **make** to rebuild the 6502 programs (the built `.bin` files are included), and **ffmpeg** to convert video files such as `.mp4`. GIFs and folders of frames need no ffmpeg.
 4. Run `./a2kit doctor`. It reports anything missing.
 
