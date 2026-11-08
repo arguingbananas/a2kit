@@ -7,7 +7,7 @@ to fit in RAM, so in practice a few seconds.
 
   audioconv.py clip.wav -o clip.a2b
   audioconv.py clip.wav -o clip.a2b --max-seconds 5 --gain 1.5
-  audioconv.py speech.wav -o speech.a2b --compress
+  audioconv.py speech.wav -o speech.a2b --even-out
 """
 import argparse
 import sys
@@ -97,10 +97,10 @@ def pack_nibbles(n):
     return bytes(data)
 
 
-def convert(path, gain=1.0, max_seconds=None, dither=True, compress_speech=False):
+def convert(path, gain=1.0, max_seconds=None, dither=True, even_out=False):
     x, rate = load_wav(path)
     x = resample(x, rate, a2hdr.SPEAKER_RATE)
-    if compress_speech:
+    if even_out:
         if max_seconds:
             x = x[: int(max_seconds * a2hdr.SPEAKER_RATE)]     # only work on what's kept
         x = compress(x, a2hdr.SPEAKER_RATE)
@@ -123,10 +123,10 @@ def main():
     ap.add_argument("--gain", type=float, default=1.0)
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--no-dither", action="store_true")
-    ap.add_argument("--compress", action="store_true", help="even out the volume; makes speech much clearer")
+    ap.add_argument("--even-out", action="store_true", help="even out the volume (a compressor); makes speech much clearer")
     ap.add_argument("--raw", action="store_true")
     a = ap.parse_args()
-    data = convert(a.input, a.gain, a.max_seconds, not a.no_dither, a.compress)
+    data = convert(a.input, a.gain, a.max_seconds, not a.no_dither, a.even_out)
     out = data if a.raw else a2hdr.pack(a2hdr.TYPE_AUDIO, data, a2hdr.SPEAKER_PLAYER_CYCLES)
     open(a.output, "wb").write(out)
     print("wrote %s: %d bytes, %.1f s" % (a.output, len(out), len(data) * 2 / a2hdr.SPEAKER_RATE), file=sys.stderr)

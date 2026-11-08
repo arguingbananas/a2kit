@@ -176,7 +176,7 @@ You **don't** need to run it before using sound in a show or video, because thos
    ./a2kit audio examples/jingle.wav -o out/jingle.a2b
    ```
 3. Read the line it prints, for example `wrote out/jingle.a2b: 6920 bytes, 1.7 s`. If it's over about 6 seconds it won't fit in a show or video.
-4. If it's speech, add `--compress`. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
+4. If it's speech, add `--even-out`. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
 
 **Usage:** `./a2kit audio INPUT -o OUTPUT [options]`
 
@@ -185,13 +185,13 @@ You **don't** need to run it before using sound in a show or video, because thos
 | `-o`, `--output FILE` | Output block (required). |
 | `--gain N` | Multiply the volume after the sound has been normalised (default 1.0). Values above 1 clip. |
 | `--max-seconds N` | Keep only the first N seconds. |
-| `--compress` | Even out the volume, which makes speech much clearer (see *Speech* below). |
+| `--even-out` | Even out the volume, which makes speech much clearer (see *Speech* below). |
 | `--no-dither` | Turn off the noise added before quantising to 4 bits. It's usually left on because it hides the stepping. |
 | `--raw` | Write the bare samples with no header. |
 
 **How it sounds:** the sound is low-pass filtered, resampled to about 8 kHz, normalised to near full scale and squeezed to 16 levels. Speech and simple tones work; dense music turns to hiss.
 
-**Speech:** a voice has brief loud peaks and is much quieter the rest of the time. The sound is scaled so the loudest peak fills the 16 levels, so most of a voice uses only a level or two either side of the middle, and it comes out faint and grainy. `--compress` fixes that the way radio does. It cuts the bass the speaker can't play (below 150 Hz), then turns the loud parts down, so the quieter parts fill more of the levels once the whole clip is scaled up again. Nothing is clipped. On a 1994 recording of Dylan Thomas reading on the tested Apple II+, it was clearly the most intelligible of three versions: plain, `--gain 1.5` (as loud, but with about 1% of the samples clipped), and compressed. The catch is that background hiss in the pauses comes up too. Leave it off for music and sound effects, whose loudness changes are part of the sound.
+**Speech:** a voice has brief loud peaks and is much quieter the rest of the time. The sound is scaled so the loudest peak fills the 16 levels, so most of a voice uses only a level or two either side of the middle, and it comes out faint and grainy. `--even-out` fixes that the way radio does, with what audio engineers call a compressor. It cuts the bass the speaker can't play (below 150 Hz), then turns the loud parts down, so the quieter parts fill more of the levels once the whole clip is scaled up again. Nothing is clipped. On a 1994 recording of Dylan Thomas reading on the tested Apple II+, it was clearly the most intelligible of three versions: plain, `--gain 1.5` (as loud, but with about 1% of the samples clipped), and evened out. The catch is that background hiss in the pauses comes up too. Leave it off for music and sound effects, whose loudness changes are part of the sound.
 
 **Limits:** one block holds at most 65,280 bytes (about 16 s), but a show or video has room for only about 6 seconds in total (see [memory map](#112-memory-map)).
 
@@ -243,6 +243,8 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
+| `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
+| `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
 
 **Notes**
 
@@ -292,7 +294,7 @@ wait = 2.0             # pause for 2 seconds
 | `crop`, `invert`, `dither` | Only with `image`. Same meaning as the `a2kit image` options: `crop = true`, `invert = true`, `dither = "threshold"` (default `"atkinson"`). |
 | `audio` | A WAV file, played when this scene is reached. |
 | `gain` | Only with `audio`. Volume multiplier (default 1.0). |
-| `compress` | Only with `audio`. `compress = true` evens out the volume, like `a2kit audio --compress`; use it for speech. |
+| `even_out` | Only with `audio`. `even_out = true` evens out the volume, like `a2kit audio --even-out`; use it for speech. |
 | `wait` | Seconds to do nothing. Times are in steps of 0.1 s. |
 
 Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the keys listed for it. A misspelled or misplaced key is an error that names the key, so typos don't pass silently.

@@ -1,4 +1,4 @@
-"""Test audioconv's --compress on synthetic signals: speech-like bursts of very
+"""Test audioconv's --even-out (a compressor) on synthetic signals: speech-like bursts of very
 different loudness, a bass tone the speaker can't play, and silence."""
 import os, sys, tempfile, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -56,10 +56,10 @@ with wave.open(path, "wb") as w:
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
     w.writeframes((speech * 32767).astype("<i2").tobytes())
 plain = levels(audioconv.convert(path, dither=False), N)
-squashed = levels(audioconv.convert(path, dither=False, compress_speech=True), N)
-print("block loudness: %.0f%% plain, %.0f%% compressed" % (loudness(plain) * 100, loudness(squashed) * 100))
-expect(loudness(squashed) > 2 * loudness(plain), "a compressed block of speech-like sound is much louder overall")
-short = audioconv.convert(path, max_seconds=0.5, compress_speech=True)
-expect(len(short) == -(-int(0.5 * RATE) // 2 // 256) * 256, "--max-seconds still trims a compressed clip")
+squashed = levels(audioconv.convert(path, dither=False, even_out=True), N)
+print("block loudness: %.0f%% plain, %.0f%% evened out" % (loudness(plain) * 100, loudness(squashed) * 100))
+expect(loudness(squashed) > 2 * loudness(plain), "an evened-out block of speech-like sound is much louder overall")
+short = audioconv.convert(path, max_seconds=0.5, even_out=True)
+expect(len(short) == -(-int(0.5 * RATE) // 2 // 256) * 256, "--max-seconds still trims an evened-out clip")
 os.remove(path)
 finish("test_audio")

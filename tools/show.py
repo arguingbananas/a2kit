@@ -16,7 +16,7 @@ show.toml (asset paths are relative to the file):
   [[scene]]
   audio = "clip.wav"      # played over whatever is on screen
   gain  = 1.0             # optional
-  compress = false        # optional, as in `a2kit audio --compress`: clearer speech
+  even_out = false        # optional, as in `a2kit audio --even-out`: clearer speech
 
   [[scene]]
   wait = 2.0              # seconds
@@ -62,7 +62,7 @@ def ticks(seconds):
 
 
 KEYS = {"image": {"image", "hold", "crop", "invert", "dither"},
-        "audio": {"audio", "gain", "compress"},
+        "audio": {"audio", "gain", "even_out"},
         "wait": {"wait"}}
 
 
@@ -94,8 +94,8 @@ def check_scene(sc, where):
     for k in ("hold", "wait", "gain"):
         if k in sc and not isinstance(sc[k], (int, float)):
             raise ValueError("%s: %s must be a number" % (where, k))
-    if "compress" in sc and not isinstance(sc["compress"], bool):
-        raise ValueError("%s: compress must be true or false" % where)
+    if "even_out" in sc and not isinstance(sc["even_out"], bool):
+        raise ValueError("%s: even_out must be true or false" % where)
     return kinds[0]
 
 
@@ -131,7 +131,7 @@ def build(project_path):
             if not os.path.exists(os.path.join(base, sc["audio"])):
                 raise ValueError("%s: %s: no such file" % (where, sc["audio"]))
             data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0),
-                                     compress_speech=sc.get("compress", False))
+                                     even_out=sc.get("even_out", False))
             if audio_addr + len(data) > AUDIO_END:
                 raise ValueError("%s: audio doesn't fit below $%04X" % (where, AUDIO_END))
             plan.append((audio_addr, data, "%s: %s -> $%04X (%.1f s)" % (
