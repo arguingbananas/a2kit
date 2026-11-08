@@ -36,7 +36,7 @@ a2kit was first run on real hardware on 2 November 2026, on this setup:
 | Serial card | Super Serial Card II in slot 2, at 19200 and 115200 baud |
 | Disk | Floppy Emu, booting the 19200 and 115200 disks |
 | Computer | Dell Optiplex 790, Linux Mint, Python 3.12 |
-| Serial port | The computer's built-in serial port (`/dev/ttyS0`, a 16550A); no USB adapter |
+| Serial port | The computer's built-in serial port (`/dev/ttyS0`, a 16550A); from 8 November also a USB-to-RS-232 adapter with an FTDI FT232R chip (`/dev/ttyUSB0`) |
 | Display | A colour TV on composite video, with its colour turned off |
 
 **What worked:** booting the disk straight into the receiver; `ping`; a picture upload; the starter show with sound; the bouncing-ball video with and without sound. All the sounds (the jingle, the chirp and the boings between video frames) played from the built-in speaker. Measured from a recording of the jingle, the notes were within about 0.5% of their intended pitch, the once-every-64 ms page-change tick wasn't measurable, and the main artefact was a high whine at the 7,972 Hz sample rate.
@@ -58,6 +58,7 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 |---|---|---|
 | `ping` round trip (40-byte packet) | 5.5 ms, of which 0.6 ms is the port | not predicted |
 | Upload speed | about 8,730 bytes/s, 76% of the line rate | about 7,800 bytes/s, 68% |
+| Upload speed with `--chunk 255` (8 November) | 9,157 bytes/s, 79% | not predicted |
 | An 8 KB picture | 0.9 s | about 1.0 s |
 | The starter show's upload | 2.9 s | about 3.0 s |
 | Bouncing ball with sound | about 7.7 s, 15 sound bursts | 7.7 s |
@@ -66,7 +67,17 @@ Two problems turned up and were fixed: a show that used hi-res page 2 ended on a
 
 The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms), which is why uploads beat the prediction. The stress clip is `examples/stress` ([Quick Start](QUICKSTART.md#step-6-play-the-animation)): eight large moving rings and a spinning cross, ending on a still grid that would show any leftover damage.
 
-**Not yet tried on real hardware:** a USB-to-RS-232 adapter; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
+**USB adapter compared with the built-in port** at 115200 baud (8 November 2026). The adapter is an FTDI FT232R; the rest of the setup is unchanged. Each figure is from `a2kit ping`, 20 pings and 64 speed-test packets, with every packet acknowledged:
+
+| Port | Port delay per packet | Upload, 128-byte packets | Upload, 255-byte packets |
+|---|---|---|---|
+| Built-in `/dev/ttyS0` | 0.6 ms | 8,743 bytes/s, 76% | 9,157 bytes/s, 79% |
+| FTDI adapter, latency timer at its default 16 ms | 11.1 ms | 8,011 bytes/s, 70% | 7,979 bytes/s, 69% |
+| FTDI adapter, latency timer at 1 ms | 1.1 ms | 8,546 bytes/s, 74% | 9,119 bytes/s, 79% |
+
+With the 16 ms timer the adapter passes received bytes on only when the timer runs out, so every packet takes a whole number of 16 ms periods. A 128-byte packet needs about 14 ms and takes one period (128 bytes / 16 ms = 8,000 bytes/s); a 255-byte packet needs about 27 ms and takes two (7,970 bytes/s), which is why larger packets didn't help. At 1 ms the adapter is within about 0.5 ms per packet of the built-in port. `a2kit ping` now sets the 1 ms timer itself (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping)).
+
+**Not yet tried on real hardware:** a USB-to-RS-232 adapter other than the FTDI one above; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
 ### Hardware
 
@@ -77,7 +88,7 @@ You need no Apple II at all to convert files and look at previews.
 
 - Any computer that runs Python 3.11 or newer (see *Operating systems* below).
 - An **RS-232 serial port**, either of:
-  - a **built-in serial port** (`/dev/ttyS0` on Linux, `COM1` on Windows), often a DB-9 on the back of older desktops. This is the tested setup, and it adds less delay per packet than most USB adapters (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping));
+  - a **built-in serial port** (`/dev/ttyS0` on Linux, `COM1` on Windows), often a DB-9 on the back of older desktops. This is the tested setup, and it adds the least delay per packet, though a tested FTDI adapter came within about 0.5 ms once its latency timer was turned down (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping));
   - a **USB-to-RS-232 adapter** (FTDI, Prolific, CH340, CP210x and similar chips are all fine). It must be a true **RS-232** adapter, normally with a **DB-9** plug.
   A bare "USB-TTL" or "USB-UART" board (3.3 V or 5 V logic, usually on pin headers) will **not** work with a Super Serial Card, and connecting one could damage it.
 

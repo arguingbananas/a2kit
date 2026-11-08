@@ -169,6 +169,37 @@ print("real receiver, packet 2 damaged: ack %d nak %d" % (res["ack"], res["nak"]
 expect(res["ack"] == 2 and res["nak"] == 1, "a damaged packet gets a NAK from the real receiver")
 
 
+# The real FTDI adapter on its 16 ms timer (8 Nov): pings showed 11 ms of port delay, but the
+# speed test still ran at 8,011 bytes/s, and the 1 ms timer only raised that to 8,546 (7%).
+ftdi = {"sent": 20, "ack": 20, "nak": 0, "other": 0, "none": 0, "others": set(), "rtt": [0.0159] * 20,
+        "turnaround": [0.0111] * 20, "speed": 8011.0, "speed_sent": 64, "speed_ack": 64}
+lines = []
+ping.report(ftdi, 115200, 128, out=lines.append)
+m = re.search(r"about (\d+)% faster", "\n".join(lines))
+print("FTDI on its 16 ms timer: %s%% faster predicted" % (m.group(1) if m else "?"))
+expect(m is not None and 5 <= int(m.group(1)) <= 15, "the gain is judged from the speed test, not by adding the ping delay to every packet")
+lines = []
+ping.report(dict(ftdi, speed=None, speed_sent=0, speed_ack=0), 115200, 128, out=lines.append)
+expect("up to" in "\n".join(lines), "without a speed test the gain is given as an upper limit")
+
+
+# ---------------------------------------------------------------- low-latency mode
+class LowLatencyPort:
+    def __init__(self, error=None): self.error, self.calls = error, []
+    def set_low_latency_mode(self, on):
+        self.calls.append(on)
+        if self.error: raise self.error
+
+p = LowLatencyPort()
+expect(ping.set_low_latency(p) is True and p.calls == [True], "low-latency mode is switched on when the driver offers it")
+expect(ping.set_low_latency(LowLatencyPort(ValueError("not supported"))) is False, "a driver that refuses it is ignored")
+expect(ping.set_low_latency(object()) is False, "a port without the setting (Windows) is ignored")
+master, slave = os.openpty()
+pty = serial.Serial(os.ttyname(slave), BAUD)
+expect(ping.set_low_latency(pty) is False, "a pseudo-terminal, which has no such setting, is ignored")
+pty.close()
+
+
 # ---------------------------------------------------------------- 3. command line
 master, slave = os.openpty()
 FakeApple(master, "ok").start()

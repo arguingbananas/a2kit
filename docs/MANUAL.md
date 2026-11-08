@@ -124,7 +124,7 @@ export A2KIT_BAUD=19200           # Linux/macOS; on Windows: set A2KIT_BAUD=1920
 ./a2kit ping --port /dev/ttyS0    # now at 19200
 ```
 
-Start with `./a2kit ping`: at 115200 it should say `Link OK`, with a speed-test rate of about 8,700 bytes/s on a port like the tested one (about 76% of the line rate: even at the 0.6 ms per packet measured at this speed, the port is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back). If it reports damaged packets, try a shorter cable or use the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
+Start with `./a2kit ping`: at 115200 it should say `Link OK`, with a speed-test rate of about 8,700 bytes/s on a port like the tested one (about 76% of the line rate: even at the 0.6 ms per packet measured at this speed, the port is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back, reaching about 9,150 bytes/s, 79%). If it reports damaged packets, try a shorter cable or use the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
 
 Video: convert with the speed you'll play at (add `--baud 19200` for the 19200 disk), since the byte budget per frame comes from it. A clip converted for 19200 plays fine at 115200; one converted for 115200 runs late at 19200 (`stream` warns you).
 
@@ -397,6 +397,8 @@ Checks the serial link to a running receiver and measures it. Run it before your
 ping never ends the session, so the receiver keeps listening and you can `send`, `show send` or `stream` straight afterwards.
 It writes to the bottom text line (`$07D0–$07F7`) and to the first `--chunk` bytes of hi-res page 2 (`$4000`), so don't run it between uploading data there with `send` and using it.
 
+Before the pings, ping switches the port to **low-latency mode** where the driver offers it, and says `(low-latency mode on)` on its first line when it did. On Linux this turns an FTDI USB adapter's 16 ms latency timer down to 1 ms with no `sudo`, and the setting lasts until the adapter is unplugged, so running ping once after plugging it in speeds up later uploads too. On a built-in port it changes nothing measurable; on Windows and macOS it does nothing.
+
 **What it reports**
 
 Each ping prints its round trip, split into two parts:
@@ -410,7 +412,7 @@ The verdict at the end is one of these:
 
 | Verdict | Meaning |
 |---|---|
-| `Link OK` | Every packet was acknowledged. If your port adds more than 5 ms per packet, it also says how much faster uploads would be without that (see below). |
+| `Link OK` | Every packet was acknowledged. If your port adds more than 5 ms per packet, it also says how much faster uploads would be without that, judged from the speed test (see below). |
 | `No reply at all` | Nothing came back. It lists what to check, in order: the receiver, the port name, the cable and jumpers, the adapter type, the slot. |
 | `Bytes come back, but not the receiver's replies` | Usually a speed mismatch: `--baud` must be the number in the receiver's banner (115200, or 19200 with `a2kit-boot-19200.dsk`). Otherwise wiring or signal levels. |
 | `some packets arrive damaged` | NAKs: the Apple II got packets that failed their checksum. Noise, a long or poor cable, or a marginal adapter. |
@@ -426,11 +428,11 @@ Uploads wait for a one-byte reply after every packet, so a port that holds repli
 
 | Port | Typical delay | What to do |
 |---|---|---|
-| USB adapter with an FTDI chip | Often about 16 ms (its "latency timer") | Linux: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer` (resets when the adapter is unplugged). Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
-| Built-in serial port (16550-type) | About 2 ms on Linux (a lone reply waits for the chip's FIFO timeout) | Linux, where the kernel offers it: `echo 1 \| sudo tee /sys/class/tty/ttyS0/rx_trig_bytes` |
+| USB adapter with an FTDI chip | Up to 16 ms (its "latency timer"); 11 ms measured on a tested FT232R at 115200, and 1.1 ms with the timer at 1 ms | Linux: `a2kit ping` sets the 1 ms timer itself, until the adapter is unplugged. By hand: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer`. Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
+| Built-in serial port (16550-type) | 0.6 ms measured at 115200 and 2.2 ms at 19200 on Linux (a lone reply waits for the chip's FIFO timeout) | Linux, where the kernel offers it: `echo 1 \| sudo tee /sys/class/tty/ttyS0/rx_trig_bytes` |
 | Other USB adapters (CH340, CP210x, PL2303) | Usually 1–3 ms | Little to tune. |
 
-Larger packets also help, since each one pays the delay once: `./a2kit send --chunk 255`.
+Larger packets also help, since each one pays the delay once: `./a2kit send --chunk 255`. The exception is an FTDI adapter still on its 16 ms timer: every packet then takes a whole number of 16 ms periods, and at 115200 a 255-byte packet takes two where a 128-byte one takes one, so the rate stays about the same (see the measurements in the [Installation Guide](INSTALL.md#tested-setup)).
 
 ### `a2kit peek`
 
