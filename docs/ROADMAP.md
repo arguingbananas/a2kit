@@ -1,6 +1,6 @@
 # a2kit Roadmap
 
-Where a2kit stands and what comes next, most urgent first. Last updated 5 November 2026.
+Where a2kit stands and what comes next, most urgent first. Last updated 8 November 2026.
 
 ## Where things stand
 
@@ -8,7 +8,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 5 Novemb
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
 | Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests** |
-| Crash reporter, `peek` and `ramload` | Branch `feature/crash-reporter` | Pushed; partly tested on hardware |
+| Crash reporter, `peek` and `ramload` | Branch `feature/crash-reporter` | Pushed; crash reports, hang logging and `ramload` seen working on hardware |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
 | This roadmap | Branch `docs/roadmap` | Docs only; can merge at any time |
@@ -17,34 +17,45 @@ Where a2kit stands and what comes next, most urgent first. Last updated 5 Novemb
 
 This comes first, because a crash during a test can't be pinned on either the new code or the machine.
 
-The machine has crashed four times with the receiver waiting and nobody touching it:
+The machine has crashed or hung seven times with the receiver waiting and nobody touching it:
 
 | When | Last known alive | Screen afterwards | Notes |
 |---|---|---|---|
 | 3 Nov | Unknown | `0002- A=20 X=20 Y=26 P=74 S=E9` | Older disk, before the receiver used the language card. Registers match the idle loop |
-| 3–4 Nov | 23:50:26, the final ping of a 30-minute test | `BD02- A=00 X=20 Y=28 P=37 S=F3` | Registers match the idle loop. Keyboard dead until Reset |
+| 3–4 Nov | 23:50:26, the final ping of a 30-minute test | `BD02- A=00 X=20 Y=28 P=37 S=F3` | Registers match the idle loop exactly. Keyboard dead until Reset |
 | 4–5 Nov | 21:38:37, the final ping of a 30-minute test | `0000- A=80 X=00 Y=89 P=B5 S=26` | Registers don't match the idle loop, and much of the stack is used: it ran wild first |
 | 5 Nov | 19:37:58, about 59 minutes into a run | `0000- A=E4 X=20 Y=11 P=B4 S=6D` | Serial port open throughout. Went quiet with no registers showing; they appeared later with no key pressed |
+| 6 Nov | 19:10:12, logged by the crash reporter, 22 h 40 min into the run | `0002- A=00 X=20 Y=01 P=37 S=CE` | Registers match the idle loop exactly. `$0000` held `00`, so it stopped there at once. Stack page all zero apart from the handler's bytes |
+| 6 Nov | 22:26, 41 min after a power-up and a fresh load | Nothing new | A hang with no `BRK`; the space bar did nothing. Stack page wiped to zero, and 5 bytes at `$8080–$80FF` changed to `00` |
+| 7 Nov | 22:02, 5 h 23 min after reseating everything | Nothing new | A hang with no `BRK`; the space bar did nothing. Stack page `$0100–$01C3` zero, and 24 bytes at `$8080–$8546` changed to `00`, `80` or `01` |
 
 Two earlier oddities may be related, but that's unproven: a first picture at 115200 that came up as lo-res blocks with a dead keyboard, and a drop to Applesoft with nothing pressed.
 
-**Ruled out so far:**
-- **A closed serial port:** the fourth crash happened with it open.
-- **An NMI going straight to the crash address:** `$3FB` holds `FF FF FF`, which would have changed the registers.
-- **A serial packet:** the idle registers don't fit one, and the receiver leaves the card's interrupts off.
+**What the memory dumps show.** Dumps taken after the last three were compared with dumps of the same machine when healthy, and with the reset replayed on its own ROM in the simulator:
+- **Something writes to RAM.** A bad read alone can't change memory. The stack page was wiped to zero three times, where a healthy dump shows it full of power-up noise. Booting, `ramload` and an Applesoft cold start don't do this.
+- **The stray writes sit `$8000` above busy low memory:** `$80xx` mirrors zero page, `$81xx` the stack, `$82xx` the input buffer, and `$84xx–$85xx` the screen. `$8080`, `$80C6`, `$80DF` and `$80FF` changed in both dumps that cover them. This looks like an address fault, such as a glitch on A15 or in selecting the 16K RAM banks. No a2kit code writes there.
+- **The receiver's code was never damaged**, and `$D000–$FFFF` always read as ROM, so the RAMCard was never switched in.
+- **A wiped stack would itself crash the receiver** the next time its listening routine returns. In the simulator, overwriting its stack did exactly that. So the stray writes may cause the crashes rather than just follow them, though not every crash fits.
 
-**Still possible:** a memory, bus or CPU fault; the RAMCard or its pigtail; a poor connection; heat, as the only timed crash came after about an hour; or the power supply. None of these is proven, and a2kit itself isn't fully ruled out until the machine has been tested without it.
+**Ruled out so far:**
+- **Closing the serial port.** The long hangs happened with the port open. Two quick jumps did follow a close, but only after a Monitor `980G` had left interrupts on: the card's line change raised an interrupt, and the junk IRQ vector sent the CPU to `$0000`. The receiver now keeps interrupts off, and a 30-minute test closing the port 360 times then passed.
+- **An NMI going straight to the crash address:** `$3FB` holds junk that would have changed the registers.
+- **Reseating the cards and pigtail:** the machine hung again 5 h 23 min later.
+- **Bad RAM cells:** Apple-Cillin II's memory test passes with the RAMCard fitted. That doesn't cover rare writes to the wrong address.
+
+**Still possible:** the RAMCard or its pigtail, which ties the card into the motherboard's memory circuitry; a motherboard fault in memory addressing; heat; or the power supply. a2kit isn't fully ruled out until the machine has failed without it.
+
+**Restarting after a hang without losing the evidence:** don't switch off. Press Ctrl-Reset, then type `CALL -151`. The first Reset after power-up runs an Applesoft cold start, which zeros `$0800–$0802`, so type `800:78 A9 00` to put the receiver's first bytes back. Type `48:04` so `G` starts with interrupts off, then `980G`, and dump memory before anything else.
 
 **Next steps, changing one thing at a time:**
-1. Finish the current `a2kit crash --watch` run, then read its report and compare it with the screen.
-2. Reseat the cards and the pigtail, checking the pigtail for bent pins. Photograph how it's attached first, in case a RAM chip has to go back if the card ever comes out.
-3. Run the same test again to see whether anything changed.
-4. Leave the machine at the plain `]` prompt for several hours, typing a key now and then. The cursor blinks even if the CPU has stopped, so only a typed character shows it's alive. A crash there means a2kit isn't needed to trigger the fault.
-5. If it still crashes, repeat with the RAMCard removed, then consider a memory test, the power supply's voltages, and a fan to test the heat idea.
+1. **Now:** run with the RAMCard removed, under a canary check (a scratch script for now). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. Started 7 Nov at 23:50. Several days with no change would point at the card or its pigtail.
+2. If it still fails without the card, write a standalone Apple II memory tester that keeps the stack, zero page and screen busy and checks the rest of RAM for writes in the wrong place, with no serial and no a2kit running. That's the control that would rule a2kit out.
+3. Then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then), the power supply's voltages, and a fan to test the heat idea.
+4. If the canary proves useful, make it an `a2kit` command.
 
 ## 2. Finish the work in progress
 
-**Suggested merge order:** this roadmap, then the crash reporter, then the language card, then the memory map. The crash reporter goes first because it helps test everything after it. The language-card branch then has to combine both sets of receiver changes and rerun the tests. The combined build is 375 of the 380 bytes available, but so far that's only been checked for size.
+**Suggested merge order:** this roadmap, then the crash reporter, then the language card, then the memory map. The crash reporter goes first because it helps test everything after it. The language-card branch then has to combine both sets of receiver changes and rerun the tests. The combined build is exactly the 380 bytes available, so there is no room left; so far that's only been checked for size.
 
 ### Crash reporter (`feature/crash-reporter`)
 
@@ -53,15 +64,16 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, and `a2kit ramload`.
 - [x] Simulator tests pass
 - [x] The Monitor addresses it relies on match the real ROM
 - [x] Memory reads work on real hardware
-- [x] An earlier version of the `ramload` loader worked on real hardware
-- [ ] Run the final `ramload`, which adds a stack reset and a fuller check
-- [ ] See a real crash report that matches the screen, or force one with a small `BRK` program
-- [ ] See a hang logged with the right time
+- [x] The final `ramload` works on real hardware, including its check of the code in memory
+- [x] A real crash report matched the screen (7 Nov), and the watch now logs every new crash
+- [x] Hangs were logged with the right time (6 and 7 Nov)
+- [x] The handler keeps to its own part of the stack, so a report shows what the crashed program left
+- [x] The receiver keeps interrupts off at its start and after a crash
 - [ ] Boot the new `a2kit-boot.dsk` from the SD card
 - [ ] Rerun `ping`, a picture, a show and the video with sound, and compare timings
 - [ ] Add the hardware results to the docs, rebuild the PDFs, and open a PR
 
-**Known limits:** a crash that never reaches `BRK` shows up only as silence. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
+**Known limits:** a crash that never reaches `BRK` shows up only as silence. The `BRK` itself and the Monitor's register save overwrite the 5 stack bytes just below S. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
 
 ### Longer sound (`feature/language-card`)
 
@@ -83,6 +95,7 @@ Its content is useful, but it's out of date, conflicts with `main`, and says the
 ## 3. Small improvements
 
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
+- **Explain restarting after Ctrl-Reset in the Manual.** It says `980G` restarts a booted receiver, but after the first Reset since power-up an Applesoft cold start has zeroed `$0800–$0802`, so `980G` hits a `BRK`. Give the repair (`800:78 A9 00`), and `48:04` so `G` starts with interrupts off.
 - **Document the working cable.** A photo or pinout of the cable and the card's jumper setting is still missing.
 - **Support Python 3.10.** Linux Mint 21 ships it, and the only 3.11 feature a2kit uses is `tomllib`. Fall back to the `tomli` package and lower the requirement.
 - **Add video and sound previews.** Pictures already have `--preview`. `video --preview out.gif` would show frames as the player draws them, and `audio --preview out.wav` would render what the speaker produces.
@@ -99,7 +112,12 @@ Its content is useful, but it's out of date, conflicts with `main`, and says the
 - **More pictures per show.** Two hi-res pages limit a show to two pictures. Upload the next picture between scenes, or keep compressed pictures in memory, which the language card would help with.
 - **Colour pictures.** The II+ can show six colours in hi-res, so a colour converter is a natural next step.
 - **The effects library:** page flipping, mid-screen mode changes, raster-style effects and scrolling text. The II+ has no vertical-blank signal, so timing would use the floating bus.
-- **Mockingboard support:** detect the card and play AY music alongside pictures, with no cycle-timing conflict with serial.
+- **Mockingboard support.** The biggest sound upgrade: the card plays music by itself, so the CPU stops being the sound source.
+  - *Why:* speaker sound is 1-bit, cycle-timed and kept in RAM, which caps it at about 6.2 s (9.2 s with the language card) and keeps the CPU busy. On a Mockingboard, music is about 14 register writes 50–60 times a second (about 700 bytes/s), which a small timer-driven player sends to its two AY-3-8910 chips.
+  - *What it allows:* minutes of music in RAM; music streamed from the computer with no length limit, as 115200 baud carries about 7,800 bytes/s; sound and pictures or video at the same time with no cycle-timing conflict; and existing chiptune formats (YM, VGM), and perhaps MIDI, converted on the computer.
+  - *Work:* detect the card and its slot (4 is usual; there are several versions and clones), a player driven by the 6522 timer, a converter, and a stream mode in the receiver. Model the card's registers in the simulator tests; AppleWin and MAME emulate it.
+  - *Care:* the player needs interrupts, which the receiver now keeps off because the IRQ vector at `$03FE` holds whatever power-up left there. It must set its own vector and turn interrupts on only while it plays.
+  - *When:* after the crashes are understood. A new card is another device on the bus, which would cloud the crash tests.
 - **Two-way messages.** Memory reads add a first Apple II to computer channel. Going further would allow keyboard input, status reports and interactive uses such as a speech-to-text thin client.
 - **A stronger checksum:** CRC-16 instead of XOR, if errors ever get through.
 
