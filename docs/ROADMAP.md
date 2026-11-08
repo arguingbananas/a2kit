@@ -7,7 +7,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 8 Novemb
 | Work | Where | State |
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
-| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests** |
+| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
 | Crash reporter, `peek` and `ramload` | Branch `feature/crash-reporter` | Pushed; crash reports, hang logging and `ramload` seen working on hardware |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
@@ -31,9 +31,11 @@ The machine has crashed or hung seven times with the receiver waiting and nobody
 
 Two earlier oddities may be related, but that's unproven: a first picture at 115200 that came up as lo-res blocks with a dead keyboard, and a drop to Applesoft with nothing pressed.
 
+**8 November: the canary found a failing RAM chip.** With the RAMCard removed, free RAM (`$0B00–$BFFF`) held its pattern for 8 h 42 min. Then, from 08:32 until the run was stopped at 10:09, bit 0 of about half the bytes in `$8000–$BFFF` read wrong at every check, in both directions, with different bytes each time. Every listed change was bit 0 alone (xor `01`), and nothing below `$8000` changed, the stack page included. On a II+ each 16K bank is one row of eight 4116 chips, one per data bit, so this points at the bit-0 chip of the `$8000–$BFFF` row, or its socket. It appeared only after hours of running, so heat may bring it on.
+
 **What the memory dumps show.** Dumps taken after the last three were compared with dumps of the same machine when healthy, and with the reset replayed on its own ROM in the simulator:
-- **Something writes to RAM.** A bad read alone can't change memory. The stack page was wiped to zero three times, where a healthy dump shows it full of power-up noise. Booting, `ramload` and an Applesoft cold start don't do this.
-- **The stray writes sit `$8000` above busy low memory:** `$80xx` mirrors zero page, `$81xx` the stack, `$82xx` the input buffer, and `$84xx–$85xx` the screen. `$8080`, `$80C6`, `$80DF` and `$80FF` changed in both dumps that cover them. This looks like an address fault, such as a glitch on A15 or in selecting the 16K RAM banks. No a2kit code writes there.
+- **Memory changes with no program writing it.** The stack page was wiped to zero three times, where a healthy dump shows it full of power-up noise. Booting, `ramload` and an Applesoft cold start don't do this. A failing DRAM chip can lose its contents with no write at all, so this doesn't need a stray write.
+- **The changes outside the stack sit in `$8000–$85xx`:** `$8080`, `$80C6`, `$80DF` and `$80FF` changed in both dumps that cover them. That's the bank the canary later caught failing, which fits a bad chip there better than the address fault (a glitch on A15 or in selecting the 16K RAM banks) first suspected. No a2kit code writes there.
 - **The receiver's code was never damaged**, and `$D000–$FFFF` always read as ROM, so the RAMCard was never switched in.
 - **A wiped stack would itself crash the receiver** the next time its listening routine returns. In the simulator, overwriting its stack did exactly that. So the stray writes may cause the crashes rather than just follow them, though not every crash fits.
 
@@ -41,17 +43,18 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 - **Closing the serial port.** The long hangs happened with the port open. Two quick jumps did follow a close, but only after a Monitor `980G` had left interrupts on: the card's line change raised an interrupt, and the junk IRQ vector sent the CPU to `$0000`. The receiver now keeps interrupts off, and a 30-minute test closing the port 360 times then passed.
 - **An NMI going straight to the crash address:** `$3FB` holds junk that would have changed the registers.
 - **Reseating the cards and pigtail:** the machine hung again 5 h 23 min later.
-- **Bad RAM cells:** Apple-Cillin II's memory test passes with the RAMCard fitted. That doesn't cover rare writes to the wrong address.
+- **The RAMCard as the only cause:** the canary run had the card removed and still found the failing bank. Apple-Cillin II's memory test had passed with the card fitted, but on a cool machine; the fault took hours to appear.
 
-**Still possible:** the RAMCard or its pigtail, which ties the card into the motherboard's memory circuitry; a motherboard fault in memory addressing; heat; or the power supply. a2kit isn't fully ruled out until the machine has failed without it.
+**Still possible:** the bit-0 chip of the `$8000–$BFFF` row or its socket (the lead); heat; or the power supply. A bad chip in that bank doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; that's unproven.
 
 **Restarting after a hang without losing the evidence:** don't switch off. Press Ctrl-Reset, then type `CALL -151`. The first Reset after power-up runs an Applesoft cold start, which zeros `$0800–$0802`, so type `800:78 A9 00` to put the receiver's first bytes back. Type `48:04` so `G` starts with interrupts off, then `980G`, and dump memory before anything else.
 
 **Next steps, changing one thing at a time:**
-1. **Now:** run with the RAMCard removed, under a canary check (a scratch script for now). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. Started 7 Nov at 23:50. Several days with no change would point at the card or its pigtail.
-2. If it still fails without the card, write a standalone Apple II memory tester that keeps the stack, zero page and screen busy and checks the rest of RAM for writes in the wrong place, with no serial and no a2kit running. That's the control that would rule a2kit out.
-3. Then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then), the power supply's voltages, and a fan to test the heat idea.
-4. If the canary proves useful, make it an `a2kit` command.
+1. **Done:** a run with the RAMCard removed, under a canary check (a scratch script for now). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. It found the failing bank above.
+2. **Next:** reseat the bit-0 chip of the `$8000–$BFFF` row, or swap it with its neighbour in the same row, and run the canary again for several days. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, it's the socket. Don't swap it into the `$0000–$3FFF` row, which holds the receiver. Then replace the chip and see whether the hangs stop.
+3. If the machine still fails with good RAM, write a standalone Apple II memory tester that keeps the stack, zero page and screen busy and checks the rest of RAM for writes in the wrong place, with no serial and no a2kit running. That's the control that would rule a2kit out.
+4. Then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then), the power supply's voltages, and a fan to test the heat idea.
+5. The canary has proved useful, so make it an `a2kit` command.
 
 ## 2. Finish the work in progress
 
@@ -114,7 +117,7 @@ Its content is useful, but it's out of date, conflicts with `main`, and says the
 - **The effects library:** page flipping, mid-screen mode changes, raster-style effects and scrolling text. The II+ has no vertical-blank signal, so timing would use the floating bus.
 - **Mockingboard support.** The biggest sound upgrade: the card plays music by itself, so the CPU stops being the sound source.
   - *Why:* speaker sound is 1-bit, cycle-timed and kept in RAM, which caps it at about 6.2 s (9.2 s with the language card) and keeps the CPU busy. On a Mockingboard, music is about 14 register writes 50–60 times a second (about 700 bytes/s), which a small timer-driven player sends to its two AY-3-8910 chips.
-  - *What it allows:* minutes of music in RAM; music streamed from the computer with no length limit, as 115200 baud carries about 7,800 bytes/s; sound and pictures or video at the same time with no cycle-timing conflict; and existing chiptune formats (YM, VGM), and perhaps MIDI, converted on the computer.
+  - *What it allows:* minutes of music in RAM; music streamed from the computer with no length limit, as 115200 baud uploads at about 8,700 bytes/s; sound and pictures or video at the same time with no cycle-timing conflict; and existing chiptune formats (YM, VGM), and perhaps MIDI, converted on the computer.
   - *Work:* detect the card and its slot (4 is usual; there are several versions and clones), a player driven by the 6522 timer, a converter, and a stream mode in the receiver. Model the card's registers in the simulator tests; AppleWin and MAME emulate it.
   - *Care:* the player needs interrupts, which the receiver now keeps off because the IRQ vector at `$03FE` holds whatever power-up left there. It must set its own vector and turn interrupts on only while it plays.
   - *When:* after the crashes are understood. A new card is another device on the bus, which would cloud the crash tests.
@@ -155,6 +158,7 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **First hardware test** (2 November 2026, Apple II+). Everything worked after two fixes: a show ending on text page 2, and banners piling up on the booted receiver's screen.
 - **`./a2kit ping`:** checks the link, measures the port's delay and the real upload rate, and names the kind of fault.
 - **Built-in serial ports:** documented, and part of the tested setup.
+- **A USB-to-RS-232 adapter** (8 November 2026, an FTDI FT232R, on `feature/crash-reporter`). On its default 16 ms latency timer, uploads ran at about 8,000 bytes/s with 128- or 255-byte packets, because each packet took a whole number of 16 ms periods. With the timer at 1 ms they ran at 8,546 and 9,119 bytes/s, against 8,743 and 9,157 on the built-in port. `a2kit ping` now sets the 1 ms timer itself on Linux, with no `sudo`, and judges how much a slow port costs from its speed test.
 - **115200 baud** (3 November 2026). Now the default, with `a2kit-boot-19200.dsk` as the fallback. Ping, a picture, the show and the video all ran, including a stress clip at the full byte budget with and without sound.
 - **Measured results:** in the [Installation Guide](INSTALL.md#tested-setup).
 - **Version control:** the project is on GitHub.
