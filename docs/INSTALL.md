@@ -75,7 +75,7 @@ The port's delay per packet was smaller at 115200 (0.6 ms) than at 19200 (2.2 ms
 | FTDI adapter, latency timer at its default 16 ms | 11.1 ms | 8,011 bytes/s, 70% | 7,979 bytes/s, 69% |
 | FTDI adapter, latency timer at 1 ms | 1.1 ms | 8,546 bytes/s, 74% | 9,119 bytes/s, 79% |
 
-With the 16 ms timer the adapter passes received bytes on only when the timer runs out, so every packet takes a whole number of 16 ms periods. A 128-byte packet needs about 14 ms and takes one period (128 bytes / 16 ms = 8,000 bytes/s); a 255-byte packet needs about 27 ms and takes two (7,970 bytes/s), which is why larger packets didn't help. At 1 ms the adapter is within about 0.5 ms per packet of the built-in port. `a2kit ping` now sets the 1 ms timer itself (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping)).
+With the 16 ms timer the adapter passes received bytes on only when the timer runs out, so every packet takes a whole number of 16 ms periods. A 128-byte packet needs about 14 ms and takes one period (128 bytes / 16 ms = 8,000 bytes/s); a 255-byte packet needs about 27 ms and takes two (7,970 bytes/s), which is why larger packets didn't help. At 1 ms the adapter is within about 0.5 ms per packet of the built-in port. a2kit now sets the 1 ms timer itself whenever a command opens the port (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping)).
 
 **Not yet tried on real hardware:** a USB-to-RS-232 adapter other than the FTDI one above; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 

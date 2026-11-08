@@ -98,8 +98,7 @@ def main():
     ap.add_argument("--interval", type=float, default=30.0, help="seconds between checks with --watch (default 30)")
     a = ap.parse_args()
 
-    import serial
-    port = serial.Serial(a.port, a.baud, timeout=1.0)
+    port = send.open_port(a.port, a.baud, timeout=1.0)
     if a.watch:
         watch(port, a.baud, a.interval, out=lambda s: print(s, flush=True))
     elif crashed(port):

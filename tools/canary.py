@@ -124,8 +124,7 @@ def main():
     if a.check <= 0 or a.interval <= 0:
         ap.error("--check and --interval must be positive")
 
-    import serial
-    port = serial.Serial(a.port, a.baud, timeout=1.0)
+    port = send.open_port(a.port, a.baud, timeout=1.0)
     run(port, a.baud, a.check, not a.no_fill, a.interval, out=lambda s: print(s, flush=True))
 
 

@@ -92,8 +92,7 @@ def main():
     except ValueError as e:
         sys.exit("refusing to load %s: %s" % (name, e))
 
-    import serial
-    port = serial.Serial(a.port, a.baud, timeout=2.0)
+    port = send.open_port(a.port, a.baud)
     upload(port, boot, a.disk_slot)
     time.sleep(SETTLE)
     result = verify(port, boot)

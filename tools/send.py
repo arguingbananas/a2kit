@@ -179,6 +179,25 @@ class Sender:
         self._send_packet(exec_addr, b"")
 
 
+def set_low_latency(port):
+    """Ask the driver to pass replies on at once; True if it accepted. On Linux this
+    turns an FTDI adapter's 16 ms latency timer down to 1 ms (until it's unplugged),
+    with no sudo. Elsewhere, or on a port without the setting, it does nothing."""
+    try:
+        port.set_low_latency_mode(True)
+        return True
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def open_port(name, baud, timeout=2.0, rtscts=False):
+    """Open a serial port for the receiver, in low-latency mode where the driver offers it."""
+    import serial  # imported here so the module is usable without pyserial for tests
+    port = serial.Serial(name, baud, timeout=timeout, rtscts=rtscts)
+    set_low_latency(port)
+    return port
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
@@ -193,8 +212,6 @@ def main():
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--rtscts", action="store_true", help="hardware flow control")
     args = ap.parse_args()
-
-    import serial  # imported here so the module is usable without pyserial for tests
 
     data = open(args.file, "rb").read()
     addr = args.addr
@@ -213,7 +230,7 @@ def main():
     if not 1 <= args.chunk <= 255:
         sys.exit("--chunk must be 1-255")
 
-    port = serial.Serial(args.port, args.baud, timeout=2.0, rtscts=args.rtscts)
+    port = open_port(args.port, args.baud, rtscts=args.rtscts)
     s = Sender(port, args.chunk, args.retries)
     t0 = time.time()
 

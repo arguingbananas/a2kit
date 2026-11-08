@@ -43,8 +43,7 @@ def main():
     except ValueError as e:
         sys.exit("refusing to read: %s" % e)
 
-    import serial
-    data = send.read_memory(serial.Serial(a.port, a.baud, timeout=2.0), a.addr, a.length)
+    data = send.read_memory(send.open_port(a.port, a.baud), a.addr, a.length)
     print("\n".join(dump(a.addr, data)))
     if a.output:
         with open(a.output, "wb") as f:

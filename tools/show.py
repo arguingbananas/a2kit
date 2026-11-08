@@ -175,8 +175,7 @@ def main():
 
     if not a.port:
         sys.exit("--port required")
-    import serial
-    s = send.Sender(serial.Serial(a.port, a.baud, timeout=2.0, rtscts=a.rtscts))
+    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts))
     t0 = time.monotonic()
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)

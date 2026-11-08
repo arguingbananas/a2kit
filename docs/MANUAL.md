@@ -397,7 +397,7 @@ Checks the serial link to a running receiver and measures it. Run it before your
 ping never ends the session, so the receiver keeps listening and you can `send`, `show send` or `stream` straight afterwards.
 It writes to the bottom text line (`$07D0–$07F7`) and to the first `--chunk` bytes of hi-res page 2 (`$4000`), so don't run it between uploading data there with `send` and using it.
 
-Before the pings, ping switches the port to **low-latency mode** where the driver offers it, and says `(low-latency mode on)` on its first line when it did. On Linux this turns an FTDI USB adapter's 16 ms latency timer down to 1 ms with no `sudo`, and the setting lasts until the adapter is unplugged, so running ping once after plugging it in speeds up later uploads too. On a built-in port it changes nothing measurable; on Windows and macOS it does nothing.
+Every a2kit command that opens the port (`send`, `show send`, `stream`, `ping`, `peek`, `crash`, `canary` and `ramload`) first switches it to **low-latency mode** where the driver offers it; ping also says `(low-latency mode on)` on its first line when it did. On Linux this turns an FTDI USB adapter's 16 ms latency timer down to 1 ms with no `sudo`, until the adapter is unplugged. On a built-in port it changes nothing measurable; on Windows and macOS it does nothing.
 
 **What it reports**
 
@@ -428,7 +428,7 @@ Uploads wait for a one-byte reply after every packet, so a port that holds repli
 
 | Port | Typical delay | What to do |
 |---|---|---|
-| USB adapter with an FTDI chip | Up to 16 ms (its "latency timer"); 11 ms measured on a tested FT232R at 115200, and 1.1 ms with the timer at 1 ms | Linux: `a2kit ping` sets the 1 ms timer itself, until the adapter is unplugged. By hand: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer`. Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
+| USB adapter with an FTDI chip | Up to 16 ms (its "latency timer"); 11 ms measured on a tested FT232R at 115200, and 1.1 ms with the timer at 1 ms | Linux: every a2kit command that opens the port sets the 1 ms timer itself. By hand: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer`. Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
 | Built-in serial port (16550-type) | 0.6 ms measured at 115200 and 2.2 ms at 19200 on Linux (a lone reply waits for the chip's FIFO timeout) | Linux, where the kernel offers it: `echo 1 \| sudo tee /sys/class/tty/ttyS0/rx_trig_bytes` |
 | Other USB adapters (CH340, CP210x, PL2303) | Usually 1–3 ms | Little to tune. |
 

@@ -12,8 +12,8 @@ test sends --speed full packets to hi-res page 2 ($4000, not on screen in text
 mode) and reports the real upload rate.
 
 ping first switches the port to low-latency mode where the driver offers it,
-which on Linux turns an FTDI adapter's 16 ms latency timer down to 1 ms until
-the adapter is unplugged, so later commands benefit too.
+as every a2kit command that opens the port does, and says so. On Linux this
+turns an FTDI adapter's 16 ms latency timer down to 1 ms until it's unplugged.
 
 ping never ends the session, so the receiver is still listening afterwards and
 you can send straight away. It overwrites $07D0-$07F7 (the bottom text line)
@@ -63,17 +63,6 @@ def exchange(port, seq, addr, data, clock):
         return "none", elapsed, None
     b = reply[0]
     return ("ack" if b == send.ACK else "nak" if b == send.NAK else "other"), elapsed, b
-
-
-def set_low_latency(port):
-    """Ask the driver to pass replies on at once; True if it accepted. On Linux this
-    turns an FTDI adapter's 16 ms latency timer down to 1 ms (until it's unplugged),
-    with no sudo. Elsewhere, or on a port without the setting, it does nothing."""
-    try:
-        port.set_low_latency_mode(True)
-        return True
-    except (AttributeError, ValueError, OSError):
-        return False
 
 
 def picture_estimate(turnaround, chunk, baud):
@@ -208,7 +197,7 @@ def main():
 
     import serial
     port = serial.Serial(a.port, a.baud, timeout=a.timeout)
-    low = set_low_latency(port)
+    low = send.set_low_latency(port)
     print("pinging the Apple II on %s at %d baud%s" % (a.port, a.baud, " (low-latency mode on)" if low else ""))
     res = run(port, a.baud, a.count, a.speed, a.chunk)
     port.close()

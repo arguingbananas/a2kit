@@ -191,13 +191,16 @@ class LowLatencyPort:
         if self.error: raise self.error
 
 p = LowLatencyPort()
-expect(ping.set_low_latency(p) is True and p.calls == [True], "low-latency mode is switched on when the driver offers it")
-expect(ping.set_low_latency(LowLatencyPort(ValueError("not supported"))) is False, "a driver that refuses it is ignored")
-expect(ping.set_low_latency(object()) is False, "a port without the setting (Windows) is ignored")
+expect(send.set_low_latency(p) is True and p.calls == [True], "low-latency mode is switched on when the driver offers it")
+expect(send.set_low_latency(LowLatencyPort(ValueError("not supported"))) is False, "a driver that refuses it is ignored")
+expect(send.set_low_latency(object()) is False, "a port without the setting (Windows) is ignored")
 master, slave = os.openpty()
 pty = serial.Serial(os.ttyname(slave), BAUD)
-expect(ping.set_low_latency(pty) is False, "a pseudo-terminal, which has no such setting, is ignored")
+expect(send.set_low_latency(pty) is False, "a pseudo-terminal, which has no such setting, is ignored")
 pty.close()
+port = send.open_port(os.ttyname(slave), BAUD, timeout=0.5)
+expect(port.is_open and port.timeout == 0.5, "send.open_port opens the port even where low-latency mode isn't offered")
+port.close()
 
 
 # ---------------------------------------------------------------- 3. command line
