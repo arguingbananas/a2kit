@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `peek`, `crash`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-ramload-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-disk-mon-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -378,7 +378,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `peek`, `crash`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -461,6 +461,29 @@ The report gives the registers, the vectors at `$03F0`, the whole stack page, an
 Both commands need the receiver running from a disk built with these features. An older one just doesn't answer. A marker sent while nothing has the port open is lost, but the report is still there to read later.
 
 The receiver sends read replies back-to-back, so these commands may not work on a card refitted with a WDC 65C51, which always reports its transmitter as ready.
+
+### `a2kit canary`
+
+Fills free RAM with a known pattern, then reads it back every few minutes and logs any byte that changes. Use it on a machine that crashes or hangs when left alone, to find RAM that loses its contents or writes that land in the wrong place.
+
+```bash
+./a2kit canary --port /dev/ttyUSB0              # fill, then check every 5 minutes
+./a2kit canary --port /dev/ttyUSB0 --no-fill    # go on checking a region an earlier run filled
+```
+
+It fills `$0B00–$BFFF`, the 45 KB that the receiver, the Monitor and the text screen don't use, which takes about 5 seconds at 115200. Each byte's value comes from its address, so neighbouring bytes differ, and so do bytes at the same place in another 16K bank. Each check logs:
+
+- **`CANARY:`** with each newly changed byte (up to 40 listed), what it should be, what it is now, and the xor of the two, then a `bits changed:` line summing up which data bits were involved.
+- **`back to the pattern:`** for bytes that changed earlier but now read correctly again. Bytes that come and go like this point at a chip that can't hold its data, rather than a single stray write.
+- **`STACK PAGE:`** when the number of zero bytes in `$0100–$01FF` jumps by 16 or more, as in a stack wipe.
+
+Between checks it watches the receiver like [`crash --watch`](#a2kit-crash), logging crashes and silences, and it checks memory straight away when the Apple II answers again after a silence. It also logs one line an hour, so a quiet log shows it's still running. `--check` sets the seconds between memory checks (default 300) and `--interval` the seconds between crash checks (default 30).
+
+**Reading the result.** On a II+ (and the original Apple II), the 48K is three rows of eight 4116 chips: one row for each 16K bank (`$0000`, `$4000` and `$8000`), and one chip in each row for each data bit. A IIe has a single row of eight 64K chips, so there the changed bit alone names the chip. So if every change is in one bank and one bit, for example only `D0` in `$8000–$BFFF`, suspect that chip or its socket. Swap it with its neighbour in the same row and run again. If the errors move to the next bit, it's the chip; if they stay, it's the socket. Don't swap chips into the `$0000–$3FFF` row, which holds the receiver. Changes scattered across banks and bits point elsewhere, such as at an address fault or the power supply.
+
+- It keeps the port open until you stop it with Ctrl-C, so nothing else can use the receiver meanwhile.
+- The fill overwrites both hi-res pages and anything else you loaded into that region.
+- A fault that takes hours to appear needs a run of hours or days. On the tested machine, a failing chip first showed after 8 h 42 min.
 
 ### `a2kit ramload`
 

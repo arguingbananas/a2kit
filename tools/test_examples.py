@@ -57,9 +57,9 @@ check("QUICKSTART's frame range f00..f35 matches the folder", len(frames) == 36 
 
 # ---- 3. every ./a2kit command and --option the docs mention is real
 help_text = ""
-for sub in ("image", "audio", "video", "show", "send", "stream", "ping", "peek", "crash", "ramload", "mon", "disk"):
+for sub in ("image", "audio", "video", "show", "send", "stream", "ping", "peek", "crash", "canary", "ramload", "mon", "disk"):
     help_text += subprocess.run([sys.executable, os.path.join(HERE, "a2kit.py"), sub, "--help"], capture_output=True, text=True).stdout
-known = {"image", "audio", "video", "show", "send", "stream", "ping", "peek", "crash", "ramload", "mon", "disk", "build", "test", "doctor", "COMMAND"}   # COMMAND is a placeholder
+known = {"image", "audio", "video", "show", "send", "stream", "ping", "peek", "crash", "canary", "ramload", "mon", "disk", "build", "test", "doctor", "COMMAND"}   # COMMAND is a placeholder
 bad = {c for t in (quick, manual, install, readme) for c in re.findall(r"\./a2kit (\w+)", t) if c not in known}
 check("docs only use real ./a2kit commands", not bad, str(bad))
 flags = {f.rstrip("-") for t in (quick, manual) for f in re.findall(r"`(--[a-z][a-z-]+)", t)} | \

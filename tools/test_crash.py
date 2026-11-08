@@ -13,7 +13,7 @@ sys.path.insert(0, HERE)
 from py65.devices.mpu6502 import MPU as MPU6502
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
-import a2hdr, crash, peek, send
+import a2hdr, canary, crash, peek, send
 from testlib import expect, finish
 
 NAME = sys.argv[1] if len(sys.argv) > 1 else "receiver.bin"
@@ -296,4 +296,45 @@ expect("T answering again" in log, "watch logs when the Apple II comes back")
 log = []
 crash.watch(Silent(), BAUD, 30, out=log.append, stamp=lambda: "T", clock=Clock(), polls=1)
 expect(log[1] == "T NOT ANSWERING", "watch copes with nothing on the line from the start")
+
+calls = []
+m = idle(); m.timeout = 20000
+crash.watch(Outage(m, 0, None), BAUD, 30, out=lambda s: None, clock=Clock(), polls=4, each=calls.append)
+expect(calls == [False, True, False], "watch runs its hook after each answered poll, saying when it follows a silence (%s)" % calls)
+
+# ---------------------------------------------------------------- a2kit canary
+e = canary.expected
+expect(all(e(a) != e(a + 1) and e(a) != e(a ^ 0x8000) and e(a) != e(a ^ 0x4000) for a in range(canary.LO, canary.HI - 1)),
+       "the canary pattern differs between neighbours and between addresses $4000 or $8000 apart")
+
+class Script(Switch):
+    """Runs events[n] at the nth crash check."""
+    def __init__(self, m, events): super().__init__(m, 0, None); self.events = events
+    def write(self, d):
+        if d[0] == send.READ_SYNC and d[3] == crash.CRASH_FLAG:
+            self.n += 1
+            if self.n in self.events: self.events[self.n](self.m)
+        self.m.write(d)
+
+log = []
+m = idle(); m.timeout = 20000
+for i in range(0xC0):
+    m.mem[0x0100 + i] = 0xFF                    # stack-page noise, below the receiver's live stack
+events = {3: lambda m: m.mem.__setitem__(0x8080, 0x00),
+          5: lambda m: [m.mem.__setitem__(0x0100 + i, 0) for i in range(0x80)],
+          7: lambda m: m.mem.__setitem__(0x8080, canary.expected(0x8080)),
+          9: lambda m: crash_at(m, 0xBD00, 0, 0x20, 0x28, 0x33, 0xF7)}
+canary.run(Script(m, events), BAUD, check_every=60, interval=30, out=log.append, stamp=lambda: "T",
+           clock=Clock(), polls=12, lo=0x7F00, hi=0x8100)
+print("canary log:", *log, sep="\n  ")
+text = "\n".join(log)
+expect("T filled $7F00-$80FF (512 bytes)" in text and "first check: 0 byte(s) differ" in text, "canary fills the region and finds it intact")
+expect(all(m.mem[a] == canary.expected(a) for a in range(0x7F00, 0x8100)), "canary's fill wrote the pattern")
+expect(text.count("CANARY:") == 1 and "  $8080 expected %02X now 00 (xor %02X)" % (canary.expected(0x8080), canary.expected(0x8080)) in text,
+       "canary logs a changed byte once, with what it should be and the changed bits")
+expect("  bits changed: " + " ".join("D%d" % b for b in range(8) if canary.expected(0x8080) >> b & 1) in text,
+       "canary sums up which data bits changed")
+expect("STACK PAGE: " in text, "canary logs a wiped stack page")
+expect("back to the pattern: $8080" in text, "canary logs a byte that goes back to the pattern")
+expect(text.count("T CRASH") == 1 and "BD02- A=00" in text, "canary logs a crash like crash --watch")
 finish("test_crash " + NAME)

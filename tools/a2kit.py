@@ -10,6 +10,7 @@
   a2kit ping   --port DEV            check the serial link and measure its speed
   a2kit peek   ADDR [LEN] --port DEV read Apple II memory over the link
   a2kit crash  --port DEV [--watch]  report a crash, or wait for one and log it
+  a2kit canary --port DEV            fill free RAM with a pattern and log any change
   a2kit ramload --port DEV           start a new boot image without touching the disk
   a2kit mon    FILE                  print a binary as Monitor entry lines
   a2kit disk   [--baud 19200]        make a disk that boots straight into the receiver
@@ -43,6 +44,7 @@ TOOLS = {
     "ping": ("ping", "check and measure the serial link"),
     "peek": ("peek", "read Apple II memory"),
     "crash": ("crash", "report a crash, or wait for one"),
+    "canary": ("canary", "watch free RAM for changes"),
     "ramload": ("ramload", "start a new boot image over the link"),
     "mon": ("bin2mon", "binary -> Monitor lines"),
     "disk": ("mkdisk", "bootable receiver disk image"),

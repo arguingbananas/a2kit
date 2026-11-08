@@ -54,8 +54,10 @@ def report(port, baud=a2hdr.DEFAULT_BAUD):
 
 
 def watch(port, baud=a2hdr.DEFAULT_BAUD, interval=30.0, out=print, stamp=lambda: time.strftime("%F %T"),
-          clock=time.monotonic, polls=None):
-    """Poll until interrupted (or for `polls` polls, for tests), logging each change."""
+          clock=time.monotonic, polls=None, each=None):
+    """Poll until interrupted (or for `polls` polls, for tests), logging each change.
+    each(recovered), if given, runs after every poll that got an answer; recovered
+    is True on the first one after a silence. `a2kit canary` checks memory there."""
     out("%s watching; polling every %g s" % (stamp(), interval))
     alive, reported = None, None        # reported: the saved PC and registers last logged
     while polls is None or polls > 0:
@@ -69,7 +71,8 @@ def watch(port, baud=a2hdr.DEFAULT_BAUD, interval=30.0, out=print, stamp=lambda:
                 out("%s NOT ANSWERING" % stamp())
             alive = False
         else:
-            if alive is False:
+            recovered = alive is False
+            if recovered:
                 out("%s answering again" % stamp())
             elif alive is None:
                 out("%s answering" % stamp())
@@ -79,6 +82,8 @@ def watch(port, baud=a2hdr.DEFAULT_BAUD, interval=30.0, out=print, stamp=lambda:
                 for line in report(port, baud):
                     out("  " + line)
             reported = saved
+            if each:
+                each(recovered)
         until = clock() + interval
         while clock() < until:                  # any marker cuts the wait short
             if port.read(1) == bytes([send.CRASH_MARK]):
