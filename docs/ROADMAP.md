@@ -9,6 +9,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 8 Novemb
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
 | Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
 | Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed and tested on hardware, booted from its own disk; ready for a PR |
+| Clearer speech: `a2kit audio --compress` and `compress = true` in shows | Branch `feature/audio-compress` | Pushed; heard on the Apple II+; no PR yet |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
 | This roadmap | Branch `docs/roadmap` | Docs only; can merge at any time |
