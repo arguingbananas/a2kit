@@ -8,7 +8,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 8 Novemb
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
 | Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
-| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed; crash reports, hang logging and `ramload` seen working on hardware |
+| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed and tested on hardware, booted from its own disk; ready for a PR |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
 | This roadmap | Branch `docs/roadmap` | Docs only; can merge at any time |
@@ -72,9 +72,10 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 - [x] The handler keeps to its own part of the stack, so a report shows what the crashed program left
 - [x] The receiver keeps interrupts off at its start and after a crash
 - [x] The canary, as a scratch script, found a failing RAM bank on real hardware. `a2kit canary` itself then ran on the Apple II over a USB adapter (8 Nov): the fill and checks, a changed byte and its return to the pattern, a stack-page wipe, and a real `BRK` were all logged correctly
-- [ ] Boot the new `a2kit-boot.dsk` from the SD card
-- [x] Rerun `ping`, a picture, a show and the video with sound, and compare timings (8 Nov, the current receiver loaded with `ramload`, over the USB adapter: all clean, timings in the [Installation Guide](INSTALL.md#tested-setup))
-- [ ] Add the hardware results to the docs, rebuild the PDFs, and open a PR
+- [x] Boot the new `a2kit-boot.dsk` from the SD card (8 Nov: the code in memory matched `receiver.bin`)
+- [x] Rerun `ping`, a picture, a show and the video with sound, and compare timings (8 Nov, on both the USB adapter and the built-in port: all clean, timings in the [Installation Guide](INSTALL.md#tested-setup))
+- [x] Add the hardware results to the docs and rebuild the PDFs
+- [ ] Open a PR
 
 **Known limits:** a crash that never reaches `BRK` shows up only as silence. The `BRK` itself and the Monitor's register save overwrite the 5 stack bytes just below S. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
 
