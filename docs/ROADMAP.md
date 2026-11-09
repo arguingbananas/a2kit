@@ -8,11 +8,11 @@ Where a2kit stands and what comes next, most urgent first. Last updated 8 Novemb
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
 | Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
-| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed and tested on hardware, booted from its own disk; ready for a PR |
-| Clearer speech: `a2kit audio --even-out` and `even_out = true` in shows | Branch `feature/audio-compress` | Pushed; heard on the Apple II+; no PR yet |
+| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed and tested on hardware, booted from its own disk; PR waits for the RAM-chip test |
+| Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | Branch `feature/audio-compress` | [PR #3](https://github.com/arguingbananas/a2kit/pull/3); heard on the Apple II+ |
 | Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
-| This roadmap | Branch `docs/roadmap` | Docs only; can merge at any time |
+| This roadmap | Branch `docs/roadmap` | Docs only; in a PR, to merge first |
 
 ## 1. Find out why the Apple II crashes when idle
 
@@ -58,7 +58,13 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 ## 2. Finish the work in progress
 
-**Suggested merge order:** this roadmap, then the crash reporter, then the language card, then the memory map. The crash reporter goes first because it helps test everything after it. The language-card branch then has to combine both sets of receiver changes and rerun the tests. The combined build is exactly the 380 bytes available, so there is no room left; so far that's only been checked for size.
+**Suggested merge order** (small and independent first, so conflicts are dealt with once, on the branch with the most to merge):
+
+1. **This roadmap.** Docs only, so it can go at any time; merging it first puts the current plan on `main`.
+2. **Clearer speech** (`feature/audio-compress`, [PR #3](https://github.com/arguingbananas/a2kit/pull/3)). Small, started from today's `main`, tested, and heard on the Apple II. It shares no code changes with the crash reporter.
+3. **The crash reporter**, after the RAM-chip swap and a long canary run. Before its PR: merge `main` into it, rebuild the PDFs (it and the speech branch both change `MANUAL.pdf` and `QUICKSTART.pdf`, which Git can't merge), run the tests, and do a quick `ping` and show on the Apple II. A trial merge found the code and Markdown merge cleanly.
+4. **The language card.** It has to combine both sets of receiver changes and rerun the tests. The combined build is exactly the 380 bytes available, so there is no room left; so far that's only been checked for size. Its own hardware tests need the RAMCard back in, so it also waits until the crash investigation has cleared the card or the machine.
+5. **The memory map** (PR #2): carry its content into the Manual after the language card changes the map again, and close it.
 
 ### Crash reporter (`feature/crash-reporter`)
 
