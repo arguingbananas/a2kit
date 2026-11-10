@@ -175,7 +175,7 @@ For about 8 seconds, rings and a spinning cross move all over the screen, lookin
   Use `--crop` to fill the screen instead of letterboxing, and `--invert` if it comes out too dark.
 - **An animation:** put frames in a folder (`frame001.png`, `frame002.png`, …) or use a GIF. Keep the background plain and the moving part small.
 - **A show:** copy `examples/show.toml` and change the file names.
-- **Sound:** short is best. A show or video holds about 6 seconds of sound in total.
+- **Sound:** short is best. A show or video holds about 6 seconds of sound in total. For speech, add `even_out = true` to the show's audio scene (or `--even-out` to `a2kit audio` or `a2kit video`): it's much clearer.
 
 ## Starter assets
 

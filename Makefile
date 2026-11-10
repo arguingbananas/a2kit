@@ -43,6 +43,7 @@ test: all
 	python3 tools/test_speed.py
 	python3 tools/test_sequencer.py
 	python3 tools/test_video.py
+	python3 tools/test_audio.py
 	python3 tools/test_boot.py
 	python3 tools/test_boot.py 19200
 	python3 tools/test_ping.py
