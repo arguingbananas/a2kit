@@ -1,6 +1,6 @@
 # a2kit Roadmap
 
-Where a2kit stands and what comes next, most urgent first. Last updated 8 November 2026.
+Where a2kit stands and what comes next, most urgent first. Last updated 9 November 2026.
 
 ## Where things stand
 
@@ -123,14 +123,54 @@ Its content is useful, but it's out of date, conflicts with `main`, and says the
 - **More pictures per show.** Two hi-res pages limit a show to two pictures. Upload the next picture between scenes, or keep compressed pictures in memory, which the language card would help with.
 - **Colour pictures.** The II+ can show six colours in hi-res, so a colour converter is a natural next step.
 - **The effects library:** page flipping, mid-screen mode changes, raster-style effects and scrolling text. The II+ has no vertical-blank signal, so timing would use the floating bus.
-- **Mockingboard support.** The biggest sound upgrade: the card plays music by itself, so the CPU stops being the sound source.
-  - *Why:* speaker sound is 1-bit, cycle-timed and kept in RAM, which caps it at about 6.2 s (9.2 s with the language card) and keeps the CPU busy. On a Mockingboard, music is about 14 register writes 50–60 times a second (about 700 bytes/s), which a small timer-driven player sends to its two AY-3-8910 chips.
-  - *What it allows:* minutes of music in RAM; music streamed from the computer with no length limit, as 115200 baud uploads at about 8,700 bytes/s; sound and pictures or video at the same time with no cycle-timing conflict; and existing chiptune formats (YM, VGM), and perhaps MIDI, converted on the computer.
-  - *Work:* detect the card and its slot (4 is usual; there are several versions and clones), a player driven by the 6522 timer, a converter, and a stream mode in the receiver. Model the card's registers in the simulator tests; AppleWin and MAME emulate it.
-  - *Care:* the player needs interrupts, which the receiver now keeps off because the IRQ vector at `$03FE` holds whatever power-up left there. It must set its own vector and turn interrupts on only while it plays.
-  - *When:* after the crashes are understood. A new card is another device on the bus, which would cloud the crash tests.
+- **Mockingboard support.** The biggest sound upgrade: the card plays music by itself, so the CPU stops being the sound source. See [the design](#mockingboard-design) below.
 - **Two-way messages.** Memory reads add a first Apple II to computer channel. Going further would allow keyboard input, status reports and interactive uses such as a speech-to-text thin client.
 - **A stronger checksum:** CRC-16 instead of XOR, if errors ever get through.
+
+### Mockingboard design
+
+*A plan, not yet started. The register-level details are from memory of the card's documentation; check them against it before writing code.*
+
+**Why.** Speaker sound is 1-bit and cycle-timed, and has to be kept in RAM. That caps it at about 6.2 s (9.2 s with the language card), keeps the CPU busy, and brings the whine at the 7,972 Hz sample rate. Longer sound has to be sent in chunks, with a pause for each upload: a 93-second poem took 20 chunks, about 2.9 s apart. Dense music doesn't survive at all. A Hells Bells MIDI rendered for the speaker was muddy with the full band, and its 55–65 Hz bass was inaudible. On a Mockingboard the chips make the sound themselves, so none of these limits apply.
+
+**The card.** A standard Mockingboard, usually in slot 4, has two AY-3-8910 sound chips. Each has three square-wave tone voices, a noise generator, a 4-bit volume per voice and a hardware envelope, so six voices in all, set through 14 registers per chip. The CPU reaches each AY through a 6522 VIA: a register number or value goes on the VIA's port A, then control lines on port B are pulsed, roughly 20–30 cycles per register write. The VIAs' timers can interrupt the CPU at 50 or 60 Hz to drive a player. Music is a few register changes per frame: at most about 700 bytes/s, and usually far less. Some versions add a speech chip, left out here.
+
+**Who keeps time.** There are three ways to play, built in this order:
+
+1. **Streamed, with the computer keeping time** (first). The computer sends each frame's register changes at the right moment, and a small player on the Apple II writes each to the chip as it arrives. There are no replies, just as with `a2kit stream` for video. It needs no interrupts, so the receiver's interrupts-off design and the junk IRQ vector at `$03FE` don't matter. At about 300 bytes/s it uses under 4% of the line. Music can be any length, with no gaps.
+2. **Inside the video stream** (next). Video frames already carry up to 1,824 bytes at 115200 baud, and a few register writes per frame would give continuous music under video. Today the speaker's sound has to stop the picture for bursts; with this, sound effects could land on the bounces.
+3. **From memory, timed by interrupts** (for shows that run without the computer). The tune is uploaded first, then a VIA timer interrupt writes the registers. This is how most Apple II music software works, and free RAM holds several minutes. The receiver can't take serial bytes while interrupts fire (at 115200 a byte arrives every 89 cycles), so uploads and playback can't overlap. The player must set its own IRQ vector and turn interrupts off again when it's done.
+
+**Where the music comes from.**
+
+| Source | Effort | Notes |
+|---|---|---|
+| YM files | Low | Register dumps from the same chip (Atari ST, Amstrad); only the 2 MHz clock needs rescaling to the Mockingboard's 1.023 MHz. Thousands of chiptunes exist. |
+| VGM files with AY-3-8910 data | Low to medium | The same idea, from a different family of machines. |
+| MIDI | Medium to high | Needs arranging into six voices, with drums as noise and short envelopes. Hells Bells would fit, with its bass as a real tone: the AY plays down to about 16 Hz. |
+| WAV | Not worth it | Stepping a volume register plays samples, but that is as CPU-heavy as the speaker and no better. |
+
+**In a2kit.**
+
+- **`a2kit mbprobe`:** finds the card, like `lcprobe`, by looking for a 6522 timer that counts down in each slot, and plays a test tone.
+- **`a2kit music FILE --port …`:** converts and streams. `--preview out.wav` renders the register stream on the computer with a small AY model, so it can be heard and tested without the Apple II.
+- **Shows:** a `music = "tune.ym"` scene, played from memory.
+- **Video:** `a2kit video --music tune.ym`, as part of the stream.
+- **The receiver doesn't change.** It is at its 380-byte limit with the language card, so the players are separate uploaded programs, like `sequencer.bin` and `video.bin`.
+- **Tests:** a VIA and AY model in the py65 simulator records register writes, so tests can check the right writes at the right times; the preview renderer turns them into sound. AppleWin and MAME emulate the card, for checks before real hardware.
+
+**Steps.**
+
+1. Detection and a test tone (`mbprobe`).
+2. The streaming player and the YM converter, with the WAV preview.
+3. Music inside video.
+4. The MIDI converter.
+5. The play-from-memory player for shows.
+
+**Before starting.**
+
+- **Hardware:** decide on the card, an original or a modern clone, since the model affects detection and whether a speech chip is present.
+- **Timing:** fit it only after the idle crashes are understood. A new card is another device on the bus, and would cloud the canary results. The design, the simulator model and the converters can all be done without the card.
 
 ## 5. Project upkeep
 
