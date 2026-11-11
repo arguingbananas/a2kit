@@ -450,13 +450,15 @@ Reads Apple II memory through the running receiver and prints it like the Monito
 ```
 
 Addresses are in hex, and the length is 16 bytes if you leave it out. `-o` also saves the bytes to a file.
-`$C000–$C0FF` is refused, because just reading a soft switch can change the machine's state, and so is `$CFFF`, which switches off the cards' `$C800` ROMs. The slot ROMs at `$C100–$C7FF` can be read. Reading a card's page first (`$Cn00` for slot n) also shows that card's `$C800–$CFFE` ROM:
+`$C000–$C0FF` is refused, because just reading a soft switch can change the machine's state, and so is `$CFFF`, which switches off the cards' `$C800` ROMs. The slot ROMs at `$C100–$C7FF` can be read. Reading a card's page first (`$Cn00` for slot n) also switches in that card's `$C800` ROM, if it has one:
 
 ```bash
-./a2kit peek C600 256 --port /dev/ttyUSB0 -o disk2-boot.bin   # the Disk II boot ROM in slot 6
-./a2kit peek C200 256 --port /dev/ttyUSB0                      # selects the serial card in slot 2 ...
-./a2kit peek C800 2047 --port /dev/ttyUSB0 -o ssc.bin          # ... then reads its $C800 ROM
+./a2kit peek C600 256 --port /dev/ttyUSB0 -o disk2-boot.bin       # the Disk II boot ROM in slot 6
+./a2kit peek C200 256 --port /dev/ttyUSB0 -o ssc-c200.bin         # the serial card's slot 2 page, which selects it ...
+./a2kit peek C800 1792 --port /dev/ttyUSB0 -o ssc-c800.bin        # ... then its $C800-$CEFF ROM
 ```
+
+The Super Serial Card's 2 KB ROM is those two files joined: `$C800–$CEFF` first, then the `$C200` page. Its `$CF00–$CFFF` reads aren't ROM.
 
 `$D000–$FFFF` reads ROM, not a language card.
 
