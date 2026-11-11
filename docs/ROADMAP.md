@@ -1,22 +1,21 @@
 # a2kit Roadmap
 
-Where a2kit stands and what comes next, most urgent first. Last updated 9 November 2026.
+Where a2kit stands and what comes next, most urgent first. Last updated 10 November 2026.
 
 ## Where things stand
 
 | Work | Where | State |
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
-| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Open, and blocking hardware tests.** A failing RAM chip is now the lead |
-| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Pushed and tested on hardware, booted from its own disk; PR waits for the RAM-chip test |
-| Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | Branch `feature/audio-compress` | [PR #3](https://github.com/arguingbananas/a2kit/pull/3); heard on the Apple II+ |
-| Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; long-sound test on hold |
+| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Shelved.** Clean for 48 hours with extra cooling, which stays in place; heat is the likely trigger |
+| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Tested on hardware, booted from its own disk; `main` merged in; in a PR |
+| Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | `main` | Merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)); heard on the Apple II+ |
+| Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; next after the crash reporter |
 | Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
-| This roadmap | Branch `docs/roadmap` | Docs only; in a PR, to merge first |
 
 ## 1. Find out why the Apple II crashes when idle
 
-This comes first, because a crash during a test can't be pinned on either the new code or the machine.
+**Shelved on 10 November**, with the machine reliable enough to develop on: with extra cooling it ran clean for 48 hours (below). Keep the extra cooling in place. The tests to pick up later are listed under *When this is picked up again*.
 
 The machine has crashed or hung seven times with the receiver waiting and nobody touching it:
 
@@ -34,6 +33,8 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 **8 November: the canary found a failing RAM chip.** With the RAMCard removed, free RAM (`$0B00–$BFFF`) held its pattern for 8 h 42 min. Then, from 08:32 until the run was stopped at 10:09, bit 0 of about half the bytes in `$8000–$BFFF` read wrong at every check, in both directions, with different bytes each time. Every listed change was bit 0 alone (xor `01`), and nothing below `$8000` changed, the stack page included. On a II+ each 16K bank is one row of eight 4116 chips, one per data bit, so this points at the bit-0 chip of the `$8000–$BFFF` row, or its socket. It appeared only after hours of running, so heat may bring it on.
 
+**8–10 November: 48 hours clean with extra cooling.** With nothing else changed (the same chip, the RAMCard still out), the canary ran from 22:01 on 8 November to 22:02 on 10 November with better cooling on the Apple II: 565 checks, every one with 0 bytes changed, and no stack wipe, crash or silence. That is more than five times as long as the bit-0 errors took to appear without it (8 h 42 min), and over twice the longest run before any earlier failure (22 h 40 min). So heat is the likely trigger. What it heats is still open: the bit-0 chip itself, or the power supply, whose aging capacitors could let the RAM's supplies sag or ripple as it warms, enough for one weak chip to fail. A sagging supply would also explain the stack wipes in the `$0000` bank better than one bad chip does.
+
 **What the memory dumps show.** Dumps taken after the last three were compared with dumps of the same machine when healthy, and with the reset replayed on its own ROM in the simulator:
 - **Memory changes with no program writing it.** The stack page was wiped to zero three times, where a healthy dump shows it full of power-up noise. Booting, `ramload` and an Applesoft cold start don't do this. A failing DRAM chip can lose its contents with no write at all, so this doesn't need a stray write.
 - **The changes outside the stack sit in `$8000–$85xx`:** `$8080`, `$80C6`, `$80DF` and `$80FF` changed in both dumps that cover them. That's the bank the canary later caught failing, which fits a bad chip there better than the address fault (a glitch on A15 or in selecting the 16K RAM banks) first suspected. No a2kit code writes there.
@@ -46,24 +47,29 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 - **Reseating the cards and pigtail:** the machine hung again 5 h 23 min later.
 - **The RAMCard as the only cause:** the canary run had the card removed and still found the failing bank. Apple-Cillin II's memory test had passed with the card fitted, but on a cool machine; the fault took hours to appear.
 
-**Still possible:** the bit-0 chip of the `$8000–$BFFF` row or its socket (the lead); heat; or the power supply. A bad chip in that bank doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; that's unproven.
+**Still possible:** heat is now the likely trigger. What fails when warm is open: the bit-0 chip of the `$8000–$BFFF` row (or its socket), or the power supply. A bad chip in that bank doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; a sagging supply would explain both.
 
 **Restarting after a hang without losing the evidence:** don't switch off. Press Ctrl-Reset, then type `CALL -151`. The first Reset after power-up runs an Applesoft cold start, which zeros `$0800–$0802`, so type `800:78 A9 00` to put the receiver's first bytes back. Type `48:04` so `G` starts with interrupts off, then `980G`, and dump memory before anything else.
 
-**Next steps, changing one thing at a time:**
-1. **Done:** a run with the RAMCard removed, under a canary check (then a scratch script, now `a2kit canary` on `feature/crash-reporter`). Free RAM, `$0B00–$BFFF`, is filled with a pattern based on each byte's address and re-read every 5 minutes, and crashes and silences are polled every 30 seconds. It found the failing bank above.
-2. **Next:** reseat the bit-0 chip of the `$8000–$BFFF` row, or swap it with its neighbour in the same row, and run `a2kit canary` again for several days. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, it's the socket. Don't swap it into the `$0000–$3FFF` row, which holds the receiver. Then replace the chip and see whether the hangs stop.
-3. If the machine still fails with good RAM, write a standalone Apple II memory tester that keeps the stack, zero page and screen busy and checks the rest of RAM for writes in the wrong place, with no serial and no a2kit running. That's the control that would rule a2kit out.
-4. Then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then), the power supply's voltages, and a fan to test the heat idea.
+**When this is picked up again**, changing one thing at a time:
+1. **The reverse test:** run `a2kit canary` without the extra cooling. If the bit-0 errors come back after about 9 hours, heat is confirmed.
+2. **Chip or power supply:**
+   - Heat only the suspect chip with a hair dryer on low for a few minutes, with `a2kit canary --check 30`. Failing within minutes, with the rest of the machine cool, points at the chip.
+   - Or cool only the power supply, then only the motherboard, and see which run stays clean.
+   - Measure the supplies at a RAM chip, cold and again after about 9 hours: on a 4116, pin 1 is –5 V, pin 8 +12 V and pin 9 +5 V, with pin 16 ground (check against a datasheet first). Drift beyond about ±5% points at the supply; ripple needs an oscilloscope.
+3. **The chip swap:** swap the bit-0 chip with its neighbour in the same row, never into the `$0000–$3FFF` row, which holds the receiver. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, the socket. A chip that fails because of the supply would still move, so this doesn't clear the supply on its own.
+4. If it still fails with good RAM and a good supply: a standalone Apple II memory tester with no serial and no a2kit running, then the plain `]` prompt test (the cursor blinks even if the CPU has stopped, so type a key now and then).
+
+**While developing:** if anything odd happens (a hang, garbage on screen, a dead keyboard), don't power off. `a2kit crash`, `peek` and `canary` can capture the evidence first, using the restart procedure above.
 
 ## 2. Finish the work in progress
 
 **Suggested merge order** (small and independent first, so conflicts are dealt with once, on the branch with the most to merge):
 
-1. **This roadmap.** Docs only, so it can go at any time; merging it first puts the current plan on `main`.
-2. **Clearer speech** (`feature/audio-compress`, [PR #3](https://github.com/arguingbananas/a2kit/pull/3)). Small, started from today's `main`, tested, and heard on the Apple II. It shares no code changes with the crash reporter.
-3. **The crash reporter**, after the RAM-chip swap and a long canary run. Before its PR: merge `main` into it, rebuild the PDFs (it and the speech branch both change `MANUAL.pdf` and `QUICKSTART.pdf`, which Git can't merge), run the tests, and do a quick `ping` and show on the Apple II. A trial merge found the code and Markdown merge cleanly.
-4. **The language card.** It has to combine both sets of receiver changes and rerun the tests. The combined build is exactly the 380 bytes available, so there is no room left; so far that's only been checked for size. Its own hardware tests need the RAMCard back in, so it also waits until the crash investigation has cleared the card or the machine.
+1. **This roadmap:** merged (PR #4).
+2. **Clearer speech:** merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)).
+3. **The crash reporter:** in a PR, after the 48-hour clean run. `main` is merged in, with `MANUAL.pdf` and `QUICKSTART.pdf` rebuilt (both branches changed them, and Git can't merge PDFs); the tests pass, and `ping` and a show with `even_out` worked on the Apple II with the merged code.
+4. **The language card.** It has to combine both sets of receiver changes and rerun the tests. The combined build is exactly the 380 bytes available, so there is no room left; so far that's only been checked for size. Its own hardware tests need the RAMCard back in, which changes the machine again, so after refitting it run `a2kit canary` for a few hours, with the extra cooling still on, before testing code on it.
 5. **The memory map** (PR #2): carry its content into the Manual after the language card changes the map again, and close it.
 
 ### Crash reporter (`feature/crash-reporter`)
@@ -82,7 +88,7 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 - [x] Boot the new `a2kit-boot.dsk` from the SD card (8 Nov: the code in memory matched `receiver.bin`)
 - [x] Rerun `ping`, a picture, a show and the video with sound, and compare timings (8 Nov, on both the USB adapter and the built-in port: all clean, timings in the [Installation Guide](INSTALL.md#tested-setup))
 - [x] Add the hardware results to the docs and rebuild the PDFs
-- [ ] Open a PR
+- [x] Merge `main` in, rebuild the PDFs, retest, and open a PR (10 Nov, after the 48-hour clean run)
 
 **Known limits:** a crash that never reaches `BRK` shows up only as silence. The `BRK` itself and the Monitor's register save overwrite the 5 stack bytes just below S. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
 
