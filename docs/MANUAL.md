@@ -104,6 +104,20 @@ Things to know (both options):
 - The receiver lives at `$0800–$0AFF`, which is where Applesoft BASIC keeps programs. Don't load or run a BASIC program between sessions, or you'll have to retype it.
 - It is happiest on a machine booted straight to the Monitor with no disk system loaded. DOS and ProDOS use memory at the top of RAM that audio also needs.
 
+#### After Ctrl-Reset
+
+The first Reset after power-up runs an Applesoft cold start, which drops you at the `]` prompt and zeroes `$0800–$0802`: the receiver's first three bytes. So `980G` would hit a `BRK` straight away, showing `0802-` and the registers. Put the bytes back first. At the `]` prompt type `CALL -151`, then at the `*` prompt:
+
+```
+800:78 A9 00
+48:04
+980G
+```
+
+The first line restores the receiver's first bytes. The second makes `G` start the program with interrupts off, as the receiver expects. The rest of the receiver is untouched, so the banner comes back and it is listening again. Rebooting the disk (`PR#6`) also works, and starts from a clean slate. Memory you had uploaded, such as a show's sequencer, survives the Reset and the `980G` but not a reboot.
+
+A typed-in receiver loses the same three bytes: type `800:78 A9 00` and `48:04`, then `800G` (or `980G` if you typed in the restart loop too).
+
 ---
 
 ### 2.4 Line speed: 115200 or 19200 baud
@@ -602,6 +616,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
+| `980G` shows `0802-` and registers instead of the banner | You pressed Ctrl-Reset: the Applesoft cold start zeroed the receiver's first three bytes. Type `800:78 A9 00`, `48:04`, then `980G` ([After Ctrl-Reset](#after-ctrl-reset)), or reboot the disk. |
 | `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.097B`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |

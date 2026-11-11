@@ -120,7 +120,6 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 - **Point the IRQ vector at the crash handler.** The receiver sets the `BRK` vector but leaves `$03FE–$03FF` as power-up junk, so a stray interrupt runs wild instead of being reported. It needs about 10 bytes, and the receiver has none left: something else must shrink first.
 - **Check the video player is running before streaming without `--install`.** `show send` now checks its sequencer (see Done), but a running video player can't answer memory reads, so `stream` without `--install` still trusts that the player is there. A read request answered by the receiver would show it isn't; check first that the player safely ignores such a request.
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
-- **Explain restarting after Ctrl-Reset in the Manual.** It says `980G` restarts a booted receiver, but after the first Reset since power-up an Applesoft cold start has zeroed `$0800–$0802`, so `980G` hits a `BRK`. Give the repair (`800:78 A9 00`), and `48:04` so `G` starts with interrupts off.
 - **Document the working cable.** A photo or pinout of the cable and the card's jumper setting is still missing.
 - **Support Python 3.10.** Linux Mint 21 ships it, and the only 3.11 feature a2kit uses is `tomllib`. Fall back to the `tomli` package and lower the requirement.
 - **Add video and sound previews.** Pictures already have `--preview`. `video --preview out.gif` would show frames as the player draws them, and `audio --preview out.wav` would render what the speaker produces.
@@ -224,5 +223,6 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **115200 baud** (3 November 2026). Now the default, with `a2kit-boot-19200.dsk` as the fallback. Ping, a picture, the show and the video all ran, including a stress clip at the full byte budget with and without sound.
 - **Measured results:** in the [Installation Guide](INSTALL.md#tested-setup).
 - **Version control:** the project is on GitHub.
+- **Restarting after Ctrl-Reset** (11 November 2026): the Manual explains why `980G` crashes after the first Reset and how to repair it, and the troubleshooting table lists the symptom.
 - **`show send` checks the sequencer** (11 November 2026): without `--install` it reads the sequencer back first, and uploads it if it's missing or different, so a show after a power cycle or a `canary` fill no longer jumps into whatever is at `$0C00`.
 - **ADTPro checked on this machine** (5 November 2026). A disk image went from the computer to the Emu and back byte-for-byte. Nothing in a2kit changed for this.
