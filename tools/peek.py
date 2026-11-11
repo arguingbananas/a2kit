@@ -5,8 +5,11 @@
   a2kit peek BD00 16 --port /dev/ttyUSB0 -o dump.bin
 
 Addresses are hex, with or without $ or 0x. The receiver must be running, from a
-disk built with read support. $C000-$CFFF is refused because reading a soft
-switch can change the machine's state. $D000-$FFFF reads ROM, not a language card.
+disk built with read support. $C000-$C0FF is refused because reading a soft
+switch can change the machine's state, and so is $CFFF, which switches off the
+cards' $C800 ROMs. The slot ROMs at $C100-$C7FF can be read; reading a card's
+page ($Cn00) first also shows its $C800-$CFFE ROM. $D000-$FFFF reads ROM, not a
+language card.
 """
 import argparse
 import sys

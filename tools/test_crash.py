@@ -137,7 +137,8 @@ class Flaky:
         return d
 expect(send.read_memory(Flaky(m), 0x4000, 2) == b"\xAA\x55", "a lost and a damaged reply are retried")
 
-for at, n, ok in ((0xBFFF, 1, True), (0xBFFF, 2, False), (0xC000, 1, False), (0xCFFF, 1, False), (0xCFFF, 2, False), (0xD000, 1, True), (0xFFFF, 1, True), (0xFFFF, 2, False), (0x4000, 0, False)):
+for at, n, ok in ((0xBFFF, 1, True), (0xBFFF, 2, False), (0xC000, 1, False), (0xC0FF, 1, False), (0xC0FF, 2, False),
+                  (0xC100, 1, True), (0xC600, 256, True), (0xC800, 2047, True), (0xC800, 2048, False), (0xCFFF, 1, False), (0xCFFF, 2, False), (0xD000, 1, True), (0xFFFF, 1, True), (0xFFFF, 2, False), (0x4000, 0, False)):
     try:
         send.check_read_range(at, n); res = True
     except ValueError:
