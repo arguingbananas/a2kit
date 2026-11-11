@@ -11,7 +11,9 @@ or Windows. See README.md, docs/INSTALL.md, docs/QUICKSTART.md, docs/MANUAL.md.
 
 - Python 3.11 or newer (last tested on 3.12). Dependencies: `requirements.txt`
   (runtime), `requirements-dev.txt` (tests, docs, lint), `constraints.txt` (exact
-  tested versions). Use a virtual environment: `.venv/`.
+  tested versions). Use a virtual environment: `.venv/`. `./a2kit` and `make` use it
+  by themselves; `.claude/settings.json` activates it for every Claude Code session
+  and links it into new worktrees.
 - System tools: cc65 (`ca65`, `ld65`) and make to build the 6502 programs and run the
   tests; ffmpeg optional for video files; pandoc and Chrome or Chromium to rebuild PDFs.
 - 6502 sources are in `runtime/`; the Python tools are in `tools/`, and `./a2kit` runs
