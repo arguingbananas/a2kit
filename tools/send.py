@@ -106,14 +106,18 @@ def make_read_packet(addr, count):
 
 def check_read_range(addr, length):
     """Raise ValueError if [addr, addr+length) is off the end of memory or
-    touches I/O: just reading a soft switch can change the machine's state."""
+    touches I/O that reacts to a read: the soft switches at $C000-$C0FF, and
+    $CFFF, which switches off every card's $C800 ROM. The slot ROMs at
+    $C100-$C7FF and the selected card's $C800-$CFFE ROM are safe to read."""
     if length <= 0:
         raise ValueError("nothing to read (length %d)" % length)
     end = addr + length - 1
     if addr < 0 or end > 0xFFFF:
         raise ValueError("$%04X + %d bytes runs past $FFFF" % (addr, length))
-    if addr <= 0xCFFF and end >= 0xC000:
-        raise ValueError("$%04X-$%04X would read I/O ($C000-$CFFF), which can change the machine's state" % (addr, end))
+    if addr <= 0xC0FF and end >= 0xC000:
+        raise ValueError("$%04X-$%04X would read the I/O soft switches ($C000-$C0FF), which can change the machine's state" % (addr, end))
+    if addr <= 0xCFFF <= end:
+        raise ValueError("$%04X-$%04X would read I/O at $CFFF, which switches off the cards' $C800 ROMs" % (addr, end))
 
 
 def read_memory(port, addr, length, retries=5):
