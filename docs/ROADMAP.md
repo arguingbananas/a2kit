@@ -7,7 +7,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 11 Novem
 | Work | Where | State |
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
-| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Shelved** after 48 clean hours with extra cooling, but two more `BRK` crashes on 11 November, with the RAMCard out |
+| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Reopened** on 11 November: after 48 clean hours with extra cooling, three crashes that day with the RAMCard out, the last a stack wipe 23 minutes into a canary run |
 | Crash reporter, `peek`, `canary` and `ramload` | `main` | Merged ([PR #6](https://github.com/arguingbananas/a2kit/pull/6)); `peek` reads the slot ROMs too ([PR #10](https://github.com/arguingbananas/a2kit/pull/10)) |
 | Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | `main` | Merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)); heard on the Apple II+ |
 | Longer sound using a language card | Branch `feature/language-card` | Works in MAME, show and video (11 Nov); docs written; the real-hardware test waits for a replacement card |
@@ -18,7 +18,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 11 Novem
 
 **Shelved on 10 November**, with the machine reliable enough to develop on: with extra cooling it ran clean for 48 hours (below). Keep the extra cooling in place. The tests to pick up later are listed under *When this is picked up again*.
 
-The machine has crashed or hung nine times with the receiver waiting and nobody touching it:
+The machine has crashed or hung ten times with the receiver waiting and nobody touching it:
 
 | When | Last known alive | Screen afterwards | Notes |
 |---|---|---|---|
@@ -31,6 +31,7 @@ The machine has crashed or hung nine times with the receiver waiting and nobody 
 | 7 Nov | 22:02, 5 h 23 min after reseating everything | Nothing new | A hang with no `BRK`; the space bar did nothing. Stack page `$0100–$01C3` zero, and 24 bytes at `$8080–$8546` changed to `00`, `80` or `01` |
 | 11 Nov | After 11:48, the last ROM read | `BD16- …` (a `BRK` at `$BD14`) | RAMCard out, a plain chip back in E3, extra cooling on; receiver from `feature/language-card`. Memory at `$BD00–$BD1F` was all `00`, so it ran into empty RAM. The stacked `P` was `$FA`, so interrupts were enabled and decimal mode on: not the receiver's state. Receiver code intact |
 | 11 Nov | Later the same day | Saved registers `000D- A=00 X=20 Y=00 P=36 S=18` (a `BRK` at `$000B`) | A second crash in zero page, with S down at `$18`, so it ran wild first. Afterwards the receiver stopped answering altogether |
+| 11 Nov | 13:24:25, 23 min into a canary run after a fresh `ramload` | Logged by the canary: `0002- A=5F X=20 Y=CF P=35 S=F1` (a `BRK` at `$0000`) | The stack page was wiped to zero (238 bytes) at 13:24:25, and the receiver crashed 30 s later, as a wiped stack makes it do. Free RAM `$0B00–$BFFF`, `$8000–$BFFF` included, held its pattern at every check before the crash. Receiver code intact; it went on answering |
 
 Two earlier oddities may be related, but that's unproven: a first picture at 115200 that came up as lo-res blocks with a dead keyboard, and a drop to Applesoft with nothing pressed.
 
@@ -52,7 +53,15 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 **The failing bit is in the language card's socket.** Rows C, D and E of the motherboard's RAM hold `$0000–$3FFF`, `$4000–$7FFF` and `$8000–$BFFF`, and the leftmost chip of each row, column 3, holds bit 0. So bit 0 of `$8000–$BFFF` is chip **E3**, and E3 is the socket a language card's pigtail plugs into: its chip is pulled so the cable can take its place. That matches this machine, whose pigtail goes into the leftmost socket of row E (photographed 10 November). These come from several Apple II forum answers that agree, not from Apple's own documentation ([RAM layout](https://www.applefritter.com/node/33651), [E3 and the language card](https://www.applefritter.com/comment/77315), [Gayler, *The Apple II Circuit Description*](https://www.applefritter.com/files/2023/10/26/W.%20Gayler%20-%20The%20Apple%20II%20Circuit%20Description.pdf)). E3 had been opened and refitted several times: fitting the RAMCard, reseating everything, and taking the card out for the canary run.
 
-**Still possible:** heat is now the likely trigger. **Leading theory:** a marginal contact in E3, from the socket's springs or the chip's legs worked loose by the refitting, or later the pigtail's own connection, that opens as the board warms. It fits one bit in one bank, the hours of warm-up before it failed, and the cure by better cooling. Otherwise: the E3 chip itself, or the power supply. A loose E3 contact doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; a sagging supply would explain both.
+**11 November: the stack wipes are back, and fast.** With the RAMCard out, a plain chip in E3 and the extra cooling on, the stack page was wiped to zero 23 minutes into a canary run, and the receiver crashed as a result. That is the symptom of 6 and 7 November, in the `$0000–$3FFF` bank (row C), not the bit-0 errors in `$8000–$BFFF` (row E) that the canary found on 8 November: the 45 KB it watches, E3's bank included, didn't change. It came after 23 minutes where the same cooling had held for 48 hours, so either something changed since 10 November (the RAMCard refitted and removed again, E3 reopened twice) or the fault isn't heat alone. The stack wipes now look like the main fault, and the power supply the leading suspect: a sagging or noisy supply can make DRAM lose its contents with no write, in any bank. **There may be two faults at once:** a marginal supply and one weak chip. The two symptoms sit in different places: bit 0 alone in `$8000–$BFFF` (one chip, E3) after hours of warm-up, and whole-page stack wipes in `$0100–$01FF` (another bank). One bad chip explains the first but not the second; a bad supply can explain both, but would usually hit more than one bit. They can also feed each other: a slightly low or noisy supply often shows up first in the weakest chip, which would explain why cooling seemed to cure everything for 48 hours and then didn't.
+
+**Next, in order:**
+1. **Measure the supplies**, the one check that could explain both: on a 4116, pin 8 is +12 V, pin 9 +5 V and pin 1 −5 V, with pin 16 ground. Measure on a row C chip and on E3, cold and after an hour. More than about 5% off, or drift as it warms, points at the supply; aging capacitors are a common fault at this age, fixed with a recap kit or a replacement supply.
+2. **If the supply is bad, fix it and run the canary again.** Bit-0 errors that remain in `$8000–$BFFF` are then the chip alone.
+3. **Settle the chip:** swap E3 with E4. If the errors move to bit 1 (xor `02`), it's the chip; if they stay on bit 0, the socket. 4116s are cheap, so replacing E3 outright is a reasonable shortcut.
+4. Keep running the canary between steps, to see whether the stack wipes come back as fast.
+
+**The earlier theory (8–10 November), still possible for the bit-0 errors:** heat as the trigger, through a marginal contact in E3, from the socket's springs or the chip's legs worked loose by the refitting, or later the pigtail's own connection, that opens as the board warms. It fits one bit in one bank, the hours of warm-up before it failed, and the cure by better cooling. Otherwise: the E3 chip itself, or the power supply. A loose E3 contact doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; a sagging supply would explain both.
 
 **11 November: a weak spot found.** The IRQ vector at `$03FE–$03FF` still held `$FFFF`, its power-on contents. Any interrupt that got through would send the CPU to `$FFFF` and on into zero page, which fits the second crash. The receiver keeps interrupts off, but the first crash's stacked `P` shows they were on by then. Pointing `$03FE` at the crash handler would report such a jump instead of letting it run wild (see [Small improvements](#3-small-improvements)).
 
