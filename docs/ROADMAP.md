@@ -118,7 +118,7 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 ## 3. Small improvements
 
 - **Point the IRQ vector at the crash handler.** The receiver sets the `BRK` vector but leaves `$03FE–$03FF` as power-up junk, so a stray interrupt runs wild instead of being reported. It needs about 10 bytes, and the receiver has none left: something else must shrink first.
-- **Check the player is in memory before starting it.** `show send` and `stream` end their upload by jumping to the sequencer (`$0C00`) or the video player (`$0E00`), which only `--install` puts there. If something has overwritten it since, the Apple II runs whatever is there and hangs. This happened on 10 November: a canary run filled `$0B00–$BFFF` with its pattern, and the next `show send` without `--install` hung the machine with no sound. Now that the receiver answers memory reads, compare the player in memory with `sequencer.bin` or `video.bin` first, and upload it if it doesn't match, saying so. `--install` would then only force a fresh copy.
+- **Check the video player is running before streaming without `--install`.** `show send` now checks its sequencer (see Done), but a running video player can't answer memory reads, so `stream` without `--install` still trusts that the player is there. A read request answered by the receiver would show it isn't; check first that the player safely ignores such a request.
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
 - **Document the working cable.** A photo or pinout of the cable and the card's jumper setting is still missing.
 - **Support Python 3.10.** Linux Mint 21 ships it, and the only 3.11 feature a2kit uses is `tomllib`. Fall back to the `tomli` package and lower the requirement.
@@ -224,4 +224,5 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **Measured results:** in the [Installation Guide](INSTALL.md#tested-setup).
 - **Version control:** the project is on GitHub.
 - **Restarting after Ctrl-Reset** (11 November 2026): the Manual explains why `980G` crashes after the first Reset and how to repair it, and the troubleshooting table lists the symptom.
+- **`show send` checks the sequencer** (11 November 2026): without `--install` it reads the sequencer back first, and uploads it if it's missing or different, so a show after a power cycle or a `canary` fill no longer jumps into whatever is at `$0C00`.
 - **ADTPro checked on this machine** (5 November 2026). A disk image went from the computer to the Emu and back byte-for-byte. Nothing in a2kit changed for this.

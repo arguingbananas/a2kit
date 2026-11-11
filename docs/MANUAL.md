@@ -284,7 +284,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 2. Edit it. Paths are relative to the script file.
 3. Check it: `./a2kit show plan myshow.toml`. It prints one line per piece (address, size, what it is), the total size and the estimated upload time.
 4. Make sure the receiver is listening (boot disk: it is; typed in: `0800G`).
-5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Use `--install` the first time after a power-up; later shows don't need it as long as the sequencer is still in memory. It names each piece as it uploads it, then reports how long the upload took (about 3 s for the starter show at 115200 baud, about 15 s at 19200).
+5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Without `--install`, `send` first reads the sequencer back from the Apple II, and uploads it too if it's missing or different, saying so. `--install` skips the check and always sends a fresh copy. It names each piece as it uploads it, then reports how long the upload took (about 3 s for the starter show at 115200 baud, about 15 s at 19200).
 6. Watch. Press any key to stop between scenes (sound cannot be interrupted once it starts).
 
 **The script format**
@@ -325,7 +325,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 **Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 115200, or `A2KIT_BAUD`), `--install`, `--rtscts`, `--language-card` (longer sound in a [language card](#a2kit-lcprobe); give it to `plan` and `send` alike).
 
-> If you send a show **without** `--install` and the sequencer isn't in memory, the Apple II will jump into empty memory and misbehave. After a power cycle always use `--install`.
+> The upload ends by jumping to the sequencer at `$0C00`, so it has to be there. `send` checks: if the sequencer is missing, for example after a power cycle or a `canary` fill, or doesn't match `sequencer.bin`, it says `the sequencer isn't in memory, so it is uploaded too` and sends it. If the receiver can't answer the check, which happens with a disk built before memory reads existed, it says `couldn't be checked` and sends it anyway.
 
 ---
 
