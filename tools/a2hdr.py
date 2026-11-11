@@ -167,7 +167,7 @@ def default_baud():
     try:
         return _baud(env)
     except argparse.ArgumentTypeError as e:
-        raise SystemExit("A2KIT_BAUD: %s" % e)
+        raise SystemExit("A2KIT_BAUD: %s" % e) from None
 
 
 def add_baud_arg(ap):

@@ -1,0 +1,14 @@
+# Lint settings for ruff (python3 -m ruff check .). a2kit isn't packaged; this file
+# only holds tool settings.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 200               # long lines are the house style; not checked
+
+[tool.ruff.lint]
+# Correctness only: syntax errors, pyflakes (unused or undefined names) and bugbear
+# (likely bugs). Style rules are left out on purpose.
+select = ["E9", "F", "B"]
+ignore = [
+    "B905",     # zip() without strict=: pairing a list with itself shifted by one is meant to be unequal
+]

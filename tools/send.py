@@ -123,7 +123,7 @@ def read_memory(port, addr, length, retries=5):
     while len(out) < length:
         count = min(length - len(out), 256)
         at = addr + len(out)
-        for attempt in range(retries):
+        for _ in range(retries):
             port.reset_input_buffer()
             port.write(make_read_packet(at, count))
             port.flush()
@@ -158,7 +158,7 @@ class Sender:
 
     def _send_packet(self, addr, data):
         pkt = make_packet(self.seq, addr, data)
-        for attempt in range(self.retries):
+        for _ in range(self.retries):
             self.port.reset_input_buffer()      # drop any late reply to an earlier try
             self.port.write(pkt)
             self.port.flush()

@@ -1,4 +1,4 @@
-import os, sys, threading, struct, time
+import os, shutil, subprocess, sys, tempfile, threading
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from PIL import Image, ImageDraw
 import a2hdr, imgconv, send, serial
@@ -9,14 +9,16 @@ img = Image.new("RGB", (400, 300), "black")
 d = ImageDraw.Draw(img)
 d.ellipse((50, 30, 350, 270), fill="white")
 d.rectangle((150, 100, 250, 200), fill="gray")
-img.save("/tmp/t.png")
-os.system("cd " + HERE + " && python3 imgconv.py /tmp/t.png -o /tmp/t.a2b --preview /tmp/t_prev.png")
-blk = open("/tmp/t.a2b", "rb").read()
+TMP = tempfile.mkdtemp(prefix="a2kit-test-")       # private to this run
+def T(name): return os.path.join(TMP, name)
+img.save(T("t.png"))
+subprocess.run([sys.executable, os.path.join(HERE, "imgconv.py"), T("t.png"), "-o", T("t.a2b"), "--preview", T("t_prev.png")], check=True)
+blk = open(T("t.a2b"), "rb").read()
 btype, cyc, payload = a2hdr.unpack(blk)
 expect(btype == 1 and len(payload) == 0x2000, "image block type and size")
 
 # 2. layout check: row y pixel x must be at the right byte/bit
-prev = Image.open("/tmp/t_prev.png").convert("1")
+prev = Image.open(T("t_prev.png")).convert("1")
 px = prev.load()
 bad = 0
 for y in range(192):
@@ -92,4 +94,5 @@ pic = send.upload_seconds([8192], 19200)
 starter = send.upload_seconds([332, 8192, 6912, 8192, 2048, 48], 19200)       # show send --install, examples/show.toml
 print("upload model: 8 KB picture %.2f s (measured about 4.8 s), starter show %.1f s (measured about 15 s)" % (pic, starter))
 expect(4.6 < pic < 5.0 and 14.5 < starter < 15.5, "upload-time model matches the real-hardware measurements")
+shutil.rmtree(TMP, ignore_errors=True)
 finish("test_a2kit")

@@ -87,9 +87,9 @@ def main():
     for stem, title in DOCS:
         text = open(os.path.join(HERE, stem + ".md"), encoding="utf-8").read()
         # links to another doc become links to its PDF; links into this doc stay in-document
-        def relink(m):
+        def relink(m):                  # used at once, in this pass of the loop
             other, frag = m.group(1), m.group(2) or ""
-            return "(%s)" % (frag if other == stem and frag else other + ".pdf")
+            return "(%s)" % (frag if other == stem and frag else other + ".pdf")  # noqa: B023
         text = re.sub(r"\((QUICKSTART|MANUAL|INSTALL)\.md(#[\w-]+)?\)", relink, text)
         text = re.sub(r"\[([^\]]+)\]\(workflow\.svg\)", r"\1 (in the docs folder)", text)
         text = text.replace("(ROADMAP.md)", "(%s/ROADMAP.md)" % DOCS_URL)     # no PDF of it, so link to GitHub
