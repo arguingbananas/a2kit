@@ -16,8 +16,9 @@ as every a2kit command that opens the port does, and says so. On Linux this
 turns an FTDI adapter's 16 ms latency timer down to 1 ms until it's unplugged.
 
 ping never ends the session, so the receiver is still listening afterwards and
-you can send straight away. It overwrites $07D0-$07F7 (the bottom text line)
-and the first --chunk bytes at $4000.
+you can send straight away. It overwrites $07D0-$07F7 (the bottom text line),
+$0750-$0777 (the line above, where it says which receiver it found) and the
+first --chunk bytes at $4000.
 
 Exit code: 0 if every packet was acknowledged, 1 if not, 2 for a usage error.
 """
@@ -167,6 +168,7 @@ def report(res, baud, chunk, out=print):
         out("Some packets got no reply: a loose connection, or the receiver stopped (a key pressed?).")
     if ok:
         out("Link OK. The Apple II's bottom line should read: A2KIT PING %d OF %d" % (res["sent"], res["sent"]))
+        out("(and the line above it, which receiver ping found: A2KIT %d RX ...)" % baud)
         if res["turnaround"]:
             p = sum(res["turnaround"]) / len(res["turnaround"])
             if p > GOOD_TURNAROUND:
@@ -197,7 +199,7 @@ def main():
     port = serial.Serial(a.port, a.baud, timeout=a.timeout)
     low = send.set_low_latency(port)
     print("pinging the Apple II on %s at %d baud%s" % (a.port, a.baud, " (low-latency mode on)" if low else ""))
-    rxid.check(port, a.baud, screen=False, out=print)     # the bottom line is ping's own proof
+    rxid.check(port, a.baud, out=print)       # row 22; ping's own proof goes on the bottom line
     res = run(port, a.baud, a.count, a.speed, a.chunk)
     port.close()
     sys.exit(report(res, a.baud, a.chunk))
