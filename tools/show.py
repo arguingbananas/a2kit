@@ -26,7 +26,9 @@ picture a hold (or add a wait) if you want it to stay up.
 
 Memory map (matches runtime/sequencer.s):
   $0B00 scene table | $0C00 sequencer | $2000 / $4000 HGR pages | $6000.. audio
---install also uploads sequencer.bin (needed once per power-up).
+--install also uploads sequencer.bin. Without it, send first reads the
+sequencer back from the Apple II and uploads it anyway if it's missing or
+different, saying so; --install skips that check and always sends a fresh copy.
 --language-card keeps sound going into a language card when main RAM is full:
 about 9 s of sound instead of 6.
 """
@@ -160,6 +162,16 @@ def sequencer_bin():
     return open(path, "rb").read()
 
 
+def sequencer_present(port, seq):
+    """True if the sequencer in memory matches seq, False if it doesn't, None if
+    the receiver couldn't be asked. Its variables are all in zero page, so a copy
+    that has already played a show still matches."""
+    try:
+        return send.read_memory(port, SEQ_ADDR, len(seq)) == seq
+    except IOError:
+        return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["plan", "send"])
@@ -184,7 +196,16 @@ def main():
 
     if not a.port:
         sys.exit("--port required")
-    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts), language_card=a.language_card)
+    port = send.open_port(a.port, a.baud, rtscts=a.rtscts)
+    if not a.install:
+        # the upload ends by jumping to $0C00, so make sure the sequencer is really there
+        seq = sequencer_bin()
+        found = sequencer_present(port, seq)
+        if not found:
+            print("the sequencer %s, so it is uploaded too, as with --install"
+                  % ("isn't in memory" if found is False else "couldn't be checked"), file=sys.stderr)
+            plan.insert(0, (SEQ_ADDR, seq, "sequencer"))
+    s = send.Sender(port, language_card=a.language_card)
     t0 = time.monotonic()
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)
