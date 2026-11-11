@@ -98,8 +98,6 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
 To get the boot disk's restart-by-itself behaviour on a typed-in receiver, also type `0980:20 2F FB 20 58 FC 20 00 08 90 F5 4C 69 FF` and start it with `980G` instead of `0800G`.
 
-**Which receiver is running.** The banner is just `A2KIT`. The speed and the build show up when a2kit first talks to it: every command reads the receiver's code back and compares it with this computer's `receiver.bin` (or `receiver-19200.bin`), says what it found, and `send`, `show send` and `stream --install` also write it to the Apple II's bottom line: `A2KIT 115200 RX MATCHES THIS PC`, or `A2KIT 115200 RX OTHER BUILD: RAMLOAD` for a different build ([`ramload`](#a2kit-ramload) puts the current one in memory). If the receiver answers only at the other speed, the command stops and names the `--baud` to use. If it can't answer a read at all, as with a disk made before memory reads existed, the command says so and goes on.
-
 Things to know (both options):
 
 - Pressing a key on the Apple II while the receiver is idle quits it.
@@ -119,6 +117,10 @@ The first Reset after power-up runs an Applesoft cold start, which drops you at 
 The first line restores the receiver's first bytes. The second makes `G` start the program with interrupts off, as the receiver expects. The rest of the receiver is untouched, so the banner comes back and it is listening again. Rebooting the disk (`PR#6`) also works, and starts from a clean slate. Memory you had uploaded, such as a show's sequencer, survives the Reset and the `980G` but not a reboot.
 
 A typed-in receiver loses the same three bytes: type `800:78 A9 00` and `48:04`, then `800G` (or `980G` if you typed in the restart loop too).
+
+#### Which receiver is running
+
+The banner is just `A2KIT`. The speed and the build show up when a2kit first talks to it: every command reads the receiver's code back and compares it with this computer's `receiver.bin` (or `receiver-19200.bin`), says what it found, and `ping`, `send`, `show send` and `stream --install` also write it on the Apple II's screen, on the line above the bottom one: `A2KIT 115200 RX MATCHES THIS PC`, or `A2KIT 115200 RX OTHER BUILD: RAMLOAD` for a different build ([`ramload`](#a2kit-ramload) puts the current one in memory). The boot disk clears the screen when an upload session ends, so after `send` or a show the line is gone; `ping` keeps the session open, so after a `ping` it stays, with `ping`'s own line below it. If the receiver answers only at the other speed, the command stops and names the `--baud` to use. If it can't answer a read at all, as with a disk made before memory reads existed, the command says so and goes on.
 
 ---
 
@@ -420,7 +422,7 @@ Checks the serial link to a running receiver and measures it. Run it before your
 4. Read the summary and the plain-language verdict at the end (below).
 
 ping never ends the session, so the receiver keeps listening and you can `send`, `show send` or `stream` straight afterwards.
-It writes to the bottom text line (`$07D0–$07F7`) and to the first `--chunk` bytes of hi-res page 2 (`$4000`), so don't run it between uploading data there with `send` and using it.
+It writes to the bottom text line (`$07D0–$07F7`), to the line above it, where it shows [which receiver it found](#which-receiver-is-running) (`$0750–$0777`), and to the first `--chunk` bytes of hi-res page 2 (`$4000`), so don't run it between uploading data there with `send` and using it.
 
 Every a2kit command that opens the port (`send`, `show send`, `stream`, `ping`, `peek`, `crash`, `canary` and `ramload`) first switches it to **low-latency mode** where the driver offers it; ping also says `(low-latency mode on)` on its first line when it did. On Linux this turns an FTDI USB adapter's 16 ms latency timer down to 1 ms with no `sudo`, until the adapter is unplugged. On a built-in port it changes nothing measurable; on Windows and macOS it does nothing.
 
@@ -682,7 +684,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
 | `$0300–$03CF` | **Free** (208 bytes) |
 | `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
-| `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`) |
+| `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`, and which receiver it found on the line above, `$0750–$0777`) |
 | `$0800–$0965` | Receiver (358 bytes, at either speed; the boot disk has room for 380) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |

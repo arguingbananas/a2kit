@@ -6,7 +6,7 @@ else. It reads the receiver's code back from $0800 and compares it with this
 computer's receiver.bin (or receiver-19200.bin at 19200 baud), then:
 
   - says which it is, on the computer and, unless asked not to, on the Apple
-    II's bottom text line ($07D0-$07F7), where ping writes too:
+    II's text row 22 ($0750-$0777), just above ping's line:
         A2KIT 115200 RX MATCHES THIS PC
         A2KIT 115200 RX OTHER BUILD: RAMLOAD
   - if the receiver doesn't answer at this speed but does at the other one,
@@ -25,7 +25,9 @@ import send
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 RECEIVER = 0x0800
-TEXT_LINE = 0x07D0              # text page 1, row 23 (the bottom line)
+TEXT_LINE = 0x0750              # text page 1, row 22, just above ping's line. The boot disk
+                                # clears the screen when a session ends, so after an upload
+                                # it is gone; after ping, which keeps the session, it stays
 BUILDS = {115200: "receiver.bin", 19200: "receiver-19200.bin"}
 RETRIES = 2                     # per speed: enough for a lost reply, quick when nothing answers
 

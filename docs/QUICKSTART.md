@@ -91,7 +91,7 @@ It has no DOS on it, so all of the Apple II's memory stays free.
 1. Get the image onto something your Apple II can boot: copy it to a Floppy Emu's SD card, write it to a real floppy, or open it in an emulator.
    The [Installation Guide](INSTALL.md#5-the-boot-disk) lists the ways.
 2. Connect the serial cable, put the disk in drive 1 (slot 6) and turn the Apple II on (or type `PR#6` at the BASIC prompt).
-3. The screen clears and shows `A2KIT`. When a2kit first talks to it, the bottom line shows the speed and whether it's this computer's build, for example `A2KIT 115200 RX MATCHES THIS PC`.
+3. The screen clears and shows `A2KIT`. After `a2kit ping` (below), the line above the bottom one shows the speed and whether it's this computer's build, for example `A2KIT 115200 RX MATCHES THIS PC`.
 
 Booted this way, the receiver **starts listening again by itself after every session**, on a freshly cleared screen, so you never type `0800G`.
 Pressing a key while it is waiting drops you into the Monitor; type `980G` there to start it again.
