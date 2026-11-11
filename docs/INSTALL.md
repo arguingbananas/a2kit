@@ -195,7 +195,7 @@ py -3 -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-Activate the environment (`source .venv/bin/activate`) in each new terminal before using a2kit.
+Activate the environment (`source .venv/bin/activate`) in each new terminal before using a2kit. On Linux and macOS, `./a2kit` and `make` find `.venv` by themselves, so those two work without activating it.
 If you also want to run the tests, install `requirements-dev.txt` instead, which adds `py65` (and `pypdf`, used only to rebuild these PDFs).
 
 The requirements files ask for no particular versions, so a2kit installs on any Python from 3.11 up. To get exactly the versions it was last tested with, add `constraints.txt` (tested on Python 3.12):
