@@ -13,7 +13,7 @@ sys.path.insert(0, HERE)
 from py65.devices.mpu6502 import MPU as MPU6502
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
-import a2hdr, canary, crash, peek, send
+import a2hdr, canary, crash, peek, send, show
 from testlib import expect, finish
 
 NAME = sys.argv[1] if len(sys.argv) > 1 else "receiver.bin"
@@ -146,6 +146,25 @@ for at, n, ok in ((0xBFFF, 1, True), (0xBFFF, 2, False), (0xC000, 1, False), (0x
     expect(res == ok, "read range $%04X + %d %s" % (at, n, "allowed" if ok else "refused"))
 expect(peek.dump(0x03F5, bytes(range(5))) == ["03F5- 00 01 02", "03F8- 03 04"], "peek's dump lines up on 8-byte boundaries like the Monitor")
 expect(peek.parse_hex("$BD00") == peek.parse_hex("0xBD00") == peek.parse_hex("bd00") == 0xBD00, "peek takes $BD00, 0xBD00 or BD00")
+
+# show send checks the sequencer is in memory before jumping to it
+seq = show.sequencer_bin()
+m = idle()
+expect(show.sequencer_present(m, seq) is False, "show send sees the sequencer is missing from a fresh machine")
+for i, b in enumerate(seq):
+    m.mem[show.SEQ_ADDR + i] = b
+expect(show.sequencer_present(m, seq) is True, "show send sees the sequencer is in memory")
+m.mem[show.SEQ_ADDR + 0x40] ^= 0x55             # as a canary fill or another upload would leave it
+expect(show.sequencer_present(m, seq) is False, "show send sees a damaged sequencer")
+
+
+class Silent:
+    """A port with nothing answering at the other end."""
+    def write(self, d): pass
+    def flush(self): pass
+    def reset_input_buffer(self): pass
+    def read(self, k=1): return b""
+expect(show.sequencer_present(Silent(), seq) is None, "show send says when the sequencer couldn't be checked")
 
 # a marker arriving just before a reply, as when a crash races a read
 m = idle(); m.tx.clear(); m.tx.append(send.CRASH_MARK)
