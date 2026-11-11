@@ -154,6 +154,7 @@ expect(r["calls"].count(INIT) == 3 and r["calls"].count(HOME) == 3,
        "the screen is reset (INIT, HOME) before each of the 3 starts, so only one banner shows at a time")
 expect(r["tx"] == [0x06] * 4, "every packet ACKed")
 expect(r["outcome"] == "monitor", "a key while idle ends in the Monitor")
+expect(mem[0x3F1] == 0x08 and 0x0800 < (mem[0x3F0] | mem[0x3F1] << 8) < 0x0980, "the booted receiver catches BRK with its own crash handler")
 
 # ---------------------------------------------------------------- 3. the ROM model's assumption, stated
 expect(sector(0)[0] == 2, "boot sector asks the ROM for exactly 2 sectors")

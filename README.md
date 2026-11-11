@@ -32,6 +32,7 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | `./a2kit image` / `audio` / `video` | Convert a picture, a WAV, or an animation |
 | `./a2kit show plan` / `show send` | Build and send a slideshow with sound (`show.toml`) |
 | `./a2kit ping` | Check the serial link to the Apple II and measure its speed |
+| `./a2kit peek` / `crash` / `canary` / `ramload` | Read Apple II memory / report or watch for crashes / watch free RAM for changes / start a new receiver build without the disk |
 | `./a2kit send` / `stream` | Upload one block / play a video over serial |
 | `./a2kit disk` | Make `a2kit-boot.dsk`, a disk that boots straight into the receiver (one is included, plus a 19200-baud one) |
 | `./a2kit mon receiver.bin` | Print the receiver as Monitor lines, if you'd rather type it in |

@@ -81,7 +81,7 @@ The `video` command prints how many bytes each frame needs and warns if the pict
 
 ## Step 3. Start the receiver on the Apple II
 
-The receiver is a 293-byte program that listens on the serial card. There are two ways to start it.
+The receiver is a 374-byte program that listens on the serial card. There are two ways to start it.
 
 ### Option A: boot the a2kit disk (easiest)
 
@@ -104,11 +104,11 @@ Pressing a key while it is waiting drops you into the Monitor; type `980G` there
    ./a2kit mon receiver.bin
    ```
 
-   You get 37 lines like `0800:A9 00 85 EC A4 EC B9 FE`, then a last line, `0800G`.
+   You get 47 lines like `0800:78 A9 00 85 CE 85 EC A4`, then a last line, `0800G`.
 
 2. On the Apple II, get to the Monitor prompt (`*`). From BASIC that's `CALL -151`.
 3. Type the lines exactly as printed, pressing Return after each one. **Don't type the last line yet.**
-4. Check your typing: type `0800.0924` and compare the dump with the printed lines.
+4. Check your typing: type `0800.0975` and compare the dump with the printed lines.
 5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver stops after each session, so type `0800G` again before every send.
