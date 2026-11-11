@@ -15,6 +15,7 @@ import argparse
 import sys
 
 import a2hdr
+import rxid
 import send
 
 
@@ -46,7 +47,9 @@ def main():
     except ValueError as e:
         sys.exit("refusing to read: %s" % e)
 
-    data = send.read_memory(send.open_port(a.port, a.baud), a.addr, a.length)
+    port = send.open_port(a.port, a.baud)
+    rxid.check(port, a.baud, screen=False)    # peek only reads
+    data = send.read_memory(port, a.addr, a.length)
     print("\n".join(dump(a.addr, data)))
     if a.output:
         with open(a.output, "wb") as f:

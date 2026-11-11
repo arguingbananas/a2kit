@@ -126,7 +126,6 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 
 ## 3. Small improvements
 
-- **Point the IRQ vector at the crash handler.** The receiver sets the `BRK` vector but leaves `$03FE–$03FF` as power-up junk, so a stray interrupt runs wild instead of being reported. It needs about 10 bytes, and the receiver has none left: something else must shrink first.
 - **Check the video player is running before streaming without `--install`.** `show send` now checks its sequencer (see Done), but a running video player can't answer memory reads, so `stream` without `--install` still trusts that the player is there. A read request answered by the receiver would show it isn't; check first that the player safely ignores such a request.
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
 - **Document the working cable.** A photo or pinout of the cable and the card's jumper setting is still missing.
@@ -207,7 +206,7 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 
 1. **Check the disk controller.** An early Apple II may have a 13-sector controller (boot ROM 341-0009) rather than the 16-sector one (341-0027) the boot disk needs. If so, type the receiver in with `./a2kit mon receiver.bin`.
 2. **Free the serial port.** Stop anything else using it, such as the ADTPro server. A cable and jumper setting that work with ADTPro are a good sign for a2kit.
-3. **Start the receiver.** Boot the disk, or type it in, and confirm the `A2KIT RX READY` banner.
+3. **Start the receiver.** Boot the disk, or type it in, and confirm the `A2KIT` banner.
 4. **Check the link.** `./a2kit ping` should count to `A2KIT PING 10 OF 10` on the Apple II's bottom line and report `Link OK`. Note the port delay and the speed.
 5. **Build up.** Send a full picture, then the starter show, then video without sound, then with sound.
 6. **Leave it idle for a while.** Run `./a2kit crash --watch` for at least a couple of hours, once a build with it is available. Short tests missed the crashes in section 1.
@@ -234,4 +233,5 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **Version control:** the project is on GitHub.
 - **Restarting after Ctrl-Reset** (11 November 2026): the Manual explains why `980G` crashes after the first Reset and how to repair it, and the troubleshooting table lists the symptom.
 - **`show send` checks the sequencer** (11 November 2026): without `--install` it reads the sequencer back first, and uploads it if it's missing or different, so a show after a power cycle or a `canary` fill no longer jumps into whatever is at `$0C00`.
+- **The receiver says who it is, and reports stray interrupts** (11 November 2026): the banner is just `A2KIT`, which freed 22 bytes. Every command reads the receiver back on first contact, says whether it's this computer's build and at which speed (on the Apple II's bottom line too, for uploads), and names the `--baud` to use when the speeds don't match. The IRQ vector now points at the Monitor's `BRK` path, so a stray interrupt is reported like a crash instead of running wild.
 - **ADTPro checked on this machine** (5 November 2026). A disk image went from the computer to the Emu and back byte-for-byte. Nothing in a2kit changed for this.

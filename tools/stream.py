@@ -19,6 +19,7 @@ import sys
 import time
 
 import a2hdr
+import rxid
 import send
 
 PLAYER_ADDR = 0x0E00
@@ -102,6 +103,7 @@ def main():
     port.reset_input_buffer()
 
     if a.install:
+        rxid.check(port, a.baud)     # without --install the player is running, and can't answer reads
         s = send.Sender(port, language_card=a.language_card)
         for addr, piece in (a2hdr.audio_pieces(0, audio) if audio else ()):     # audio must be in RAM before the stream starts
             print("uploading %d bytes of audio to $%04X" % (len(piece), addr), file=sys.stderr)

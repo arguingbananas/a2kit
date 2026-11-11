@@ -24,6 +24,7 @@ import time
 
 import a2hdr
 import crash
+import rxid
 import send
 
 LO, HI = 0x0B00, 0xC000         # the region checked, [LO, HI)
@@ -125,6 +126,7 @@ def main():
         ap.error("--check and --interval must be positive")
 
     port = send.open_port(a.port, a.baud, timeout=1.0)
+    rxid.check(port, a.baud, screen=False)    # the canary only reads, apart from its fill
     run(port, a.baud, a.check, not a.no_fill, a.interval, out=lambda s: print(s, flush=True))
 
 

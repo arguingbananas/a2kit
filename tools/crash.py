@@ -19,6 +19,7 @@ import time
 
 import a2hdr
 import peek
+import rxid
 import send
 
 CRASH_FLAG = 0x00CE     # holds send.CRASH_MARK after a crash
@@ -99,6 +100,7 @@ def main():
     a = ap.parse_args()
 
     port = send.open_port(a.port, a.baud, timeout=1.0)
+    rxid.check(port, a.baud, screen=False)    # crash only reads
     if a.watch:
         watch(port, a.baud, a.interval, out=lambda s: print(s, flush=True))
     elif crashed(port):
