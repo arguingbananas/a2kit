@@ -126,6 +126,7 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 
 ## 3. Small improvements
 
+- **Bytes the receiver can give back.** It is 362 of the 380 bytes the boot disk has. If new receiver code needs more room, the cheapest saving is the centred banner: dropping its two lines (`lda #17` / `sta CH`) frees 4 bytes and puts `A2KIT` back at the left.
 - **Check the video player is running before streaming without `--install`.** `show send` now checks its sequencer (see Done), but a running video player can't answer memory reads, so `stream` without `--install` still trusts that the player is there. A read request answered by the receiver would show it isn't; check first that the player safely ignores such a request.
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
 - **Document the working cable.** A photo or pinout of the cable and the card's jumper setting is still missing.

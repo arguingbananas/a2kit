@@ -7,8 +7,8 @@ computer's receiver.bin (or receiver-19200.bin at 19200 baud), then:
 
   - says which it is, on the computer and, unless asked not to, on the Apple
     II's text row 22 ($0750-$0777), just above ping's line:
-        A2KIT 115200 RX MATCHES THIS PC
-        A2KIT 115200 RX OTHER BUILD: RAMLOAD
+        A2KIT 115200 RX VERSION MATCH
+        A2KIT 115200 RX VERSION MISMATCH      (a2kit ramload puts this one in memory)
   - if the receiver doesn't answer at this speed but does at the other one,
     stops with the --baud to use;
   - if it doesn't answer a read at all (no receiver, or a disk from before
@@ -88,11 +88,11 @@ def check(port, baud=a2hdr.DEFAULT_BAUD, screen=True, out=_stderr):
                          % (found, baud, found, baud))
     if found == "same":
         out("receiver: %s, %d baud, matches this computer's build" % (BUILDS[baud], baud))
-        line = "A2KIT %d RX MATCHES THIS PC" % baud
+        line = "A2KIT %d RX VERSION MATCH" % baud
     else:
         out("receiver: answers at %d baud, but isn't this computer's %s; "
             "a2kit ramload --port ... puts the current one in memory" % (baud, BUILDS[baud]))
-        line = "A2KIT %d RX OTHER BUILD: RAMLOAD" % baud
+        line = "A2KIT %d RX VERSION MISMATCH" % baud
     if screen:
         send.Sender(port).send_blob(apple_text(line), TEXT_LINE)
     return found

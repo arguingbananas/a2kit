@@ -51,6 +51,7 @@ LOWSCR  = $C054                 ; page 1
 HIRES   = $C057
 LC_WRITE = $C081                ; read twice: read ROM, write a language card's RAM (bank 2)
 COUT    = $FDED
+CH      = $24                   ; Monitor: the cursor's column
 BRKVEC  = $03F0                 ; Monitor: where BRK goes after saving the registers
 IRQVEC  = $03FE                 ; Monitor: where an IRQ goes (power-up junk unless set)
 MONBRK  = $FA4C                 ; Monitor: its BRK path (save the registers, JMP (BRKVEC))
@@ -75,10 +76,14 @@ CRASH_S = $20                   ; the crash handler's stack pointer
 start:
         sei                     ; nothing here uses interrupts (init still points the
                                 ; IRQ vector at the crash path, in case one gets through)
-        ; banner
+        ; banner, centred on the top line (the first bytes stay 78 A9 00, which the
+        ; Manual's repair after Ctrl-Reset puts back)
         lda #0
         sta crashed
         sta tmo
+        lda #(40 - 5) / 2       ; 5 letters in 40 columns: start at column 17
+        sta CH                  ; (4 bytes: if the receiver ever needs room, drop these
+                                ;  two lines and the banner goes back to the left)
 @ban:   ldy tmo
         lda msg,y
         beq @rdy
