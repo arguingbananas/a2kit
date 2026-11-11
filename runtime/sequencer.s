@@ -9,7 +9,8 @@
 ;
 ; Any key stops the show between scenes (audio can't be interrupted: it's
 ; cycle-timed). Memory map: table $0B00, this code $0C00-$0DFF, HGR pages
-; $2000/$4000, audio data from $6000 (must be page aligned).
+; $2000/$4000, audio data from $6000 (must be page aligned), which can carry on
+; into a language card from $D000 (see splay in speaker.inc).
 ;
 ; Interrupts are off and decimal mode is cleared while it runs; both are
 ; restored afterwards. Runs at the normal 1.02 MHz only: the sound and the
@@ -83,7 +84,7 @@ do_play:
         sta aptr+1
         lda table+3,y
         sta apages
-        jsr play
+        jsr splay
         jmp adv
 
 do_wait:

@@ -19,7 +19,7 @@ from testlib import expect, finish
 NAME = sys.argv[1] if len(sys.argv) > 1 else "receiver.bin"
 BAUD = 19200 if "19200" in NAME else a2hdr.DEFAULT_BAUD
 code = open(os.path.join(ROOT, NAME), "rb").read()
-expect(len(code) + 6 <= 380, "%s leaves room for the language-card lines in the boot image (%d bytes)" % (NAME, len(code)))
+expect(len(code) <= 380, "%s, language-card lines included, fits the boot image's 380 bytes (%d bytes)" % (NAME, len(code)))
 D, S, CMD, CTRL = 0xC0A8, 0xC0A9, 0xC0AA, 0xC0AB
 INSDS1, RGDSP1, MON, COUT = 0xF882, 0xFADA, 0xFF65, 0xFDED
 

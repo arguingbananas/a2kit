@@ -79,6 +79,16 @@ cases = [(0x2000, 0x2000, False), (0x6000, 0x6000, False), (0x0B00, 256, False),
 bad_cases = [(hex(a), n) for a, n, want in cases if refused(a, n) != want]
 print("destination guard: %d cases, wrong: %s" % (len(cases), bad_cases or "none"))
 expect(not bad_cases, "send.check_range allows and refuses the right ranges")
+def card_refused(addr, n):
+    try:
+        send.check_range(addr, n, language_card=True); return False
+    except ValueError:
+        return True
+cases = [(0xD000, 0x2F00, False), (0xE000, 256, False), (0xFE00, 256, False), (0xFE00, 257, True), (0xFF00, 1, True),
+         (0xC000, 1, True), (0xCFFF, 2, True), (0x0800, 1, True), (0x6000, 0x6000, False)]
+bad_cases = [(hex(a), n) for a, n, want in cases if card_refused(a, n) != want]
+expect(not bad_cases, "--language-card allows the card up to $FEFF and nothing else new: %s" % bad_cases)
+expect(refused(0xD000, 1), "without --language-card, the card's addresses are refused")
 # 5. the upload-time model agrees with what a real Apple II+ measured
 pic = send.upload_seconds([8192], 19200)
 starter = send.upload_seconds([332, 8192, 6912, 8192, 2048, 48], 19200)       # show send --install, examples/show.toml

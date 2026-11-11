@@ -73,7 +73,7 @@ expect(m.mem[0x2B] == 0x50 and m.motor == [0xC0D8], "the boot code gets the disk
 expect(m.mpu.sp > 0xF0, "the stack starts fresh")
 expect(ramload.verify(m, new) is True, "the code in memory matches the image")
 expect(ramload.verify(m, boot) is False, "a different image is noticed")
-for at in (0x0800, 0x08FF, 0x0901, 0x0950, 0x09FF):     # none stops the receiver answering
+for at in (0x0800, 0x08FF, 0x0901, 0x0990, 0x09FF):     # none stops the receiver answering ($0990 is boot code, run once)
     keep = m.mem[at]; m.mem[at] = keep ^ 0xFF
     expect(ramload.verify(m, new) is False, "one damaged byte at $%04X is noticed" % at)
     m.mem[at] = keep

@@ -18,6 +18,8 @@
 ; sends $C3, sets the crash flag, prints the registers and keeps listening, so
 ; the PC can read what the Monitor saved. A key still drops to the Monitor.
 ;
+; With a language card in slot 0, $D000-$FFFF writes land in its RAM (bank 2).
+;
 ; Loads at $0800, staging buffer at $0A00. 8N1; slot and speed in config.inc.
 ; The banner shows the speed it was built for, so a mismatch is easy to spot.
 ;
@@ -43,6 +45,7 @@ TXTSET  = $C051                 ; text on
 MIXCLR  = $C052                 ; full screen
 LOWSCR  = $C054                 ; page 1
 HIRES   = $C057
+LC_WRITE = $C081                ; read twice: read ROM, write a language card's RAM (bank 2)
 COUT    = $FDED
 BRKVEC  = $03F0                 ; Monitor: where BRK goes after saving the registers
 INSDS1  = $F882                 ; Monitor: print the saved PC
@@ -194,6 +197,8 @@ init:   ldx #SLOTX              ; X holds the slot offset from here on
         sta BRKVEC
         lda #>crash
         sta BRKVEC+1
+        bit LC_WRITE            ; packets for $D000 and up go to a language card; ROM
+        bit LC_WRITE            ; stays readable, and with no card these do nothing
         bit KBDSTRB             ; clear any pending keypress
         rts
 

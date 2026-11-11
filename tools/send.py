@@ -26,7 +26,8 @@ keep the 1 MHz CPU from being overrun.
 
 Destinations are checked first: the tool refuses to write over zero page and
 the stack ($0000-$01FF), the receiver itself ($0800-$0AFF) or I/O and ROM
-($C000-$FFFF).
+($C000-$FFFF). --language-card allows $D000-$FEFF, which goes to bank 2 of a
+language card in slot 0 (a2kit lcprobe checks for one).
 """
 import argparse
 import struct
@@ -70,14 +71,16 @@ def upload_seconds(sizes, baud=a2hdr.DEFAULT_BAUD, chunk=128, turnaround=TURNARO
     return t
 
 
-def check_range(addr, length):
+def check_range(addr, length, language_card=False):
     """Raise ValueError if [addr, addr+length) is off the end of memory or
-    touches a protected area."""
+    touches a protected area. A language card's RAM is allowed only if asked for."""
     if length <= 0:
         return
     end = addr + length - 1
     if addr < 0 or end > 0xFFFF:
         raise ValueError("$%04X + %d bytes runs past $FFFF" % (addr, length))
+    if language_card and a2hdr.CARD_START <= addr and end < a2hdr.CARD_END:
+        return
     for lo, hi, what in PROTECTED:
         if addr <= hi and end >= lo:
             raise ValueError("$%04X-$%04X would overwrite %s ($%04X-$%04X)" % (addr, end, what, lo, hi))
@@ -148,13 +151,14 @@ def read_memory(port, addr, length, retries=5):
 
 
 class Sender:
-    def __init__(self, port, chunk=128, retries=5):
+    def __init__(self, port, chunk=128, retries=5, language_card=False):
         if not 1 <= chunk <= 255:
             raise ValueError("chunk must be 1-255")
         self.port = port
         self.chunk = chunk
         self.retries = retries
         self.seq = 0
+        self.language_card = language_card
 
     def _send_packet(self, addr, data):
         pkt = make_packet(self.seq, addr, data)
@@ -170,7 +174,7 @@ class Sender:
         raise IOError("no ACK after %d tries (seq %d, addr $%04X)" % (self.retries, self.seq, addr))
 
     def send_blob(self, data, addr, progress=None):
-        check_range(addr, len(data))
+        check_range(addr, len(data), self.language_card)
         pos = 0
         while pos < len(data):
             part = data[pos:pos + self.chunk]
@@ -215,6 +219,7 @@ def main():
     ap.add_argument("--chunk", type=int, default=128)
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--rtscts", action="store_true", help="hardware flow control")
+    a2hdr.add_language_card_arg(ap)
     args = ap.parse_args()
 
     data = open(args.file, "rb").read()
@@ -228,14 +233,14 @@ def main():
     if addr is None:
         sys.exit("need --addr for this file")
     try:
-        check_range(addr, len(data))
+        check_range(addr, len(data), args.language_card)
     except ValueError as e:
         sys.exit("refusing to send: %s" % e)
     if not 1 <= args.chunk <= 255:
         sys.exit("--chunk must be 1-255")
 
     port = open_port(args.port, args.baud, rtscts=args.rtscts)
-    s = Sender(port, args.chunk, args.retries)
+    s = Sender(port, args.chunk, args.retries, args.language_card)
     t0 = time.time()
 
     def progress(done, total):

@@ -2,7 +2,7 @@
 """show: build and deploy a scene show from a project file.
 
   a2kit show plan  show.toml                 # convert and print the upload plan
-  a2kit show send  show.toml --port /dev/ttyUSB0 [--install]
+  a2kit show send  show.toml --port /dev/ttyUSB0 [--install] [--language-card]
 
 show.toml (asset paths are relative to the file):
 
@@ -27,6 +27,8 @@ picture a hold (or add a wait) if you want it to stay up.
 Memory map (matches runtime/sequencer.s):
   $0B00 scene table | $0C00 sequencer | $2000 / $4000 HGR pages | $6000.. audio
 --install also uploads sequencer.bin (needed once per power-up).
+--language-card keeps sound going into a language card when main RAM is full:
+about 9 s of sound instead of 6.
 """
 import argparse
 import os
@@ -44,8 +46,7 @@ TABLE_ADDR = 0x0B00
 TABLE_MAX = 256
 SEQ_ADDR = 0x0C00
 HGR_PAGES = {1: 0x2000, 2: 0x4000}
-AUDIO_START = 0x6000
-AUDIO_END = 0xC000          # exclusive; DOS or other software may want some of this
+AUDIO_START = a2hdr.AUDIO_START
 
 OP_END, OP_SHOW, OP_PLAY, OP_WAIT = 0, 1, 2, 3
 
@@ -99,7 +100,7 @@ def check_scene(sc, where):
     return kinds[0]
 
 
-def build(project_path):
+def build(project_path, language_card=False):
     """Return a list of (addr, bytes, label) to upload, sequencer excluded."""
     base = os.path.dirname(os.path.abspath(project_path))
     with open(project_path, "rb") as f:
@@ -112,7 +113,7 @@ def build(project_path):
         raise ValueError("no [[scene]] entries")
 
     plan, table = [], bytearray()
-    next_page, audio_addr = 1, AUDIO_START
+    next_page, audio_used = 1, 0
 
     for i, sc in enumerate(scenes, 1):
         where = "scene %d" % i
@@ -132,12 +133,15 @@ def build(project_path):
                 raise ValueError("%s: %s: no such file" % (where, sc["audio"]))
             data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0),
                                      even_out=sc.get("even_out", False))
-            if audio_addr + len(data) > AUDIO_END:
-                raise ValueError("%s: audio doesn't fit below $%04X" % (where, AUDIO_END))
-            plan.append((audio_addr, data, "%s: %s -> $%04X (%.1f s)" % (
-                where, sc["audio"], audio_addr, len(data) * 2 / a2hdr.SPEAKER_RATE)))
-            table += entry(OP_PLAY, 0, audio_addr >> 8, len(data) // 256)
-            audio_addr += len(data)
+            if audio_used + len(data) > a2hdr.audio_pages_limit(language_card) * 256:
+                raise ValueError("%s: audio doesn't fit below $%04X%s" % (where, *(
+                    (a2hdr.CARD_END, "") if language_card else
+                    (a2hdr.AUDIO_MAIN_END, " (with a language card in slot 0, --language-card holds more)"))))
+            for addr, piece in a2hdr.audio_pieces(audio_used, data):
+                plan.append((addr, piece, "%s: %s -> $%04X (%.1f s)" % (
+                    where, sc["audio"], addr, len(piece) * 2 / a2hdr.SPEAKER_RATE)))
+            table += entry(OP_PLAY, 0, a2hdr.audio_addr(audio_used) >> 8, len(data) // 256)
+            audio_used += len(data)
         else:
             table += entry(OP_WAIT, *divmod(ticks(sc["wait"]), 256)[::-1])
 
@@ -164,9 +168,10 @@ def main():
     a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="also upload the sequencer")
     ap.add_argument("--rtscts", action="store_true")
+    a2hdr.add_language_card_arg(ap)
     a = ap.parse_args()
 
-    plan = build(a.project)
+    plan = build(a.project, a.language_card)
     if a.install:
         plan.insert(0, (SEQ_ADDR, sequencer_bin(), "sequencer"))
     total = sum(len(d) for _, d, _ in plan)
@@ -179,7 +184,7 @@ def main():
 
     if not a.port:
         sys.exit("--port required")
-    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts))
+    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts), language_card=a.language_card)
     t0 = time.monotonic()
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)

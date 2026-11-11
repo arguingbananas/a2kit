@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-lcprobe-disk-mon-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -92,7 +92,7 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 1. `./a2kit mon receiver.bin` prints 47 lines of Monitor input (`0800:78 A9 00 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
 2. On the Apple II, reach the Monitor prompt `*` (from BASIC: `CALL -151`).
 3. Type the 47 address lines, pressing Return after each. Leave out the `0800G` for now.
-4. Verify: type the range `mon` printed at the end (`0800.0975` for `receiver.bin`) and compare the dump against what you typed.
+4. Verify: type the range `mon` printed at the end (`0800.097B` for `receiver.bin`) and compare the dump against what you typed.
 5. Connect the cable and type `0800G`. You should see `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
@@ -175,7 +175,7 @@ You **don't** need to run it before using sound in a show or video, because thos
    ```bash
    ./a2kit audio examples/jingle.wav -o out/jingle.a2b
    ```
-3. Read the line it prints, for example `wrote out/jingle.a2b: 6920 bytes, 1.7 s`. If it's over about 6 seconds it won't fit in a show or video.
+3. Read the line it prints, for example `wrote out/jingle.a2b: 6920 bytes, 1.7 s`. If it's over about 6 seconds it won't fit in a show or video (about 9 with a [language card](#a2kit-lcprobe)).
 4. If it's speech, add `--even-out`. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
 
 **Usage:** `./a2kit audio INPUT -o OUTPUT [options]`
@@ -193,7 +193,7 @@ You **don't** need to run it before using sound in a show or video, because thos
 
 **Speech:** a voice has brief loud peaks and is much quieter the rest of the time. The sound is scaled so the loudest peak fills the 16 levels, so most of a voice uses only a level or two either side of the middle, and it comes out faint and grainy. `--even-out` fixes that the way radio does, with what audio engineers call a compressor. It cuts the bass the speaker can't play (below 150 Hz), then turns the loud parts down, so the quieter parts fill more of the levels once the whole clip is scaled up again. Nothing is clipped. On a 1994 recording of Dylan Thomas reading on the tested Apple II+, it was clearly the most intelligible of three versions: plain, `--gain 1.5` (as loud, but with about 1% of the samples clipped), and evened out. The catch is that background hiss in the pauses comes up too. Leave it off for music and sound effects, whose loudness changes are part of the sound.
 
-**Limits:** one block holds at most 65,280 bytes (about 16 s), but a show or video has room for only about 6 seconds in total (see [memory map](#112-memory-map)).
+**Limits:** one block holds at most 65,280 bytes (about 16 s), but a show or video has room for only about 6 seconds in total, or about 9 with a [language card](#a2kit-lcprobe) (see [memory map](#112-memory-map)).
 
 ---
 
@@ -226,7 +226,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 
 - the sound plays **in order, chopped into chunks** spread through the clip; it is not lined up with specific frames;
 - the show runs **longer than the video alone**, by the length of the sound plus a short pause (0.05 s) per burst; the summary line gives the total;
-- the sound is uploaded first and lives in memory, so clips with sound **need `--install`** when streamed, and the whole sound must fit in about 6 seconds.
+- the sound is uploaded first and lives in memory, so clips with sound **need `--install`** when streamed, and the whole sound must fit in about 6 seconds (about 9 with `--language-card` and a [language card](#a2kit-lcprobe)).
 
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
@@ -242,6 +242,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `--max-seconds N` | Use only the first N seconds. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
+| `--language-card` | Only with `--audio`. Allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe). Stream the clip with `--language-card` too. |
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
 | `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
 | `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
@@ -304,11 +305,11 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 **Limits**
 
 - At most **two** image scenes (one per hi-res page). Showing a third picture isn't supported.
-- Sound totals about **6 seconds** across the show.
+- Sound totals about **6 seconds** across the show, or about 9 with `--language-card` and a [language card](#a2kit-lcprobe).
 - About 40 scene entries (a `hold` counts as one extra).
 - If you break a limit, `plan` stops with a message such as `only two image scenes fit` or `audio doesn't fit below $C000`.
 
-**Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 115200, or `A2KIT_BAUD`), `--install`, `--rtscts`.
+**Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 115200, or `A2KIT_BAUD`), `--install`, `--rtscts`, `--language-card` (longer sound in a [language card](#a2kit-lcprobe); give it to `plan` and `send` alike).
 
 > If you send a show **without** `--install` and the sequencer isn't in memory, the Apple II will jump into empty memory and misbehave. After a power cycle always use `--install`.
 
@@ -345,10 +346,11 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--chunk N` | Bytes per packet, 1–255 (default 128). Smaller packets recover faster on a noisy link. |
 | `--retries N` | Resends per packet before giving up (default 5). |
 | `--rtscts` | Turn on hardware flow control on your computer's port. Leave off unless your cable needs it. |
+| `--language-card` | Also allow `--addr` in `$D000–$FEFF`, which goes to a [language card](#a2kit-lcprobe)'s RAM. |
 
 **How it protects your data:** each packet carries an address and a checksum, and the Apple II replies ACK or NAK. A bad packet is resent and never written to memory.
 
-**Protected memory:** `send` refuses (before opening the port) any destination that would overwrite zero page and the stack (`$0000–$01FF`), the receiver and its buffer (`$0800–$0AFF`), or I/O and ROM (`$C000–$FFFF`).
+**Protected memory:** `send` refuses (before opening the port) any destination that would overwrite zero page and the stack (`$0000–$01FF`), the receiver and its buffer (`$0800–$0AFF`), or I/O and ROM (`$C000–$FFFF`). With `--language-card`, `$D000–$FEFF` is allowed and goes to the card.
 
 **Not for videos:** `.a2v` files are played with [`stream`](#8-a2kit-stream).
 
@@ -374,6 +376,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--baud N` | Line speed: the number in the receiver's banner, 115200 (default) or 19200. `A2KIT_BAUD` sets the default. |
 | `--install` | Upload the video player (and any sound) first. Use it every time unless the player is already running. **Required** for clips with sound. |
 | `--rtscts` | Hardware flow control on your port. |
+| `--language-card` | Needed for a clip made with `video --language-card`: uploads the part of the sound past 6.2 s to a [language card](#a2kit-lcprobe). |
 
 **Things to know**
 
@@ -384,7 +387,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -519,6 +522,39 @@ This only changes memory. **A reboot or power-off brings back whatever is on the
 - `--boot FILE` loads another 512-byte boot image. Use one built for the speed you're running at; `--baud 19200` picks `boot-19200.bin` by default.
 - `--disk-slot` names the disk card's slot, if it isn't 6. The boot code uses it to turn off that drive's motor.
 
+### `a2kit lcprobe`
+
+Tests a language card: 16K of extra RAM in slot 0 of a II or II+, such as Apple's Language Card or the Microsoft RAMCard. With one, shows and videos can hold about **9 seconds** of sound instead of 6 (see *Longer sound* below).
+
+```bash
+./a2kit lcprobe --port /dev/ttyUSB0
+```
+
+It uploads a small test program to `$1200`, which writes a pattern and its inverse to all 16K (both 4K banks at `$D000` and the 8K at `$E000–$FFFF`), checks them, and switches back to ROM. The result appears on the Apple II's screen and on your computer:
+
+```
+RESULT: 16K GOOD
+Language card OK: --language-card is safe to use. Press a key on the Apple II to go back to the receiver.
+```
+
+Press a key on the Apple II afterwards to go back to the receiver. The test overwrites `$1200–$148D`, and everything on the card.
+
+**Longer sound.** Add `--language-card` to `video`, `show plan`, `show send` and `stream`, and sound that doesn't fit below `$C000` carries on in the card, at `$D000–$FEFF` in its bank 2. That's 47 more pages of 256 bytes, about 3 seconds, after the 6.2 s in main RAM. The top page, `$FF00–$FFFF`, is left alone because it holds the 6502's vectors.
+
+```bash
+./a2kit show send examples/long_show.toml --port /dev/ttyUSB0 --install --language-card
+./a2kit video clip.gif -o out/clip.a2v --audio long.wav --language-card
+./a2kit stream out/clip.a2v --port /dev/ttyUSB0 --install --language-card
+```
+
+- Without `--language-card`, nothing changes: sound longer than about 6 seconds is refused, as before.
+- Only use it after `lcprobe` has reported `16K GOOD`. On a machine without a card, the sound past 6.2 s would play from ROM as noise.
+- The receiver always lets uploads for `$D000` and up go to the card's RAM while ROM stays readable. Without a card that changes nothing. The players switch the card's RAM in only around the sound that's in it, and switch ROM back before they return.
+- `send --language-card` also accepts `--addr` anywhere in `$D000–$FEFF`.
+- A IIe has the same 16K built in, but a2kit hasn't been tried on one.
+
+**Tested:** `lcprobe` reported `16K GOOD` on a real Microsoft RAMCard. Long sound in a show and in a video has so far only played in MAME's emulated Apple II+ with its Language Card, where recordings of the sound matched the source WAV, including the part played from the card.
+
 ### `a2kit disk`
 
 Makes the boot disk image. Ready-made `a2kit-boot.dsk` (115200 baud) and `a2kit-boot-19200.dsk` come with a2kit, so you only need this after rebuilding the receivers (for example after changing the slot in `runtime/config.inc`; `./a2kit build` remakes both images too).
@@ -566,7 +602,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0975`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.097B`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
 | Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Use the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
@@ -630,24 +666,24 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0300–$03CF` | **Free** (208 bytes) |
 | `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
 | `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`) |
-| `$0800–$0975` | Receiver (374 bytes; 373 for the 19200 one) |
+| `$0800–$097B` | Receiver (380 bytes, all the room the boot disk has; 379 for the 19200 one) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
 | `$0C00–$0C99` | Sequencer |
-| `$0D00–$0D4B` | Speaker routine used by the sequencer |
-| `$0E00–$0F37` | Video player |
-| `$1000–$104B` | Speaker routine used by the video player |
-| `$104C–$1FFF` | **Free** (about 4K) |
+| `$0D00–$0D7E` | Speaker routine used by the sequencer |
+| `$0E00–$0F3D` | Video player |
+| `$1000–$107E` | Speaker routine used by the video player |
+| `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`) |
 | `$2000–$3FFF` | Hi-res page 1 |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s) |
 | `$C000–$CFFF` | I/O and slot ROMs |
-| `$D000–$FFFF` | Applesoft and Monitor ROM |
+| `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
 
 Text page 2 (`$0800–$0BFF`) is the same memory as the receiver, buffer and scene table, so a2kit never displays it.
 
-**Language card (64K machines).** On a II+ with a 16K language card in slot 0 (Apple's Language Card, the Microsoft RAMCard, a Saturn card and so on), or on a IIe, 16K of RAM can be switched in over `$D000–$FFFF`: 12K at `$E000–$FFFF`, plus two 4K banks that share `$D000–$DFFF`. There's no DOS on the boot disk, so a2kit leaves all 16K unused and free. It is not yet available to `send`, `show` or `stream`: `send` refuses `$C000–$FFFF`, and the receiver doesn't switch the card. While the card's RAM is switched in for reading, the Monitor and Applesoft ROM routines can't be called.
+**Language card (64K machines).** On a II+ with a 16K language card in slot 0 (Apple's Language Card, the Microsoft RAMCard, a Saturn card and so on), or on a IIe, 16K of RAM can be switched in over `$D000–$FFFF`: 8K at `$E000–$FFFF`, plus two 4K banks that share `$D000–$DFFF`. There's no DOS on the boot disk, so the whole card is free for a2kit. The receiver sets the card to *read ROM, write RAM in bank 2* every time it starts, so uploads to `$D000–$FEFF` land in the card while the Monitor stays usable; without a card those switches do nothing. With `--language-card`, sound carries on there past `$BFFF` ([`lcprobe`](#a2kit-lcprobe)). The players switch the card's RAM in for reading only around the sound that's in it, and switch ROM back before returning, because while the card is read, the Monitor and Applesoft ROM routines can't be called. Bank 1 at `$D000` and the top page `$FF00–$FFFF`, which holds the 6502's vectors, are left unused.
 
 The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
 
@@ -666,7 +702,7 @@ If a program hits `BRK`, the Monitor saves the registers (PC at `$3A–$3B`; A, 
 |---|---|
 | Apple II | 48K II, II+ or IIe at 1.02 MHz with a Super Serial Card in slot 2 ([details](INSTALL.md#hardware)) |
 | Screen | 280×192, black and white, two pages |
-| Sound in a show or video | about 6 seconds in total |
+| Sound in a show or video | about 6 seconds in total; about 9 with a language card and `--language-card` |
 | Sound quality | 4 bits at about 7972 Hz (one-bit speaker) |
 | Images in a show | 2 |
 | Video frame size | about 300 bytes at 6 fps and 19200 baud, about 1,800 at 115200 (budget = baud ÷ 10 ÷ fps × 0.95) |

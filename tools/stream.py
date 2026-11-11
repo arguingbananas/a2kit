@@ -22,7 +22,6 @@ import a2hdr
 import send
 
 PLAYER_ADDR = 0x0E00
-AUDIO_ADDR = 0x6000
 BURST_MARGIN = 0.05     # extra quiet time after each burst, seconds (USB scheduling jitter)
 PREAMBLE = b"\xFE" * 4  # frame-start marks: the player starts in sync
 END = b"\x80\x80"       # end of stream (twice: one corrupted byte mustn't end it)
@@ -83,6 +82,7 @@ def main():
     a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="upload the player (and any audio) through the receiver first")
     ap.add_argument("--rtscts", action="store_true")
+    a2hdr.add_language_card_arg(ap)
     a = ap.parse_args()
 
     fps, frames, audio = a2hdr.parse_stream(open(a.file, "rb").read())
@@ -90,6 +90,8 @@ def main():
         sys.exit("%s: bad frame rate in file" % a.file)
     if audio and not a.install:
         sys.exit("this clip has audio, which is uploaded through the receiver: use --install")
+    if len(audio) // 256 > a2hdr.AUDIO_PAGES and not a.language_card:
+        sys.exit("this clip has more sound than main RAM holds: it needs --language-card")
     sched, total = plan_stream(frames, fps, a.baud)
     late = lateness(sched, fps)
     if late > LATE_WARN:
@@ -100,10 +102,10 @@ def main():
     port.reset_input_buffer()
 
     if a.install:
-        s = send.Sender(port)
-        if audio:                       # audio must be in RAM before the stream starts
-            print("uploading %d bytes of audio to $%04X" % (len(audio), AUDIO_ADDR), file=sys.stderr)
-            s.send_blob(audio, AUDIO_ADDR)
+        s = send.Sender(port, language_card=a.language_card)
+        for addr, piece in (a2hdr.audio_pieces(0, audio) if audio else ()):     # audio must be in RAM before the stream starts
+            print("uploading %d bytes of audio to $%04X" % (len(piece), addr), file=sys.stderr)
+            s.send_blob(piece, addr)
         here = os.path.dirname(os.path.abspath(__file__))
         player = open(os.path.join(here, "..", "video.bin"), "rb").read()
         s.send_blob(player, PLAYER_ADDR)

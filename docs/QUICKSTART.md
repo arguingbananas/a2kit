@@ -108,7 +108,7 @@ Pressing a key while it is waiting drops you into the Monitor; type `980G` there
 
 2. On the Apple II, get to the Monitor prompt (`*`). From BASIC that's `CALL -151`.
 3. Type the lines exactly as printed, pressing Return after each one. **Don't type the last line yet.**
-4. Check your typing: type `0800.0975` and compare the dump with the printed lines.
+4. Check your typing: type `0800.097B` and compare the dump with the printed lines.
 5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver stops after each session, so type `0800G` again before every send.
@@ -175,7 +175,7 @@ For about 8 seconds, rings and a spinning cross move all over the screen, lookin
   Use `--crop` to fill the screen instead of letterboxing, and `--invert` if it comes out too dark.
 - **An animation:** put frames in a folder (`frame001.png`, `frame002.png`, …) or use a GIF. Keep the background plain and the moving part small.
 - **A show:** copy `examples/show.toml` and change the file names.
-- **Sound:** short is best. A show or video holds about 6 seconds of sound in total. For speech, add `even_out = true` to the show's audio scene (or `--even-out` to `a2kit audio` or `a2kit video`): it's much clearer.
+- **Sound:** short is best. A show or video holds about 6 seconds of sound in total (about 9 with a language card: see [`a2kit lcprobe`](MANUAL.md#a2kit-lcprobe)). For speech, add `even_out = true` to the show's audio scene (or `--even-out` to `a2kit audio` or `a2kit video`): it's much clearer.
 
 ## Starter assets
 

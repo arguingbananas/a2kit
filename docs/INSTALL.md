@@ -126,7 +126,8 @@ You need no Apple II at all to convert files and look at previews.
   Some cards have been refitted with a modern WDC 65C51 chip, which always reports its transmitter as ready. a2kit only ever sends one reply byte at a time, long after the previous one has gone, so it shouldn't be affected, but this is untested.
 - **Display:** any. A monochrome or green-screen monitor shows the pictures best; colour monitors and TVs add coloured fringes to hi-res graphics.
 - **Sound:** the built-in speaker. No sound card is needed (a Mockingboard isn't used).
-- **Not needed:** a language card, an 80-column card, or any DOS. (DOS would take memory that sound needs.)
+- **Optional:** a 16K language card in slot 0 (such as Apple's Language Card or the Microsoft RAMCard). With one, shows and videos can hold about 9 seconds of sound instead of 6; check it with `a2kit lcprobe` ([Manual](MANUAL.md#a2kit-lcprobe)).
+- **Not needed:** an 80-column card, or any DOS. (DOS would take memory that sound needs.)
 
 **The cable**
 

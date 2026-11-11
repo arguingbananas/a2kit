@@ -56,6 +56,43 @@ SPEAKER_PLAYER_CYCLES = 128
 SPEAKER_RATE = CPU_HZ / SPEAKER_PLAYER_CYCLES   # ~7972 Hz
 
 
+# --- where sound lives ---
+# Main RAM from $6000 to $BFFF. With a language card in slot 0 (a2kit lcprobe
+# checks for one) it carries on from $D000 to $FEFF in bank 2. The top page is
+# left alone because it holds the 6502's vectors. Must match splay in speaker.inc.
+AUDIO_START = 0x6000
+AUDIO_MAIN_END = 0xC000         # exclusive
+CARD_START = 0xD000
+CARD_END = 0xFF00               # exclusive
+AUDIO_PAGES = (AUDIO_MAIN_END - AUDIO_START) // 256
+AUDIO_PAGES_CARD = AUDIO_PAGES + (CARD_END - CARD_START) // 256
+
+
+def audio_pages_limit(language_card=False):
+    return AUDIO_PAGES_CARD if language_card else AUDIO_PAGES
+
+
+def audio_addr(offset):
+    """The address of this many bytes into the sound area."""
+    main = AUDIO_MAIN_END - AUDIO_START
+    return AUDIO_START + offset if offset < main else CARD_START + offset - main
+
+
+def audio_pieces(offset, data):
+    """Split sound starting this far into the sound area into (address, bytes)
+    pieces to upload, hopping over $C000-$CFFF."""
+    main = AUDIO_MAIN_END - AUDIO_START
+    if offset < main < offset + len(data):
+        split = main - offset
+        return [(audio_addr(offset), data[:split]), (CARD_START, data[split:])]
+    return [(audio_addr(offset), data)]
+
+
+def add_language_card_arg(ap):
+    ap.add_argument("--language-card", action="store_true",
+                    help="use the RAM of a language card in slot 0 (check with: a2kit lcprobe)")
+
+
 # --- streamed blocks (video) ---
 # Too big for a 16-bit payload length, so the header's length field holds the
 # frame count instead. File layout after the 8-byte header:

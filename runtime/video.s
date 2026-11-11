@@ -26,7 +26,7 @@
 ; end of the screen ($3FFF), or a bad audio burst makes the player discard
 ; bytes until the next $FE. So a lost or corrupted byte costs at most the rest
 ; of that one frame, the player never writes outside $2000-$3FFF, and audio is
-; only ever read from $6000-$BFFF. Interrupts are off and decimal mode is
+; only ever read from $6000-$BFFF or a language card's $D000-$FEFF. Interrupts are off and decimal mode is
 ; cleared while it runs (both restored on return). Sound needs the normal
 ; 1.02 MHz clock: on an accelerated machine it plays at the wrong pitch.
 ;
@@ -34,7 +34,8 @@
 ; port, so it only runs in bursts the host schedules between frames. The host
 ; waits out each burst before sending more (a byte arriving mid-burst would
 ; be lost). Audio data must already be in RAM at $6000 (uploaded earlier with
-; the packet receiver); each burst continues where the last one stopped.
+; the packet receiver), carrying on at $D000 in a language card if it's long
+; (see splay in speaker.inc); each burst continues where the last one stopped.
 ;
 ; Loads at $0E00 (player routine at $1000). Build: ca65 -I runtime runtime/video.s -o video.o
 ;                        ld65 -C runtime/video.cfg video.o -o video.bin
@@ -186,9 +187,12 @@ burst:  jsr getb                ; page count
 @go:    clc
         adc aptr+1
         bcs lost                ; wrapped past $FF00: certainly bad
-        cmp #$C1                ; must stay within $6000-$BFFF
+        ldy aptr+1
+        cpy #$C1
+        bcs @play               ; already in the card: the wrap check was enough
+        cmp #$F0                ; from main RAM: $C000 up to $EF00 means $D000 up to $FF00
         bcs lost
-        jsr play
+@play:  jsr splay
         ldx #SLOTX              ; play uses X
         jmp vop
 

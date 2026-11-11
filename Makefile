@@ -5,7 +5,11 @@ PYTHON ?= $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3)
 # Two receivers and boot disks: 115200 baud (the default) and 19200 baud.
 # Everything else (sequencer, video player, host tools) works with either.
 all: receiver.bin sequencer.bin video.bin boot.bin a2kit-boot.dsk \
-     receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk
+     receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin
+
+lcprobe.bin: runtime/lcprobe.s runtime/lcprobe.cfg runtime/config.inc
+	ca65 -I runtime runtime/lcprobe.s -o lcprobe.o
+	ld65 -C runtime/lcprobe.cfg lcprobe.o -o lcprobe.bin
 
 receiver.bin: runtime/receiver.s runtime/hdr.inc runtime/config.inc runtime/receiver.cfg
 	ca65 -I runtime runtime/receiver.s -o receiver.o
@@ -48,6 +52,7 @@ test: all
 	$(PYTHON) tools/test_sequencer.py
 	$(PYTHON) tools/test_video.py
 	$(PYTHON) tools/test_audio.py
+	$(PYTHON) tools/test_language_card.py
 	$(PYTHON) tools/test_boot.py
 	$(PYTHON) tools/test_boot.py 19200
 	$(PYTHON) tools/test_ping.py
@@ -66,4 +71,4 @@ smoke: all
 
 clean:
 	rm -f *.o receiver.bin sequencer.bin video.bin video.lbl boot.bin a2kit-boot.dsk \
-	      receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk
+	      receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin
