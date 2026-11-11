@@ -1,5 +1,6 @@
 # Python
-.venv/
+# (no trailing slash, so a .venv link to another worktree's environment is ignored too)
+.venv
 venv/
 __pycache__/
 *.pyc

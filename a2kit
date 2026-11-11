@@ -1,2 +1,6 @@
 #!/bin/sh
-exec python3 "$(dirname "$0")/tools/a2kit.py" "$@"
+# Use the project's virtual environment (.venv) if there is one, otherwise python3 from the PATH
+here="$(dirname "$0")"
+py=python3
+[ -x "$here/.venv/bin/python3" ] && py="$here/.venv/bin/python3"
+exec "$py" "$here/tools/a2kit.py" "$@"
