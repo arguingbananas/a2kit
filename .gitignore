@@ -13,3 +13,6 @@ out/
 
 # Temporary files from docs/make_pdfs.py
 docs/.*.pdfbuild.*
+
+# Personal Claude Code notes (see CLAUDE.md for the shared ones)
+CLAUDE.local.md

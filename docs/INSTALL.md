@@ -198,6 +198,20 @@ python -m pip install -r requirements.txt
 Activate the environment (`source .venv/bin/activate`) in each new terminal before using a2kit.
 If you also want to run the tests, install `requirements-dev.txt` instead, which adds `py65` (and `pypdf`, used only to rebuild these PDFs).
 
+The requirements files ask for no particular versions, so a2kit installs on any Python from 3.11 up. To get exactly the versions it was last tested with, add `constraints.txt` (tested on Python 3.12):
+
+```bash
+python3 -m pip install -r requirements-dev.txt -c constraints.txt
+```
+
+To check the Python packages for known security problems, use `pip-audit`. It looks them up online in PyPI's and OSV's vulnerability databases:
+
+```bash
+python3 -m pip install pip-audit
+python3 -m pip_audit -r requirements-dev.txt    # a2kit's own dependencies
+python3 -m pip_audit                            # everything installed in this environment, pip itself included
+```
+
 > **Careful:** the package is called **`pyserial`**. A different package called `serial` exists and will *not* work. If you see `No module named 'serial'` after installing something, run `python3 -m pip uninstall serial` and install `pyserial`.
 
 ### Step 4. Optional tools
