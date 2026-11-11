@@ -170,7 +170,7 @@ expect(show.sequencer_present(Silent(), seq) is None, "show send says when the s
 m = idle(); m.tx.clear()
 said = []
 expect(rxid.check(m, BAUD, out=said.append) == "same", "rxid recognises this computer's %s" % NAME)
-expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX MATCHES THIS PC" % BAUD),
+expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX VERSION MATCH" % BAUD),
        "rxid writes what it found to the bottom line")
 expect(said and "matches" in said[0], "rxid says so on the computer too")
 m = idle(); m.tx.clear()
@@ -181,7 +181,7 @@ m = idle(); m.tx.clear()
 m.mem[0x0810] ^= 0x01                            # another build, or damage
 said = []
 expect(rxid.check(m, BAUD, out=said.append) == "other" and "ramload" in said[0], "rxid spots a receiver that isn't this build, and says how to update it")
-expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX OTHER BUILD: RAMLOAD" % BAUD),
+expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX VERSION MISMATCH" % BAUD),
        "...and shows it on the bottom line")
 said = []
 expect(rxid.check(Silent(), BAUD, out=said.append) is None and "could not identify" in said[0], "no answer to a read: rxid says so and lets the command go on")

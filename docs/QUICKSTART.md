@@ -91,7 +91,7 @@ It has no DOS on it, so all of the Apple II's memory stays free.
 1. Get the image onto something your Apple II can boot: copy it to a Floppy Emu's SD card, write it to a real floppy, or open it in an emulator.
    The [Installation Guide](INSTALL.md#5-the-boot-disk) lists the ways.
 2. Connect the serial cable, put the disk in drive 1 (slot 6) and turn the Apple II on (or type `PR#6` at the BASIC prompt).
-3. The screen clears and shows `A2KIT`. After `a2kit ping` (below), the line above the bottom one shows the speed and whether it's this computer's build, for example `A2KIT 115200 RX MATCHES THIS PC`.
+3. The screen clears and shows `A2KIT`, centred on the top line. After `a2kit ping` (below), the line above the bottom one shows the speed and whether it's this computer's build, for example `A2KIT 115200 RX VERSION MATCH`.
 
 Booted this way, the receiver **starts listening again by itself after every session**, on a freshly cleared screen, so you never type `0800G`.
 Pressing a key while it is waiting drops you into the Monitor; type `980G` there to start it again.
@@ -105,11 +105,11 @@ After **Ctrl-Reset**, though, `980G` crashes (`0802-` and registers): reboot the
    ./a2kit mon receiver.bin
    ```
 
-   You get 45 lines like `0800:78 A9 00 85 CE 85 EC A4`, then a last line, `0800G`.
+   You get 46 lines like `0800:78 A9 00 85 CE 85 EC A9`, then a last line, `0800G`.
 
 2. On the Apple II, get to the Monitor prompt (`*`). From BASIC that's `CALL -151`.
 3. Type the lines exactly as printed, pressing Return after each one. **Don't type the last line yet.**
-4. Check your typing: type `0800.0965` and compare the dump with the printed lines.
+4. Check your typing: type `0800.0969` and compare the dump with the printed lines.
 5. Connect the serial cable, then type **`0800G`**. The screen shows `A2KIT`.
 
 Typed in, the receiver stops after each session, so type `0800G` again before every send.

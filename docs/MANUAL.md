@@ -81,7 +81,7 @@ to a2kit; the card's wiring jumpers (which swap the transmit and receive lines) 
 There is no DOS on it, so the memory DOS would use (`$9600–$BFFF`) stays free for sound. See the [Installation Guide](INSTALL.md#5-the-boot-disk) for getting it onto a floppy, a Floppy Emu or an emulator.
 
 1. Connect the cable, put the disk in drive 1 of the disk controller (normally slot 6), and power on, or type `PR#6` at the BASIC prompt.
-2. The screen clears and shows `A2KIT`. The disk sets the line speed: `a2kit-boot.dsk` runs at 115200 baud, `a2kit-boot-19200.dsk` at 19200 (see [2.4](#24-line-speed-115200-or-19200-baud)).
+2. The screen clears and shows `A2KIT`, centred on the top line. The disk sets the line speed: `a2kit-boot.dsk` runs at 115200 baud, `a2kit-boot-19200.dsk` at 19200 (see [2.4](#24-line-speed-115200-or-19200-baud)).
 
 The booted receiver **restarts itself after every session**: a picture, a show or a video ends and it is listening again on a freshly cleared screen, with no typing.
 A key pressed while it is waiting drops you into the Monitor; `980G` (or `CALL 2432` from BASIC) starts it again.
@@ -89,11 +89,11 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 
 **Option B: type it in.**
 
-1. `./a2kit mon receiver.bin` prints 45 lines of Monitor input (`0800:78 A9 00 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
+1. `./a2kit mon receiver.bin` prints 46 lines of Monitor input (`0800:78 A9 00 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
 2. On the Apple II, reach the Monitor prompt `*` (from BASIC: `CALL -151`).
-3. Type the 45 address lines, pressing Return after each. Leave out the `0800G` for now.
-4. Verify: type the range `mon` printed at the end (`0800.0965` for `receiver.bin`) and compare the dump against what you typed.
-5. Connect the cable and type `0800G`. You should see `A2KIT`.
+3. Type the 46 address lines, pressing Return after each. Leave out the `0800G` for now.
+4. Verify: type the range `mon` printed at the end (`0800.0969` for `receiver.bin`) and compare the dump against what you typed.
+5. Connect the cable and type `0800G`. You should see `A2KIT`, centred on the top line.
 
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
 To get the boot disk's restart-by-itself behaviour on a typed-in receiver, also type `0980:20 2F FB 20 58 FC 20 00 08 90 F5 4C 69 FF` and start it with `980G` instead of `0800G`.
@@ -120,7 +120,7 @@ A typed-in receiver loses the same three bytes: type `800:78 A9 00` and `48:04`,
 
 #### Which receiver is running
 
-The banner is just `A2KIT`. The speed and the build show up when a2kit first talks to it: every command reads the receiver's code back and compares it with this computer's `receiver.bin` (or `receiver-19200.bin`), says what it found, and `ping`, `send`, `show send` and `stream --install` also write it on the Apple II's screen, on the line above the bottom one: `A2KIT 115200 RX MATCHES THIS PC`, or `A2KIT 115200 RX OTHER BUILD: RAMLOAD` for a different build ([`ramload`](#a2kit-ramload) puts the current one in memory). The boot disk clears the screen when an upload session ends, so after `send` or a show the line is gone; `ping` keeps the session open, so after a `ping` it stays, with `ping`'s own line below it. If the receiver answers only at the other speed, the command stops and names the `--baud` to use. If it can't answer a read at all, as with a disk made before memory reads existed, the command says so and goes on.
+The banner is just `A2KIT`. The speed and the build show up when a2kit first talks to it: every command reads the receiver's code back and compares it with this computer's `receiver.bin` (or `receiver-19200.bin`), says what it found, and `ping`, `send`, `show send` and `stream --install` also write it on the Apple II's screen, on the line above the bottom one: `A2KIT 115200 RX VERSION MATCH`, or `A2KIT 115200 RX VERSION MISMATCH` for a different build ([`ramload`](#a2kit-ramload) puts the current one in memory). The boot disk clears the screen when an upload session ends, so after `send` or a show the line is gone; `ping` keeps the session open, so after a `ping` it stays, with `ping`'s own line below it. If the receiver answers only at the other speed, the command stops and names the `--baud` to use. If it can't answer a read at all, as with a disk made before memory reads existed, the command says so and goes on.
 
 ---
 
@@ -621,7 +621,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 | Symptom | Likely causes and fixes |
 |---|---|
 | `980G` shows `0802-` and registers instead of the banner | You pressed Ctrl-Reset: the Applesoft cold start zeroed the receiver's first three bytes. Type `800:78 A9 00`, `48:04`, then `980G` ([After Ctrl-Reset](#after-ctrl-reset)), or reboot the disk. |
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0965`, with the printed lines). Speeds that don't match: `--baud` must match the disk; commands that reach the receiver say which to use. |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0969`, with the printed lines). Speeds that don't match: `--baud` must match the disk; commands that reach the receiver say which to use. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
 | Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Use the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
@@ -685,7 +685,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0300–$03CF` | **Free** (208 bytes) |
 | `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
 | `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`, and which receiver it found on the line above, `$0750–$0777`) |
-| `$0800–$0965` | Receiver (358 bytes, at either speed; the boot disk has room for 380) |
+| `$0800–$0969` | Receiver (362 bytes, at either speed; the boot disk has room for 380) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
