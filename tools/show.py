@@ -41,6 +41,7 @@ import tomllib
 import a2hdr
 import audioconv
 import imgconv
+import rxid
 import send
 from PIL import Image
 
@@ -197,6 +198,7 @@ def main():
     if not a.port:
         sys.exit("--port required")
     port = send.open_port(a.port, a.baud, rtscts=a.rtscts)
+    rxid.check(port, a.baud)
     if not a.install:
         # the upload ends by jumping to $0C00, so make sure the sequencer is really there
         seq = sequencer_bin()

@@ -96,7 +96,7 @@ def boot(order, max_steps=3_000_000, script=None):
     return dict(outcome=st["outcome"], text="".join(screen_text), tx=tx, calls=calls, io=io, mem=mem, ctrl=ctrl)
 
 # ---------------------------------------------------------------- 1. boot alone, both orders
-BANNER = "A2KIT RX READY %d" % BAUD           # the banner names the disk's speed
+BANNER = "A2KIT"                              # the speed and build come from rxid.py, not the banner
 # The receiver clears any pending key just after its banner (a key typed while
 # it starts is ignored), so the scripted key presses come a moment later.
 SETTLE = 20000          # steps after the banner before "pressing" a key
@@ -114,7 +114,7 @@ for name, order in (("DOS 3.3 order", DOS_ORDER), ("ProDOS order", PRODOS_ORDER)
     expect(moved == receiver, "%s: receiver.bin moved byte-for-byte to $0800" % name)
     expect(0xC0E8 in r["io"], "%s: drive motor turned off (slot 6: $C0E8)" % name)
     expect(r["calls"][:2] == [SETVID, SETKBD] and INIT in r["calls"], "%s: I/O hooks reset before any output" % name)
-    expect(r["text"].count(BANNER) == 1, "%s: banner printed once, naming the speed" % name)
+    expect(r["text"].count(BANNER) == 1, "%s: banner printed once" % name)
     want = {19200: 0x1F, 115200: 0x10}[BAUD]
     expect(r["ctrl"] == [want], "%s: 6551 control register set to $%02X for %d baud" % (name, want, BAUD))
 

@@ -21,6 +21,7 @@ import sys
 import time
 
 import a2hdr
+import rxid
 import send
 
 PROBE_ADDR = 0x1200
@@ -48,6 +49,7 @@ def main():
         sys.exit("lcprobe.bin not found; run: a2kit build")
     import serial
     port = serial.Serial(a.port, a.baud, timeout=0.5)
+    rxid.check(port, a.baud, screen=False)    # the probe prints its own report
     s = send.Sender(port)
     s.send_blob(open(path, "rb").read(), PROBE_ADDR)
     s.finish(PROBE_ADDR)

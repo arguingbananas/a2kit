@@ -13,7 +13,7 @@ sys.path.insert(0, HERE)
 from py65.devices.mpu6502 import MPU as MPU6502
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
-import a2hdr, canary, crash, peek, send, show
+import a2hdr, canary, crash, peek, rxid, send, show
 from testlib import expect, finish
 
 NAME = sys.argv[1] if len(sys.argv) > 1 else "receiver.bin"
@@ -166,6 +166,50 @@ class Silent:
     def read(self, k=1): return b""
 expect(show.sequencer_present(Silent(), seq) is None, "show send says when the sequencer couldn't be checked")
 
+# every command identifies the receiver on first contact (rxid.py)
+m = idle(); m.tx.clear()
+said = []
+expect(rxid.check(m, BAUD, out=said.append) == "same", "rxid recognises this computer's %s" % NAME)
+expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX MATCHES THIS PC" % BAUD),
+       "rxid writes what it found to the bottom line")
+expect(said and "matches" in said[0], "rxid says so on the computer too")
+m = idle(); m.tx.clear()
+before = bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40))
+rxid.check(m, BAUD, screen=False, out=said.append)
+expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == before, "with screen=False (peek, crash, canary) it writes nothing")
+m = idle(); m.tx.clear()
+m.mem[0x0810] ^= 0x01                            # another build, or damage
+said = []
+expect(rxid.check(m, BAUD, out=said.append) == "other" and "ramload" in said[0], "rxid spots a receiver that isn't this build, and says how to update it")
+expect(bytes(m.mem[rxid.TEXT_LINE + i] for i in range(40)) == rxid.apple_text("A2KIT %d RX OTHER BUILD: RAMLOAD" % BAUD),
+       "...and shows it on the bottom line")
+said = []
+expect(rxid.check(Silent(), BAUD, out=said.append) is None and "could not identify" in said[0], "no answer to a read: rxid says so and lets the command go on")
+
+
+class OtherSpeed:
+    """The receiver, reachable only at its own speed: at any other, nothing gets through."""
+    def __init__(self, m, real, baudrate):
+        self.m, self.real, self.baudrate = m, real, baudrate
+    def write(self, d):
+        if self.baudrate == self.real: self.m.write(d)
+    def flush(self): pass
+    def reset_input_buffer(self): self.m.reset_input_buffer()
+    def read(self, k=1): return self.m.read(k) if self.baudrate == self.real else b""
+wrong = 19200 if BAUD == 115200 else 115200
+p = OtherSpeed(idle(), BAUD, wrong)
+try:
+    rxid.check(p, wrong, out=said.append); msg = ""
+except SystemExit as e:
+    msg = str(e)
+expect("use --baud %d" % BAUD in msg, "rxid finds a receiver running at the other speed and names the --baud to use (%s)" % msg)
+expect(p.baudrate == wrong, "...and leaves the port at the speed it was opened with")
+try:
+    rxid.check(idle(), wrong, out=said.append); msg = ""     # a pseudo-terminal (MAME) answers at any speed
+except SystemExit as e:
+    msg = str(e)
+expect("use --baud %d" % BAUD in msg, "rxid recognises the other speed's build even where the line answers at any speed (%s)" % msg)
+
 # a marker arriving just before a reply, as when a crash races a read
 m = idle(); m.tx.clear(); m.tx.append(send.CRASH_MARK)
 class KeepMarker:
@@ -211,6 +255,21 @@ m = Machine(); m.mpu.p &= ~0x04; m.step(20000)
 expect(m.mpu.p & 0x04, "the receiver turns interrupts off when it starts, whatever it was started with")
 m = idle(); crash_at(m, 0xBD00, 0, 0x20, 0x28, 0x33, 0xF7)
 expect(m.mpu.p & 0x04, "interrupts stay off after a crash taken with them on")
+
+# ...but if something turns them on, a stray IRQ is reported like a BRK instead of
+# jumping through power-up junk: init points the IRQ vector at the Monitor's BRK path
+m = idle()
+expect(m.mem[0x03FE] | m.mem[0x03FF] << 8 == 0xFA4C, "the receiver points the IRQ vector at the Monitor's BRK path ($FA4C)")
+m.tx.clear(); m.calls.clear()
+m.mpu.p &= ~0x04                                # interrupts on, as on 11 November
+at = m.mpu.pc
+m.mpu.irq(); m.step(300)
+expect(m.tx[:1] == [send.CRASH_MARK] and m.mem[crash.CRASH_FLAG] == send.CRASH_MARK, "a stray IRQ sends the crash marker and sets the flag")
+expect(m.calls == [INSDS1, RGDSP1], "a stray IRQ's registers are printed like a crash's")
+m.tx.clear()
+expect(crash.report(m, BAUD)[0].startswith("%04X- " % at), "the report shows the exact address the IRQ interrupted ($%04X)" % at)
+m.tx.clear(); m.write(send.make_packet(0, 0x4000, b"\x5A")); m.read(1)
+expect(m.mem[0x4000] == 0x5A, "the receiver goes on listening after a stray IRQ")
 
 # the handler's calls leave what the crashed program had near S alone. Only the
 # BRK and the Monitor's save write there, in the 5 bytes below S.

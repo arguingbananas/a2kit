@@ -240,6 +240,8 @@ def main():
         sys.exit("--chunk must be 1-255")
 
     port = open_port(args.port, args.baud, rtscts=args.rtscts)
+    import rxid                 # here, as rxid imports this module
+    rxid.check(port, args.baud)
     s = Sender(port, args.chunk, args.retries, args.language_card)
     t0 = time.time()
 

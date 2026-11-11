@@ -26,6 +26,7 @@ import sys
 import time
 
 import a2hdr
+import rxid
 import send
 
 TEXT_LINE = 0x07D0          # text page 1, row 23 (the bottom line)
@@ -37,10 +38,7 @@ FAST_TURNAROUND = 0.0005    # seconds; a fast port's delay, for "how much faster
 PICTURE = 8192
 
 
-def apple_text(msg):
-    """40 Apple II screen bytes (normal, upper case) for msg, centred."""
-    msg = msg.upper()[:40].center(40)
-    return bytes((ord(c) & 0x7F) | 0x80 for c in msg)
+apple_text = rxid.apple_text
 
 
 def wire_seconds(nbytes, baud):
@@ -149,16 +147,16 @@ def report(res, baud, chunk, out=print):
     ok = res["ack"] == res["sent"] and res["speed_ack"] == res["speed_sent"]
     if res["sent"] and res["none"] == res["sent"]:
         out("No reply at all. Check, in order:")
-        out("  - the receiver is running: its banner A2KIT RX READY is on the Apple II's screen")
-        out("  - --baud (%d) is the number in that banner (115200, or 19200 with a2kit-boot-19200.dsk)" % baud)
+        out("  - the receiver is running: its banner A2KIT is on the Apple II's screen")
+        out("  - --baud (%d) matches the disk: 115200, or 19200 with a2kit-boot-19200.dsk" % baud)
         out("  - --port names the right port, and nothing else (such as ADTPro) has it open")
         out("  - the cable: a null-modem adapter may be needed, or the card's jumper block turned round")
         out("  - the adapter is RS-232, not a 3.3 V / 5 V USB-TTL board")
         out("  - the card is in the slot set in runtime/config.inc (2 unless you changed it)")
     elif res["other"] and not res["ack"]:
         out("Bytes come back, but not the receiver's replies (%s)." % ", ".join("$%02X" % b for b in sorted(res["others"])))
-        out("The speed probably doesn't match: --baud (%d) must be the number in the receiver's" % baud)
-        out("banner, A2KIT RX READY 115200 or 19200. Otherwise suspect the wiring or the signal levels.")
+        out("The speed probably doesn't match: --baud (%d) must match the disk, 115200, or 19200 with" % baud)
+        out("a2kit-boot-19200.dsk. Otherwise suspect the wiring or the signal levels.")
     elif res["nak"] or res["other"]:
         out("The link works but some packets arrive damaged: noise, a long or poor cable, or a")
         out("marginal adapter. Uploads will retry, but slowly. Try --chunk 64 or 32 for uploads,")
@@ -199,6 +197,7 @@ def main():
     port = serial.Serial(a.port, a.baud, timeout=a.timeout)
     low = send.set_low_latency(port)
     print("pinging the Apple II on %s at %d baud%s" % (a.port, a.baud, " (low-latency mode on)" if low else ""))
+    rxid.check(port, a.baud, screen=False, out=print)     # the bottom line is ping's own proof
     res = run(port, a.baud, a.count, a.speed, a.chunk)
     port.close()
     sys.exit(report(res, a.baud, a.chunk))

@@ -53,19 +53,19 @@ class Machine:
 
 boot = open(os.path.join(ROOT, "boot.bin"), "rb").read()
 new = bytearray(boot)
-at = bytes(new).index(b"RX READY")
-new[at:at + 8] = b"RX NEWER"            # the same code, with a banner that shows which one is running
+at = bytes(new).index(b"A2KIT\r")
+new[at:at + 5] = b"A2NEW"               # the same code, with a banner that shows which one is running
 new = bytes(new)
 
 m = Machine(boot)
-expect("RX READY" in "".join(m.text), "the old image is running")
+expect("A2KIT" in "".join(m.text), "the old image is running")
 m.text.clear()
 m.mem[0x4000] = 0x77
 m.motor.clear()
 ramload.upload(m, new, disk_slot=5)
 m.step(60000)
 print("banner after load:", "".join(m.text).strip())
-expect("RX NEWER" in "".join(m.text), "the new image restarted and printed its banner")
+expect("A2NEW" in "".join(m.text), "the new image restarted and printed its banner")
 expect(bytes(m.mem[0x0800 + i] for i in range(256)) == new[4:260], "the receiver moved into place")
 expect(bytes(m.mem[0x0980 + i] for i in range(128)) == new[0x180:], "the restart code is in place")
 expect(m.mem[0x4000] == 0x77, "memory outside the documented ranges is left alone")

@@ -17,11 +17,15 @@
 ; Crash report: the receiver points the Monitor's BRK vector at "crash", which
 ; sends $C3, sets the crash flag, prints the registers and keeps listening, so
 ; the PC can read what the Monitor saved. A key still drops to the Monitor.
+; The IRQ vector points at the Monitor's own BRK path, so a stray interrupt is
+; reported the same way instead of jumping through power-up junk; its saved PC
+; is then the interrupted address itself, not 2 past a BRK.
 ;
 ; With a language card in slot 0, $D000-$FFFF writes land in its RAM (bank 2).
 ;
 ; Loads at $0800, staging buffer at $0A00. 8N1; slot and speed in config.inc.
-; The banner shows the speed it was built for, so a mismatch is easy to spot.
+; The banner is just A2KIT: the computer reads this code back on first contact
+; and writes which build and speed it found to the bottom line (tools/rxid.py).
 ;
 ; At 115200 baud a byte arrives every 88.6 cycles and the 6551 holds only one,
 ; so each byte must be read before the next one finishes arriving. rxb and the
@@ -48,6 +52,8 @@ HIRES   = $C057
 LC_WRITE = $C081                ; read twice: read ROM, write a language card's RAM (bank 2)
 COUT    = $FDED
 BRKVEC  = $03F0                 ; Monitor: where BRK goes after saving the registers
+IRQVEC  = $03FE                 ; Monitor: where an IRQ goes (power-up junk unless set)
+MONBRK  = $FA4C                 ; Monitor: its BRK path (save the registers, JMP (BRKVEC))
 INSDS1  = $F882                 ; Monitor: print the saved PC
 RGDSP1  = $FADA                 ; Monitor: print the saved registers
 MON     = $FF65                 ; Monitor: command loop
@@ -67,8 +73,8 @@ CRASH_S = $20                   ; the crash handler's stack pointer
         .segment "CODE"
 
 start:
-        sei                     ; nothing here uses interrupts, and the IRQ vector
-                                ; at $03FE is whatever power-up left there
+        sei                     ; nothing here uses interrupts (init still points the
+                                ; IRQ vector at the crash path, in case one gets through)
         ; banner
         lda #0
         sta crashed
@@ -197,6 +203,10 @@ init:   ldx #SLOTX              ; X holds the slot offset from here on
         sta BRKVEC
         lda #>crash
         sta BRKVEC+1
+        lda #<MONBRK            ; a stray IRQ: treat it like a BRK, so it is reported
+        sta IRQVEC
+        lda #>MONBRK
+        sta IRQVEC+1
         bit LC_WRITE            ; packets for $D000 and up go to a language card; ROM
         bit LC_WRITE            ; stays readable, and with no card these do nothing
         bit KBDSTRB             ; clear any pending keypress
@@ -251,4 +261,4 @@ txb:    pha
         sta ACIA_DATA,x
         rts
 
-msg:    .byte .sprintf("A2KIT RX READY %d (ANY KEY QUITS)", BAUD), $0D, 0
+msg:    .byte "A2KIT", $0D, 0         ; the speed and build: see tools/rxid.py

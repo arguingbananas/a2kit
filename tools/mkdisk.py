@@ -17,8 +17,8 @@ is written to every one of sectors 1-15, the image boots whether a tool treats
 it as DOS order (.dsk/.do) or ProDOS order (.po).
 
 Needs boot.bin, or boot-19200.bin for --baud 19200 (both built from
-runtime/boot.s and the receivers by "a2kit build"). The receiver's banner
-shows its speed: A2KIT RX READY 19200 or A2KIT RX READY 115200.
+runtime/boot.s and the receivers by "a2kit build"). The receiver's banner is
+just A2KIT; a2kit commands find out its speed and build (tools/rxid.py).
 """
 import argparse
 import os

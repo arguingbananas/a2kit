@@ -20,6 +20,7 @@ import time
 
 import a2hdr
 import mkdisk
+import rxid
 import send
 
 IMAGE = 0x2000
@@ -93,6 +94,7 @@ def main():
         sys.exit("refusing to load %s: %s" % (name, e))
 
     port = send.open_port(a.port, a.baud)
+    rxid.check(port, a.baud, screen=False)    # the new receiver clears the screen anyway
     upload(port, boot, a.disk_slot)
     time.sleep(SETTLE)
     result = verify(port, boot)
