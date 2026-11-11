@@ -1,23 +1,24 @@
 # a2kit Roadmap
 
-Where a2kit stands and what comes next, most urgent first. Last updated 10 November 2026.
+Where a2kit stands and what comes next, most urgent first. Last updated 11 November 2026.
 
 ## Where things stand
 
 | Work | Where | State |
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
-| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Shelved.** Clean for 48 hours with extra cooling, which stays in place; heat is the likely trigger |
-| Crash reporter, `peek`, `canary` and `ramload` | Branch `feature/crash-reporter` | Tested on hardware, booted from its own disk; `main` merged in; in a PR |
+| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Shelved** after 48 clean hours with extra cooling, but two more `BRK` crashes on 11 November, with the RAMCard out |
+| Crash reporter, `peek`, `canary` and `ramload` | `main` | Merged ([PR #6](https://github.com/arguingbananas/a2kit/pull/6)); `peek` reads the slot ROMs too ([PR #10](https://github.com/arguingbananas/a2kit/pull/10)) |
 | Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | `main` | Merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)); heard on the Apple II+ |
-| Longer sound using a language card | Branch `feature/language-card` | Pushed as work in progress; next after the crash reporter |
-| Full memory map for the Manual | [PR #2](https://github.com/arguingbananas/a2kit/pull/2) | Open; conflicts with `main` and has an error |
+| Longer sound using a language card | Branch `feature/language-card` | Works in MAME, show and video (11 Nov); docs written; the real-hardware test waits for a replacement card |
+| Full memory map for the Manual | `main` | Merged ([PR #2](https://github.com/arguingbananas/a2kit/pull/2)); its 12K error is corrected on `feature/language-card` |
+| Project housekeeping: lint, smoke tests, pinned versions, contributor and security docs | `main` | Merged ([PR #7](https://github.com/arguingbananas/a2kit/pull/7), [#8](https://github.com/arguingbananas/a2kit/pull/8), [#9](https://github.com/arguingbananas/a2kit/pull/9)) |
 
 ## 1. Find out why the Apple II crashes when idle
 
 **Shelved on 10 November**, with the machine reliable enough to develop on: with extra cooling it ran clean for 48 hours (below). Keep the extra cooling in place. The tests to pick up later are listed under *When this is picked up again*.
 
-The machine has crashed or hung seven times with the receiver waiting and nobody touching it:
+The machine has crashed or hung nine times with the receiver waiting and nobody touching it:
 
 | When | Last known alive | Screen afterwards | Notes |
 |---|---|---|---|
@@ -28,6 +29,8 @@ The machine has crashed or hung seven times with the receiver waiting and nobody
 | 6 Nov | 19:10:12, logged by the crash reporter, 22 h 40 min into the run | `0002- A=00 X=20 Y=01 P=37 S=CE` | Registers match the idle loop exactly. `$0000` held `00`, so it stopped there at once. Stack page all zero apart from the handler's bytes |
 | 6 Nov | 22:26, 41 min after a power-up and a fresh load | Nothing new | A hang with no `BRK`; the space bar did nothing. Stack page wiped to zero, and 5 bytes at `$8080–$80FF` changed to `00` |
 | 7 Nov | 22:02, 5 h 23 min after reseating everything | Nothing new | A hang with no `BRK`; the space bar did nothing. Stack page `$0100–$01C3` zero, and 24 bytes at `$8080–$8546` changed to `00`, `80` or `01` |
+| 11 Nov | After 11:48, the last ROM read | `BD16- …` (a `BRK` at `$BD14`) | RAMCard out, a plain chip back in E3, extra cooling on; receiver from `feature/language-card`. Memory at `$BD00–$BD1F` was all `00`, so it ran into empty RAM. The stacked `P` was `$FA`, so interrupts were enabled and decimal mode on: not the receiver's state. Receiver code intact |
+| 11 Nov | Later the same day | Saved registers `000D- A=00 X=20 Y=00 P=36 S=18` (a `BRK` at `$000B`) | A second crash in zero page, with S down at `$18`, so it ran wild first. Afterwards the receiver stopped answering altogether |
 
 Two earlier oddities may be related, but that's unproven: a first picture at 115200 that came up as lo-res blocks with a dead keyboard, and a drop to Applesoft with nothing pressed.
 
@@ -51,6 +54,8 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 **Still possible:** heat is now the likely trigger. **Leading theory:** a marginal contact in E3, from the socket's springs or the chip's legs worked loose by the refitting, or later the pigtail's own connection, that opens as the board warms. It fits one bit in one bank, the hours of warm-up before it failed, and the cure by better cooling. Otherwise: the E3 chip itself, or the power supply. A loose E3 contact doesn't obviously explain the stack wipes, which are in the `$0000–$3FFF` bank, unless the failing chip disturbs the shared data bus; a sagging supply would explain both.
 
+**11 November: a weak spot found.** The IRQ vector at `$03FE–$03FF` still held `$FFFF`, its power-on contents. Any interrupt that got through would send the CPU to `$FFFF` and on into zero page, which fits the second crash. The receiver keeps interrupts off, but the first crash's stacked `P` shows they were on by then. Pointing `$03FE` at the crash handler would report such a jump instead of letting it run wild (see [Small improvements](#3-small-improvements)).
+
 **Restarting after a hang without losing the evidence:** don't switch off. Press Ctrl-Reset, then type `CALL -151`. The first Reset after power-up runs an Applesoft cold start, which zeros `$0800–$0802`, so type `800:78 A9 00` to put the receiver's first bytes back. Type `48:04` so `G` starts with interrupts off, then `980G`, and dump memory before anything else.
 
 **When this is picked up again**, changing one thing at a time:
@@ -70,9 +75,9 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 1. **This roadmap:** merged (PR #4).
 2. **Clearer speech:** merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)).
-3. **The crash reporter:** in a PR, after the 48-hour clean run. `main` is merged in, with `MANUAL.pdf` and `QUICKSTART.pdf` rebuilt (both branches changed them, and Git can't merge PDFs); the tests pass, and `ping` and a show with `even_out` worked on the Apple II with the merged code.
-4. **The language card.** `main` is merged in (10 Nov): the language-card lines now sit in the receiver's shared `init` routine, so a restart after a crash re-enables the card too. The combined receiver is exactly the 380 bytes available, so there is no room left, and the simulator tests pass. Its own hardware tests need the RAMCard back in, which changes the machine again, so after refitting it run `a2kit canary` for a few hours, with the extra cooling still on, before testing code on it.
-5. **The memory map** (PR #2): carry its content into the Manual after the language card changes the map again, and close it.
+3. **The crash reporter:** merged ([PR #6](https://github.com/arguingbananas/a2kit/pull/6)).
+4. **The language card.** `main` is merged in (11 Nov): the language-card lines sit in the receiver's shared `init` routine, so a restart after a crash re-enables the card too. The receiver is exactly the 380 bytes available, so there is no room left. The simulator tests pass, and on 11 November the long sound played correctly in MAME, in a show and in a video. The RAMCard hung the machine within 7 minutes of being refitted (10 Nov), so the real-hardware test waits for a replacement card; after fitting it, run `a2kit canary` for a few hours, with the extra cooling still on, before testing code on it.
+5. **The memory map:** merged ([PR #2](https://github.com/arguingbananas/a2kit/pull/2)); the language-card branch updates it for the bigger players and corrects the card's layout.
 
 ### Crash reporter (`feature/crash-reporter`)
 
@@ -99,20 +104,20 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. Machines without a card keep today's limit. Includes `a2kit lcprobe`, which reported 16K GOOD on the real Microsoft RAMCard.
 
 - [x] Simulator tests pass, using a language-card model
-- [ ] Rerun `a2kit lcprobe`, then play `examples/long_show.toml`, listening for a glitch where the sound reaches the card at 6.2 s
+- [x] In MAME's Apple II+ with its Language Card (11 Nov): `lcprobe` reported 16K GOOD; `examples/long_show.toml` played 9.2 s (6.2 s from main RAM, 3.0 s from the card), and a recording of the sound followed the source WAV just as closely after the hop to the card as before it (envelope correlation 0.94–0.98 per second); a video with 9.1 s of sound in 36 bursts did the same (0.82–0.92). ROM was back and the receiver answering after both
+- [ ] On real hardware, with a replacement card: rerun `a2kit lcprobe`, then play `examples/long_show.toml`, listening for a glitch where the sound reaches the card at 6.2 s
 - [ ] Play the stress clip with long sound (`out/stress_long.a2v` locally, which needs regenerating elsewhere)
-- [ ] Update the Manual, Quick Start, Install Guide and README, and rebuild the PDFs
+- [x] Update the Manual, Quick Start, Install Guide and README, and rebuild the PDFs (11 Nov)
 - [ ] Correct the Install Guide's Apple II row, which still describes this machine as 48K
 - [ ] Open a PR
 
 **After that:** the card's second `$D000` bank could take the limit to about 10.2 s. `peek` could also learn to read the card.
 
-### Memory map (PR #2)
-
-Its content is useful, but it's out of date, conflicts with `main`, and says the card has 12K at `$E000–$FFFF` when it's 8K (the card is 8K there plus two 4K banks at `$D000`). Update it after the language-card branch merges, since that branch changes the map again, or close it and carry the content over.
+**Testing in MAME.** MAME's `apple2p` has Apple's 16K Language Card and the Super Serial Card. With the receiver loaded straight into memory by a Lua script, and the emulated card's null modem joined to a pseudo-terminal with `socat`, every a2kit command works against it unchanged, at 115200 or 19200 baud; `-wavwrite` records the speaker. MAME needs the Apple II+ ROMs: dump them from your own machine (`peek` reads `$D000–$FFFF` and the slot ROMs; all matched MAME's checksums), except the character ROM, which the 6502 can't read.
 
 ## 3. Small improvements
 
+- **Point the IRQ vector at the crash handler.** The receiver sets the `BRK` vector but leaves `$03FE–$03FF` as power-up junk, so a stray interrupt runs wild instead of being reported. It needs about 10 bytes, and the receiver has none left: something else must shrink first.
 - **Check the player is in memory before starting it.** `show send` and `stream` end their upload by jumping to the sequencer (`$0C00`) or the video player (`$0E00`), which only `--install` puts there. If something has overwritten it since, the Apple II runs whatever is there and hangs. This happened on 10 November: a canary run filled `$0B00–$BFFF` with its pattern, and the next `show send` without `--install` hung the machine with no sound. Now that the receiver answers memory reads, compare the player in memory with `sequencer.bin` or `video.bin` first, and upload it if it doesn't match, saying so. `--install` would then only force a fresh copy.
 - **Update the Installation Guide for ADTPro.** ADTPro 2.1.0 works on this machine at 115200 by booting its disk image from the Floppy Emu. Note that it needs the language card; that a2kit and ADTPro can't share the port; and that a `.DSK` on the Emu shouldn't be formatted in-system (write to a blank image, or use the Emu's `Blank.WOZ`).
 - **Explain restarting after Ctrl-Reset in the Manual.** It says `980G` restarts a booted receiver, but after the first Reset since power-up an Applesoft cold start has zeroed `$0800–$0802`, so `980G` hits a `BRK`. Give the repair (`800:78 A9 00`), and `48:04` so `G` starts with interrupts off.
