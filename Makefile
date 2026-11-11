@@ -50,6 +50,16 @@ test: all
 	python3 tools/test_cli.py
 	python3 tools/test_examples.py
 
+# Correctness checks on the Python (settings in pyproject.toml)
+lint:
+	python3 -m ruff check .
+
+# A quick check after every change (about 10 s): audio conversion, and every
+# command's options, error messages and an end-to-end ping. `make test` runs it all.
+smoke: all
+	python3 tools/test_audio.py
+	python3 tools/test_cli.py
+
 clean:
 	rm -f *.o receiver.bin sequencer.bin video.bin video.lbl boot.bin a2kit-boot.dsk \
 	      receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk
