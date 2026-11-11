@@ -16,6 +16,7 @@ show.toml (asset paths are relative to the file):
   [[scene]]
   audio = "clip.wav"      # played over whatever is on screen
   gain  = 1.0             # optional
+  even_out = false        # optional, as in `a2kit audio --even-out`: clearer speech
 
   [[scene]]
   wait = 2.0              # seconds
@@ -62,7 +63,7 @@ def ticks(seconds):
 
 
 KEYS = {"image": {"image", "hold", "crop", "invert", "dither"},
-        "audio": {"audio", "gain"},
+        "audio": {"audio", "gain", "even_out"},
         "wait": {"wait"}}
 
 
@@ -94,6 +95,8 @@ def check_scene(sc, where):
     for k in ("hold", "wait", "gain"):
         if k in sc and not isinstance(sc[k], (int, float)):
             raise ValueError("%s: %s must be a number" % (where, k))
+    if "even_out" in sc and not isinstance(sc["even_out"], bool):
+        raise ValueError("%s: even_out must be true or false" % where)
     return kinds[0]
 
 
@@ -128,7 +131,8 @@ def build(project_path, language_card=False):
         elif kind == "audio":
             if not os.path.exists(os.path.join(base, sc["audio"])):
                 raise ValueError("%s: %s: no such file" % (where, sc["audio"]))
-            data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0))
+            data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0),
+                                     even_out=sc.get("even_out", False))
             if audio_used + len(data) > a2hdr.audio_pages_limit(language_card) * 256:
                 raise ValueError("%s: audio doesn't fit below $%04X%s" % (where, *(
                     (a2hdr.CARD_END, "") if language_card else
@@ -180,8 +184,7 @@ def main():
 
     if not a.port:
         sys.exit("--port required")
-    import serial
-    s = send.Sender(serial.Serial(a.port, a.baud, timeout=2.0, rtscts=a.rtscts), language_card=a.language_card)
+    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts), language_card=a.language_card)
     t0 = time.monotonic()
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)

@@ -19,6 +19,7 @@ import sys
 import time
 
 import a2hdr
+import send
 
 PLAYER_ADDR = 0x0E00
 BURST_MARGIN = 0.05     # extra quiet time after each burst, seconds (USB scheduling jitter)
@@ -97,12 +98,10 @@ def main():
         print("warning: frames run up to %.2f s behind at %d baud; re-encode with a lower --fps or --budget"
               % (late, a.baud), file=sys.stderr)
 
-    import serial
-    port = serial.Serial(a.port, a.baud, timeout=2.0, rtscts=a.rtscts)
+    port = send.open_port(a.port, a.baud, rtscts=a.rtscts)
     port.reset_input_buffer()
 
     if a.install:
-        import send
         s = send.Sender(port, language_card=a.language_card)
         for addr, piece in (a2hdr.audio_pieces(0, audio) if audio else ()):     # audio must be in RAM before the stream starts
             print("uploading %d bytes of audio to $%04X" % (len(piece), addr), file=sys.stderr)

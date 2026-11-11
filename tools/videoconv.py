@@ -209,6 +209,8 @@ def main():
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
     a2hdr.add_language_card_arg(ap)
+    ap.add_argument("--gain", type=float, default=1.0, help="audio volume multiplier, as in `a2kit audio` (default 1.0)")
+    ap.add_argument("--even-out", action="store_true", help="even out the audio's volume, as in `a2kit audio`; for speech")
     a = ap.parse_args()
 
     if not 1 <= a.fps <= 60:
@@ -217,6 +219,8 @@ def main():
         sys.exit("--src-fps must be positive")
     if a.burst_pages < 1:
         sys.exit("--burst-pages must be at least 1")
+    if not a.audio and (a.gain != 1.0 or a.even_out):
+        sys.exit("--gain and --even-out apply to the sound, so they need --audio")
     budget = a.budget or int(a.baud / 10 / a.fps * 0.95)
     if budget < 8 or budget > 0xFFFF:
         sys.exit("bad budget %d" % budget)
@@ -226,7 +230,7 @@ def main():
 
     audio, bursts = b"", {}
     if a.audio:
-        audio = audioconv.convert(a.audio)
+        audio = audioconv.convert(a.audio, a.gain, even_out=a.even_out)
         P = len(audio) // 256
         if P > a2hdr.audio_pages_limit(a.language_card):
             sys.exit("audio is %d pages; only %d fit. Use a shorter clip%s." % (

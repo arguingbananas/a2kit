@@ -150,6 +150,21 @@ for baud in (19200, 115200):
         expect(show.get("shown_for", 0) >= KEY_AFTER, "%d baud, %s: the picture stays up until the key" % (baud, name))
         expect(show.get("carry") == 0, "%d baud, %s: returns ready for the boot disk to listen again" % (baud, name))
 
+# Read requests arrive at the line rate too, and every reply byte must be right.
+for baud in (19200, 115200):
+    for name, cpu in (("6502", MPU6502), ("65C02", MPU65C02)):
+        pk = [send.make_read_packet(0x0800, 16), send.make_read_packet(0x0800, 0), send.make_packet(0, 0x6000, b"")]
+        replies, over, margin, mem, _ = session(baud, cpu, pk)
+        data = bytes(mem[0x0800 + i] for i in range(256))
+        ck = 0
+        for b in data: ck ^= b
+        short = 0
+        for b in data[:16]: short ^= b
+        want = [0x06] + list(data[:16]) + [short] + [0x06] + list(data) + [ck] + [0x06]
+        print("%6d baud  %-5s  read requests: overruns %d, replies ok %s, tightest margin %.1f of %.1f cycles" % (baud, name, over, replies == want, margin, a2hdr.CPU_HZ * 10.0 / baud))
+        expect(over == 0 and replies == want, "%d baud, %s: read requests answered correctly" % (baud, name))
+        expect(margin > 10, "%d baud, %s, read requests: at least 10 cycles to spare on every byte" % (baud, name))
+
 # Headroom: squeeze the byte spacing until the 115200 receiver starts losing
 # bytes. The slowest path from one byte to the next is what sets this.
 pk = [send.make_packet(i, 0x2000 + 255 * i, picture[255 * i:255 * (i + 1)]) for i in range(3)] + [send.make_packet(3, 0x6000, b"")]

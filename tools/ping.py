@@ -11,6 +11,10 @@ line of text to the bottom row of the Apple II's text screen ("A2KIT PING 3 OF
 test sends --speed full packets to hi-res page 2 ($4000, not on screen in text
 mode) and reports the real upload rate.
 
+ping first switches the port to low-latency mode where the driver offers it,
+as every a2kit command that opens the port does, and says so. On Linux this
+turns an FTDI adapter's 16 ms latency timer down to 1 ms until it's unplugged.
+
 ping never ends the session, so the receiver is still listening afterwards and
 you can send straight away. It overwrites $07D0-$07F7 (the bottom text line)
 and the first --chunk bytes at $4000.
@@ -29,6 +33,7 @@ SPEED_ADDR = 0x4000         # hi-res page 2: harmless scratch space in text mode
 RECEIVER_TIMEOUT = 1.2      # the receiver gives up on a half-received packet after ~1 s
 COPY_CYCLES = (18, 40)      # receiver: cycles per byte to copy a good packet, plus fixed cost
 GOOD_TURNAROUND = 0.005     # seconds; above this the port itself is adding noticeable delay
+FAST_TURNAROUND = 0.0005    # seconds; a fast port's delay, for "how much faster" estimates
 PICTURE = 8192
 
 
@@ -109,6 +114,19 @@ def run(port, baud=a2hdr.DEFAULT_BAUD, count=10, speed=16, chunk=128, out=print,
     return res
 
 
+def upload_gain(res, baud, chunk, turnaround):
+    """How much faster uploads would be with a fast port, as a sentence. Judged from the
+    speed test when there was one: some ports' delay (an FTDI latency timer) partly
+    overlaps the time the packet spends on the line, so adding the ping delay to every
+    packet would overstate it."""
+    if res["speed"]:
+        best = chunk / (wire_seconds(chunk + 7, baud) + apple_seconds(chunk) + FAST_TURNAROUND)
+        gain = max(0.0, best / res["speed"] - 1) * 100
+        return "Uploads of %d-byte packets would be about %.0f%% faster without it" % (chunk, gain)
+    now, best = picture_estimate(turnaround, 128, baud), picture_estimate(FAST_TURNAROUND, 128, baud)
+    return "Uploads would be up to %.0f%% faster without it" % ((now / best - 1) * 100)
+
+
 def report(res, baud, chunk, out=print):
     """Print a summary and a plain-language diagnosis. Returns the exit code."""
     out("")
@@ -154,9 +172,7 @@ def report(res, baud, chunk, out=print):
         if res["turnaround"]:
             p = sum(res["turnaround"]) / len(res["turnaround"])
             if p > GOOD_TURNAROUND:
-                now, best = picture_estimate(p, 128, baud), picture_estimate(0.0005, 128, baud)
-                out("Your port adds about %.0f ms to every packet. Uploads would be about %.0f%% faster without it;" % (
-                    p * 1000, (now / best - 1) * 100))
+                out("Your port adds about %.0f ms to every packet. %s;" % (p * 1000, upload_gain(res, baud, chunk, p)))
                 out("see 'a2kit ping' in the User Manual for how to reduce it.")
     return 0 if ok else 1
 
@@ -181,7 +197,8 @@ def main():
 
     import serial
     port = serial.Serial(a.port, a.baud, timeout=a.timeout)
-    print("pinging the Apple II on %s at %d baud" % (a.port, a.baud))
+    low = send.set_low_latency(port)
+    print("pinging the Apple II on %s at %d baud%s" % (a.port, a.baud, " (low-latency mode on)" if low else ""))
     res = run(port, a.baud, a.count, a.speed, a.chunk)
     port.close()
     sys.exit(report(res, a.baud, a.chunk))

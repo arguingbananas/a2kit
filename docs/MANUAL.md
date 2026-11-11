@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-disk-mon-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -61,7 +61,7 @@ your file --(convert)--> .a2b / .a2v file --(send)--> serial cable --> Apple II
 Full instructions, with per-system commands and troubleshooting, are in the [Installation Guide](INSTALL.md). In short:
 
 1. Install Python 3.11 or newer.
-2. `python3 -m pip install -r requirements.txt` (pillow, numpy, pyserial), preferably inside a virtual environment. Use `requirements-dev.txt` to add `py65` for the tests.
+2. `python3 -m pip install -r requirements.txt` (pillow, numpy, pyserial), preferably inside a virtual environment. Use `requirements-dev.txt` to add `py65` for the tests and `pypdf` for rebuilding the PDFs.
 3. Optional: **cc65** and **make** to rebuild the 6502 programs (the built `.bin` files are included), and **ffmpeg** to convert video files such as `.mp4`. GIFs and folders of frames need no ffmpeg.
 4. Run `./a2kit doctor`. It reports anything missing.
 
@@ -89,10 +89,10 @@ It needs a 16-sector Disk II controller (the kind sold from DOS 3.3 onwards); an
 
 **Option B: type it in.**
 
-1. `./a2kit mon receiver.bin` prints 37 lines of Monitor input (`0800:A9 00 85 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
+1. `./a2kit mon receiver.bin` prints 47 lines of Monitor input (`0800:78 A9 00 …`) and a final `0800G`. For 19200 baud, use `receiver-19200.bin`.
 2. On the Apple II, reach the Monitor prompt `*` (from BASIC: `CALL -151`).
-3. Type the 37 address lines, pressing Return after each. Leave out the `0800G` for now.
-4. Verify: type the range `mon` printed at the end (`0800.0924` for `receiver.bin`) and compare the dump against what you typed.
+3. Type the 47 address lines, pressing Return after each. Leave out the `0800G` for now.
+4. Verify: type the range `mon` printed at the end (`0800.097B` for `receiver.bin`) and compare the dump against what you typed.
 5. Connect the cable and type `0800G`. You should see `A2KIT RX READY 115200 (ANY KEY QUITS)`.
 
 Typed in, the receiver **exits after each upload session** (after a picture, a show or a video), so type `0800G` again before the next one.
@@ -124,7 +124,7 @@ export A2KIT_BAUD=19200           # Linux/macOS; on Windows: set A2KIT_BAUD=1920
 ./a2kit ping --port /dev/ttyS0    # now at 19200
 ```
 
-Start with `./a2kit ping`: at 115200 it should say `Link OK`, with a speed-test rate of about 8,700 bytes/s on a port like the tested one (about 76% of the line rate: even at the 0.6 ms per packet measured at this speed, the port is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back). If it reports damaged packets, try a shorter cable or use the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
+Start with `./a2kit ping`: at 115200 it should say `Link OK`, with a speed-test rate of about 8,700 bytes/s on a port like the tested one (about 76% of the line rate: even at the 0.6 ms per packet measured at this speed, the port is a bigger share of each packet's time; `--chunk 255` uploads claw some of it back, reaching about 9,150 bytes/s, 79%). If it reports damaged packets, try a shorter cable or use the 19200 disk. A cable and card that already work with ADTPro at 115200 are a good sign.
 
 Video: convert with the speed you'll play at (add `--baud 19200` for the 19200 disk), since the byte budget per frame comes from it. A clip converted for 19200 plays fine at 115200; one converted for 115200 runs late at 19200 (`stream` warns you).
 
@@ -176,7 +176,7 @@ You **don't** need to run it before using sound in a show or video, because thos
    ./a2kit audio examples/jingle.wav -o out/jingle.a2b
    ```
 3. Read the line it prints, for example `wrote out/jingle.a2b: 6920 bytes, 1.7 s`. If it's over about 6 seconds it won't fit in a show or video.
-4. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
+4. If it's speech, add `--even-out`. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
 
 **Usage:** `./a2kit audio INPUT -o OUTPUT [options]`
 
@@ -185,10 +185,13 @@ You **don't** need to run it before using sound in a show or video, because thos
 | `-o`, `--output FILE` | Output block (required). |
 | `--gain N` | Multiply the volume after the sound has been normalised (default 1.0). Values above 1 clip. |
 | `--max-seconds N` | Keep only the first N seconds. |
+| `--even-out` | Even out the volume, which makes speech much clearer (see *Speech* below). |
 | `--no-dither` | Turn off the noise added before quantising to 4 bits. It's usually left on because it hides the stepping. |
 | `--raw` | Write the bare samples with no header. |
 
 **How it sounds:** the sound is low-pass filtered, resampled to about 8 kHz, normalised to near full scale and squeezed to 16 levels. Speech and simple tones work; dense music turns to hiss.
+
+**Speech:** a voice has brief loud peaks and is much quieter the rest of the time. The sound is scaled so the loudest peak fills the 16 levels, so most of a voice uses only a level or two either side of the middle, and it comes out faint and grainy. `--even-out` fixes that the way radio does, with what audio engineers call a compressor. It cuts the bass the speaker can't play (below 150 Hz), then turns the loud parts down, so the quieter parts fill more of the levels once the whole clip is scaled up again. Nothing is clipped. On a 1994 recording of Dylan Thomas reading on the tested Apple II+, it was clearly the most intelligible of three versions: plain, `--gain 1.5` (as loud, but with about 1% of the samples clipped), and evened out. The catch is that background hiss in the pauses comes up too. Leave it off for music and sound effects, whose loudness changes are part of the sound.
 
 **Limits:** one block holds at most 65,280 bytes (about 16 s), but a show or video has room for only about 6 seconds in total (see [memory map](#112-memory-map)).
 
@@ -240,6 +243,8 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
+| `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
+| `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
 
 **Notes**
 
@@ -289,6 +294,7 @@ wait = 2.0             # pause for 2 seconds
 | `crop`, `invert`, `dither` | Only with `image`. Same meaning as the `a2kit image` options: `crop = true`, `invert = true`, `dither = "threshold"` (default `"atkinson"`). |
 | `audio` | A WAV file, played when this scene is reached. |
 | `gain` | Only with `audio`. Volume multiplier (default 1.0). |
+| `even_out` | Only with `audio`. `even_out = true` evens out the volume, like `a2kit audio --even-out`; use it for speech. |
 | `wait` | Seconds to do nothing. Times are in steps of 0.1 s. |
 
 Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the keys listed for it. A misspelled or misplaced key is an error that names the key, so typos don't pass silently.
@@ -378,7 +384,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `disk`, `mon`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -397,6 +403,8 @@ Checks the serial link to a running receiver and measures it. Run it before your
 ping never ends the session, so the receiver keeps listening and you can `send`, `show send` or `stream` straight afterwards.
 It writes to the bottom text line (`$07D0–$07F7`) and to the first `--chunk` bytes of hi-res page 2 (`$4000`), so don't run it between uploading data there with `send` and using it.
 
+Every a2kit command that opens the port (`send`, `show send`, `stream`, `ping`, `peek`, `crash`, `canary` and `ramload`) first switches it to **low-latency mode** where the driver offers it; ping also says `(low-latency mode on)` on its first line when it did. On Linux this turns an FTDI USB adapter's 16 ms latency timer down to 1 ms with no `sudo`, until the adapter is unplugged. On a built-in port it changes nothing measurable; on Windows and macOS it does nothing.
+
 **What it reports**
 
 Each ping prints its round trip, split into two parts:
@@ -410,7 +418,7 @@ The verdict at the end is one of these:
 
 | Verdict | Meaning |
 |---|---|
-| `Link OK` | Every packet was acknowledged. If your port adds more than 5 ms per packet, it also says how much faster uploads would be without that (see below). |
+| `Link OK` | Every packet was acknowledged. If your port adds more than 5 ms per packet, it also says how much faster uploads would be without that, judged from the speed test (see below). |
 | `No reply at all` | Nothing came back. It lists what to check, in order: the receiver, the port name, the cable and jumpers, the adapter type, the slot. |
 | `Bytes come back, but not the receiver's replies` | Usually a speed mismatch: `--baud` must be the number in the receiver's banner (115200, or 19200 with `a2kit-boot-19200.dsk`). Otherwise wiring or signal levels. |
 | `some packets arrive damaged` | NAKs: the Apple II got packets that failed their checksum. Noise, a long or poor cable, or a marginal adapter. |
@@ -426,11 +434,80 @@ Uploads wait for a one-byte reply after every packet, so a port that holds repli
 
 | Port | Typical delay | What to do |
 |---|---|---|
-| USB adapter with an FTDI chip | Often about 16 ms (its "latency timer") | Linux: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer` (resets when the adapter is unplugged). Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
-| Built-in serial port (16550-type) | About 2 ms on Linux (a lone reply waits for the chip's FIFO timeout) | Linux, where the kernel offers it: `echo 1 \| sudo tee /sys/class/tty/ttyS0/rx_trig_bytes` |
+| USB adapter with an FTDI chip | Up to 16 ms (its "latency timer"); 11 ms measured on a tested FT232R at 115200, and 1.1 ms with the timer at 1 ms | Linux: every a2kit command that opens the port sets the 1 ms timer itself. By hand: `echo 1 \| sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer`. Windows: Device Manager → the port → Port Settings → Advanced → Latency Timer: 1 ms. |
+| Built-in serial port (16550-type) | 0.6 ms measured at 115200 and 2.2 ms at 19200 on Linux (a lone reply waits for the chip's FIFO timeout) | Linux, where the kernel offers it: `echo 1 \| sudo tee /sys/class/tty/ttyS0/rx_trig_bytes` |
 | Other USB adapters (CH340, CP210x, PL2303) | Usually 1–3 ms | Little to tune. |
 
-Larger packets also help, since each one pays the delay once: `./a2kit send --chunk 255`.
+Larger packets also help, since each one pays the delay once: `./a2kit send --chunk 255`. The exception is an FTDI adapter still on its 16 ms timer: every packet then takes a whole number of 16 ms periods, and at 115200 a 255-byte packet takes two where a 128-byte one takes one, so the rate stays about the same (see the measurements in the [Installation Guide](INSTALL.md#tested-setup)).
+
+### `a2kit peek`
+
+Reads Apple II memory through the running receiver and prints it like the Monitor's dump.
+
+```bash
+./a2kit peek BD00 16 --port /dev/ttyUSB0
+./a2kit peek 2000 8192 --port /dev/ttyUSB0 -o screen.bin
+```
+
+Addresses are in hex, and the length is 16 bytes if you leave it out. `-o` also saves the bytes to a file.
+`$C000–$CFFF` is refused, because just reading a soft switch can change the machine's state. `$D000–$FFFF` reads ROM, not a language card.
+
+### `a2kit crash`
+
+If a program hits `BRK`, the receiver keeps the Monitor's saved registers, prints them on the screen as usual, and goes on listening instead of stopping at the `*` prompt. A key still drops to the Monitor.
+
+```bash
+./a2kit crash --port /dev/ttyUSB0            # report any crash since the receiver started
+./a2kit crash --port /dev/ttyUSB0 --watch    # stay connected and log a crash when it happens
+```
+
+The report gives the registers, the vectors at `$03F0`, the whole stack page, and whether the receiver's own code still matches `receiver.bin`.
+`--watch` checks every 30 seconds (`--interval` changes that), logs each crash with its time, and also logs when the Apple II stops answering, which is all you'll see from a hang or a crash that never reaches `BRK`. It keeps the port open until you stop it.
+
+Both commands need the receiver running from a disk built with these features. An older one just doesn't answer. A marker sent while nothing has the port open is lost, but the report is still there to read later.
+
+The receiver sends read replies back-to-back, so these commands may not work on a card refitted with a WDC 65C51, which always reports its transmitter as ready.
+
+### `a2kit canary`
+
+Fills free RAM with a known pattern, then reads it back every few minutes and logs any byte that changes. Use it on a machine that crashes or hangs when left alone, to find RAM that loses its contents or writes that land in the wrong place.
+
+```bash
+./a2kit canary --port /dev/ttyUSB0              # fill, then check every 5 minutes
+./a2kit canary --port /dev/ttyUSB0 --no-fill    # go on checking a region an earlier run filled
+```
+
+It fills `$0B00–$BFFF`, the 45 KB that the receiver, the Monitor and the text screen don't use, which takes about 5 seconds at 115200. Each byte's value comes from its address, so neighbouring bytes differ, and so do bytes at the same place in another 16K bank. Each check logs:
+
+- **`CANARY:`** with each newly changed byte (up to 40 listed): what it should be, what it is now, the xor of the two, and the data bits that changed, as in `$9000 expected EA now EB (xor 01: D0)`. When more than 40 bytes changed, a last line counts all of them per bit, such as `in all 1473, bits changed: D0 in 1473`.
+- **`back to the pattern:`** for bytes that changed earlier but now read correctly again. Bytes that come and go like this point at a chip that can't hold its data, rather than a single stray write.
+- **`STACK PAGE:`** when the number of zero bytes in `$0100–$01FF` jumps by 16 or more, as in a stack wipe.
+
+Between checks it watches the receiver like [`crash --watch`](#a2kit-crash), logging crashes and silences, and it checks memory straight away when the Apple II answers again after a silence. It also logs one line an hour, so a quiet log shows it's still running. `--check` sets the seconds between memory checks (default 300) and `--interval` the seconds between crash checks (default 30).
+
+**Reading the result.** On a II+ (and the original Apple II), the 48K is three rows of eight 4116 chips: one row for each 16K bank (`$0000`, `$4000` and `$8000`), and one chip in each row for each data bit. A IIe has a single row of eight 64K chips, so there the changed bit alone names the chip. So if every change is in one bank and one bit, for example only `D0` in `$8000–$BFFF`, suspect that chip or its socket. Swap it with its neighbour in the same row and run again. If the errors move to the next bit, it's the chip; if they stay, it's the socket. Don't swap chips into the `$0000–$3FFF` row, which holds the receiver. Changes scattered across banks and bits point elsewhere, such as at an address fault or the power supply.
+
+- It keeps the port open until you stop it with Ctrl-C, so nothing else can use the receiver meanwhile.
+- The fill overwrites both hi-res pages and anything else you loaded into that region.
+- A fault that takes hours to appear needs a run of hours or days. On the tested machine, a failing chip first showed after 8 h 42 min.
+
+### `a2kit ramload`
+
+Starts a new build of the receiver on a running one, over the serial line, so you can try it without copying a disk image to an SD card or rewriting a floppy.
+
+```bash
+./a2kit build
+./a2kit ramload --port /dev/ttyUSB0
+```
+
+The new receiver restarts as if it had just booted: the screen clears and shows its banner. If it can answer read requests, the tool then checks the code in memory against the image and says whether it matches.
+
+This only changes memory. **A reboot or power-off brings back whatever is on the disk**, so copy the new `a2kit-boot.dsk` to the disk when you want to keep it.
+
+- The receiver must be listening, so close anything else using the port first, such as `a2kit crash --watch`.
+- It overwrites `$2000–$21FF` and `$6000–$601A`, and it can't start over a crashed machine that has stopped answering.
+- `--boot FILE` loads another 512-byte boot image. Use one built for the speed you're running at; `--baud 19200` picks `boot-19200.bin` by default.
+- `--disk-slot` names the disk card's slot, if it isn't 6. The boot code uses it to turn off that drive's motor.
 
 ### `a2kit disk`
 
@@ -477,7 +554,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0923`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0975`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
 | Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Use the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
@@ -535,7 +612,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Address | Used for |
 |---|---|
-| `$0800–$0924` | Receiver (293 bytes; 292 for the 19200 one) |
+| `$0800–$097B` | Receiver (380 bytes, all the room the boot disk has; 379 for the 19200 one) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
@@ -546,12 +623,16 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$4000–$5FFF` | Hi-res page 2 |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s) |
 
-Zero page `$06–$0F` and `$EB–$ED` are used by these programs. The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
+Zero page `$06–$0F`, `$CE` and `$EB–$EF` are used by these programs, and the receiver points the Monitor's BRK vector (`$03F0–$03F1`) at its crash handler. The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
 
 ### 11.3 Upload protocol (`send`, `show send`, `--install`)
 
 Packet from computer: `$A5 seq len addr_lo addr_hi data… checksum`. The checksum is the XOR of every byte after the `$A5`. The Apple II answers `$06` (ACK) or `$15` (NAK). A packet with `len` 0 ends the session; its address is what to run (0 means show hi-res page 1).
 The receiver holds each packet in a buffer and only copies it into memory after the checksum passes, so a corrupted address can't overwrite anything.
+
+A read request is `$A6 count 0 addr_lo addr_hi checksum`, with the checksum over the four bytes after the `$A6` and a `count` of 0 meaning 256. The Apple II answers `$06`, the bytes, then their XOR, or `$15` if the checksum is bad.
+
+If a program hits `BRK`, the Monitor saves the registers (PC at `$3A–$3B`; A, X, Y, P and S at `$45–$49`) and the receiver's handler sends `$C3`, sets `$CE` to `$C3`, prints the registers and goes on listening. A key then drops to the Monitor. Starting the receiver again clears `$CE`.
 
 ### 11.4 Limits at a glance
 
