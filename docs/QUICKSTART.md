@@ -95,6 +95,7 @@ It has no DOS on it, so all of the Apple II's memory stays free.
 
 Booted this way, the receiver **starts listening again by itself after every session**, on a freshly cleared screen, so you never type `0800G`.
 Pressing a key while it is waiting drops you into the Monitor; type `980G` there to start it again.
+After **Ctrl-Reset**, though, `980G` crashes (`0802-` and registers): reboot the disk, or see [After Ctrl-Reset](MANUAL.md#after-ctrl-reset) in the Manual.
 
 ### Option B: type it in
 
