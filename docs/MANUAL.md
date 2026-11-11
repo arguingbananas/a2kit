@@ -566,7 +566,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 
 | Symptom | Likely causes and fixes |
 |---|---|
-| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.0975`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
+| `no ACK after 5 tries` right at the start | Run [`./a2kit ping`](#a2kit-ping) first: it tells "no reply", damaged packets and a speed mismatch apart. Causes: the receiver isn't running (the banner must be on screen: boot the disk, or type `0800G`; `980G` restarts a booted one). Wrong port name. The cable needs a null-modem adapter, or the card's jumper block is in the other position (the lines are swapped). The card isn't in the slot set in `runtime/config.inc` (2 unless you changed it). A typo in the typed-in receiver (compare the range `mon` printed, `0800.097B`, with the printed lines). Speeds that don't match: `--baud` must be the number in the banner. |
 | Receiver banner never appears | Typed in: `0800G` didn't run; recheck the typed lines. A BASIC program or disk system overwrote `$0800`; reboot and start again. |
 | Boot disk: the drive spins or the screen fills with junk | The image wasn't written as a 140 KB 5.25-inch disk (check the tool's format setting), the controller is a 13-sector one, or the disk isn't in drive 1. Try the image in an emulator first. |
 | Uploads work but with many retries | `./a2kit ping` shows NAKs. Noisy or long cable. Try `--chunk 64`. Use the 19200 disk first. To go lower still: in `runtime/config.inc` set `BAUD = 9600`, run `./a2kit build`, boot the new `a2kit-boot.dsk`, and pass `--baud 9600` (or set `A2KIT_BAUD=9600`). |
@@ -624,18 +624,32 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Address | Used for |
 |---|---|
+| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
+| `$0100–$01FF` | 6502 stack |
+| `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
+| `$0300–$03CF` | **Free** (208 bytes) |
+| `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
+| `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`) |
 | `$0800–$097B` | Receiver (380 bytes, all the room the boot disk has; 379 for the 19200 one) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
-| `$0C00–$0DFF` | Sequencer (code, then the speaker routine) |
-| `$0E00–$0FFF` | Video player |
-| `$1000–$10FF` | Speaker routine used by the video player |
+| `$0C00–$0C99` | Sequencer |
+| `$0D00–$0D4B` | Speaker routine used by the sequencer |
+| `$0E00–$0F37` | Video player |
+| `$1000–$104B` | Speaker routine used by the video player |
+| `$104C–$1FFF` | **Free** (about 4K) |
 | `$2000–$3FFF` | Hi-res page 1 |
-| `$4000–$5FFF` | Hi-res page 2 |
+| `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s) |
+| `$C000–$CFFF` | I/O and slot ROMs |
+| `$D000–$FFFF` | Applesoft and Monitor ROM |
 
-Zero page `$06–$0F`, `$CE` and `$EB–$EF` are used by these programs, and the receiver points the Monitor's BRK vector (`$03F0–$03F1`) at its crash handler. The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
+Text page 2 (`$0800–$0BFF`) is the same memory as the receiver, buffer and scene table, so a2kit never displays it.
+
+**Language card (64K machines).** On a II+ with a 16K language card in slot 0 (Apple's Language Card, the Microsoft RAMCard, a Saturn card and so on), or on a IIe, 16K of RAM can be switched in over `$D000–$FFFF`: 12K at `$E000–$FFFF`, plus two 4K banks that share `$D000–$DFFF`. There's no DOS on the boot disk, so a2kit leaves all 16K unused and free. It is not yet available to `send`, `show` or `stream`: `send` refuses `$C000–$FFFF`, and the receiver doesn't switch the card. While the card's RAM is switched in for reading, the Monitor and Applesoft ROM routines can't be called.
+
+The boot disk changes nothing else: the Monitor's I/O hooks are reset to the screen and keyboard, and the rest of memory is untouched. The sequencer and the video player switch interrupts off while they run (their sound is cycle-timed) and restore the previous setting when they return.
 
 ### 11.3 Upload protocol (`send`, `show send`, `--install`)
 
