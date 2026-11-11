@@ -16,6 +16,7 @@ show.toml (asset paths are relative to the file):
   [[scene]]
   audio = "clip.wav"      # played over whatever is on screen
   gain  = 1.0             # optional
+  even_out = false        # optional, as in `a2kit audio --even-out`: clearer speech
 
   [[scene]]
   wait = 2.0              # seconds
@@ -61,7 +62,7 @@ def ticks(seconds):
 
 
 KEYS = {"image": {"image", "hold", "crop", "invert", "dither"},
-        "audio": {"audio", "gain"},
+        "audio": {"audio", "gain", "even_out"},
         "wait": {"wait"}}
 
 
@@ -93,6 +94,8 @@ def check_scene(sc, where):
     for k in ("hold", "wait", "gain"):
         if k in sc and not isinstance(sc[k], (int, float)):
             raise ValueError("%s: %s must be a number" % (where, k))
+    if "even_out" in sc and not isinstance(sc["even_out"], bool):
+        raise ValueError("%s: even_out must be true or false" % where)
     return kinds[0]
 
 
@@ -127,7 +130,8 @@ def build(project_path):
         elif kind == "audio":
             if not os.path.exists(os.path.join(base, sc["audio"])):
                 raise ValueError("%s: %s: no such file" % (where, sc["audio"]))
-            data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0))
+            data = audioconv.convert(os.path.join(base, sc["audio"]), sc.get("gain", 1.0),
+                                     even_out=sc.get("even_out", False))
             if audio_addr + len(data) > AUDIO_END:
                 raise ValueError("%s: audio doesn't fit below $%04X" % (where, AUDIO_END))
             plan.append((audio_addr, data, "%s: %s -> $%04X (%.1f s)" % (
@@ -157,7 +161,7 @@ def main():
     ap.add_argument("command", choices=["plan", "send"])
     ap.add_argument("project")
     ap.add_argument("--port")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="also upload the sequencer")
     ap.add_argument("--rtscts", action="store_true")
     a = ap.parse_args()
@@ -175,8 +179,7 @@ def main():
 
     if not a.port:
         sys.exit("--port required")
-    import serial
-    s = send.Sender(serial.Serial(a.port, a.baud, timeout=2.0, rtscts=a.rtscts))
+    s = send.Sender(send.open_port(a.port, a.baud, rtscts=a.rtscts))
     t0 = time.monotonic()
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)

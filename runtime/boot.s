@@ -7,7 +7,7 @@
 ;
 ;   $0800       2               sector count for the boot ROM
 ;   $0801       JMP boot
-;   $0804-      receiver.bin    (286 bytes, up to $0921) - moved down to $0800
+;   $0804-      receiver.bin    (about 290 bytes) - moved down to $0800
 ;   $0980       restart         clear the screen, run the receiver; again after every session
 ;   $098E-      boot            set up, move the receiver into place, start
 ;
@@ -18,6 +18,7 @@
 ; There is no DOS on the disk, so all of RAM stays free for a2kit.
 ;
 ; Build (needs receiver.bin): ca65 --bin-include-dir . runtime/boot.s -o boot.o
+; or, for 19200 (needs receiver-19200.bin): add -D BAUD=19200 and write boot-19200.bin
 ;                             ld65 -C runtime/boot.cfg boot.o -o boot.bin
 
 RECEIVER = $0800        ; where receiver.bin is assembled to run
@@ -37,7 +38,11 @@ MONZ     = $FF69        ; Monitor: command loop ("*" prompt), as CALL -151
         jmp boot
 
 payload:
+.ifdef BAUD
+        .incbin .sprintf("receiver-%d.bin", BAUD)
+.else
         .incbin "receiver.bin"
+.endif
 payload_end:
 RXSIZE = payload_end - payload
         .assert RXSIZE > 256, error, "boot.s copies the receiver as one full page plus a tail"

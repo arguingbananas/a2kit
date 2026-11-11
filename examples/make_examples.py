@@ -5,7 +5,7 @@ and generated from code, so you can edit the parameters and re-run:
     python3 examples/make_examples.py
 
 Writes: logo.png, sphere.png, frames/f00..f35.png, bounce.gif,
-        jingle.wav, boing.wav, chirp.wav, show.toml
+        stress/f000..f089.png, jingle.wav, boing.wav, chirp.wav, show.toml
 """
 import math
 import os
@@ -87,6 +87,52 @@ def make_frames():
     pics[0].save(OUT("bounce.gif"), save_all=True, append_images=pics[1:], duration=167, loop=0)
 
 
+# ---------------------------------------------------------------- stress test
+STRESS_MOVING, STRESS_HOLD = 48, 42     # 8 s of motion, then 7 s of test card at 6 fps
+STRESS_RINGS = 8
+
+
+def stress_moving(i):
+    """Large rings and a spinning cross: enough change to fill the 115200 byte budget."""
+    t = i / 6
+    im = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(im)
+    for b in range(STRESS_RINGS):
+        r = 16 + b * 3
+        x = W / 2 + (W / 2 - r - 4) * math.sin(t * (1.1 + b * 0.37) + b * 1.7)
+        y = H / 2 + (H / 2 - r - 4) * math.cos(t * (1.3 + b * 0.29) + b * 0.9)
+        d.ellipse((x - r, y - r, x + r, y + r), fill=255)
+        d.ellipse((x - r / 2, y - r / 2, x + r / 2, y + r / 2), fill=0)
+    a = t * 1.4
+    for k in range(4):
+        q = a + k * math.pi / 2
+        d.line((W / 2, H / 2, W / 2 + 150 * math.cos(q), H / 2 + 150 * math.sin(q)), fill=255, width=3)
+    return im
+
+
+def stress_card():
+    """A still grid: bytes lost during the motion show up on it as stray marks."""
+    im = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(im)
+    d.rectangle((0, 0, W - 1, H - 1), outline=255)
+    d.rectangle((8, 8, W - 9, H - 9), outline=255)
+    for x in range(20, W - 20, 20):
+        d.line((x, 20, x, H - 21), fill=255)
+    for y in range(20, H - 20, 20):
+        d.line((20, y, W - 21, y), fill=255)
+    d.ellipse((W // 2 - 60, H // 2 - 60, W // 2 + 60, H // 2 + 60), outline=255)
+    return im
+
+
+def make_stress():
+    os.makedirs(OUT("stress"), exist_ok=True)
+    for i in range(STRESS_MOVING):
+        stress_moving(i).save(OUT("stress", "f%03d.png" % i))
+    card = stress_card()
+    for i in range(STRESS_MOVING, STRESS_MOVING + STRESS_HOLD):
+        card.save(OUT("stress", "f%03d.png" % i))
+
+
 # ---------------------------------------------------------------- audio
 RATE = 22050
 
@@ -141,5 +187,5 @@ wait = 1.0
 
 
 if __name__ == "__main__":
-    make_logo(); make_sphere(); make_frames(); make_audio(); make_show()
+    make_logo(); make_sphere(); make_frames(); make_stress(); make_audio(); make_show()
     print("examples written to", HERE)

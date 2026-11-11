@@ -1,5 +1,6 @@
 # Python
-.venv/
+# (no trailing slash, so a .venv link to another worktree's environment is ignored too)
+.venv
 venv/
 __pycache__/
 *.pyc
@@ -13,3 +14,6 @@ out/
 
 # Temporary files from docs/make_pdfs.py
 docs/.*.pdfbuild.*
+
+# Personal Claude Code notes (see CLAUDE.md for the shared ones)
+CLAUDE.local.md

@@ -5,7 +5,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from py65.devices.mpu6502 import MPU
 from py65.memory import ObservableMemory
-import send, a2hdr
+import send
 from testlib import expect, finish
 
 BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "receiver.bin")

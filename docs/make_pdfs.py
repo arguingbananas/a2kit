@@ -2,7 +2,7 @@
 """Build PDF copies of the docs:  python3 docs/make_pdfs.py
 
 Markdown -> HTML (pandoc, GitHub-style heading ids) -> PDF (headless Chrome).
-Needs pandoc and google-chrome (or chromium) on PATH. Writes INSTALL.pdf, QUICKSTART.pdf and
+Needs pandoc and google-chrome (or chromium) on PATH, and the pypdf Python package. Writes INSTALL.pdf, QUICKSTART.pdf and
 MANUAL.pdf next to the markdown files. Links between the documents become relative
 'open that PDF' links (keep the PDFs in one folder); in-document links stay clickable.
 """
@@ -52,6 +52,9 @@ def chrome():
     sys.exit("need google-chrome or chromium on PATH")
 
 
+DOCS_URL = "https://github.com/arguingbananas/a2kit/blob/main/docs"
+
+
 def relativise_links(path):
     """Chrome writes links to the other PDFs as absolute file:// URLs for the machine
     that built them, which are dead anywhere else. Turn them into relative
@@ -84,11 +87,12 @@ def main():
     for stem, title in DOCS:
         text = open(os.path.join(HERE, stem + ".md"), encoding="utf-8").read()
         # links to another doc become links to its PDF; links into this doc stay in-document
-        def relink(m):
+        def relink(m):                  # used at once, in this pass of the loop
             other, frag = m.group(1), m.group(2) or ""
-            return "(%s)" % (frag if other == stem and frag else other + ".pdf")
+            return "(%s)" % (frag if other == stem and frag else other + ".pdf")  # noqa: B023
         text = re.sub(r"\((QUICKSTART|MANUAL|INSTALL)\.md(#[\w-]+)?\)", relink, text)
         text = re.sub(r"\[([^\]]+)\]\(workflow\.svg\)", r"\1 (in the docs folder)", text)
+        text = text.replace("(ROADMAP.md)", "(%s/ROADMAP.md)" % DOCS_URL)     # no PDF of it, so link to GitHub
         md = os.path.join(HERE, "." + stem + ".pdfbuild.md")      # next to the images so relative paths work
         html = os.path.join(HERE, "." + stem + ".pdfbuild.html")
         try:

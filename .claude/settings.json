@@ -1,0 +1,17 @@
+{
+  "worktree": {
+    "symlinkDirectories": [".venv"]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$CLAUDE_ENV_FILE\" ] && [ -f \"$CLAUDE_PROJECT_DIR/.venv/bin/activate\" ]; then echo \"source \\\"$CLAUDE_PROJECT_DIR/.venv/bin/activate\\\"\" >> \"$CLAUDE_ENV_FILE\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

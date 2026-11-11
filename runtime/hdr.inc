@@ -22,5 +22,7 @@ TYPE_EFFECT     = 5
 
 ; serial packet protocol (see tools/send.py)
 PKT_SYNC = $A5
+PKT_READ = $A6
+PKT_CRASH = $C3
 PKT_ACK  = $06
 PKT_NAK  = $15

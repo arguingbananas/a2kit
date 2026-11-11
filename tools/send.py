@@ -12,8 +12,17 @@ Packet protocol (host -> Apple II), one packet at a time, each ACKed:
 
 Apple II replies one byte: $06 ACK, $15 NAK (host resends, up to --retries).
 
-Note: the Super Serial Card's 6551 tops out at 19200 baud, so that's the
-default. Per-packet ACKs keep the 1 MHz CPU from being overrun.
+Read request (host -> Apple II), for a2kit peek and a2kit crash:
+
+  $A6 count 0 addr_lo addr_hi checksum
+
+  count     1-255 bytes; 0 means 256
+  reply     $06, the bytes, then the XOR of the bytes; or $15 for a bad checksum
+
+Speed: 115200 baud by default; 19200 with the receiver built for it
+(a2kit-boot-19200.dsk), the fastest the 6551's own baud-rate generator gives. --baud,
+or A2KIT_BAUD, must match the number in the receiver's banner. Per-packet ACKs
+keep the 1 MHz CPU from being overrun.
 
 Destinations are checked first: the tool refuses to write over zero page and
 the stack ($0000-$01FF), the receiver itself ($0800-$0AFF) or I/O and ROM
@@ -27,6 +36,8 @@ import time
 import a2hdr
 
 SYNC = 0xA5
+READ_SYNC = 0xA6
+CRASH_MARK = 0xC3       # the receiver's crash handler sends this by itself, at any moment
 ACK = 0x06
 NAK = 0x15
 
@@ -43,7 +54,7 @@ PROTECTED = ((0x0000, 0x01FF, "zero page and stack"),
 TURNAROUND = 0.0025     # seconds per packet the port and program add (2.2 ms measured on a built-in 16550)
 
 
-def upload_seconds(sizes, baud=19200, chunk=128, turnaround=TURNAROUND):
+def upload_seconds(sizes, baud=a2hdr.DEFAULT_BAUD, chunk=128, turnaround=TURNAROUND):
     """Expected time to upload blocks of these sizes and end the session.
 
     Each packet costs its bytes plus 7 (header, checksum, reply) on the line,
@@ -80,6 +91,62 @@ def make_packet(seq, addr, data):
     return bytes([SYNC]) + body + bytes([ck])
 
 
+def make_read_packet(addr, count):
+    """A read request for count bytes (1-256) at addr. It has a write packet's
+    shape with no data, and the count where the sequence number goes."""
+    body = bytes([count & 0xFF, 0]) + struct.pack("<H", addr)
+    ck = 0
+    for b in body:
+        ck ^= b
+    return bytes([READ_SYNC]) + body + bytes([ck])
+
+
+def check_read_range(addr, length):
+    """Raise ValueError if [addr, addr+length) is off the end of memory or
+    touches I/O that reacts to a read: the soft switches at $C000-$C0FF, and
+    $CFFF, which switches off every card's $C800 ROM. The slot ROMs at
+    $C100-$C7FF and the selected card's $C800-$CFFE ROM are safe to read."""
+    if length <= 0:
+        raise ValueError("nothing to read (length %d)" % length)
+    end = addr + length - 1
+    if addr < 0 or end > 0xFFFF:
+        raise ValueError("$%04X + %d bytes runs past $FFFF" % (addr, length))
+    if addr <= 0xC0FF and end >= 0xC000:
+        raise ValueError("$%04X-$%04X would read the I/O soft switches ($C000-$C0FF), which can change the machine's state" % (addr, end))
+    if addr <= 0xCFFF <= end:
+        raise ValueError("$%04X-$%04X would read I/O at $CFFF, which switches off the cards' $C800 ROMs" % (addr, end))
+
+
+def read_memory(port, addr, length, retries=5):
+    """Read Apple II memory through the receiver; returns the bytes."""
+    check_read_range(addr, length)
+    out = bytearray()
+    while len(out) < length:
+        count = min(length - len(out), 256)
+        at = addr + len(out)
+        for _ in range(retries):
+            port.reset_input_buffer()
+            port.write(make_read_packet(at, count))
+            port.flush()
+            reply = port.read(1)
+            if reply and reply[0] == CRASH_MARK:
+                reply = port.read(1)
+            if reply and reply[0] == ACK:
+                body = port.read(count + 1)
+                ck = 0
+                for b in body:
+                    ck ^= b
+                if len(body) == count + 1 and ck == 0:
+                    out += body[:-1]
+                    break
+            while port.read(64):        # let a late reply finish, or it would answer the retry
+                pass
+        else:
+            raise IOError("no good reply to a read of $%04X after %d tries; "
+                          "is the receiver running, and from a disk built with read support?" % (at, retries))
+    return bytes(out)
+
+
 class Sender:
     def __init__(self, port, chunk=128, retries=5):
         if not 1 <= chunk <= 255:
@@ -91,7 +158,7 @@ class Sender:
 
     def _send_packet(self, addr, data):
         pkt = make_packet(self.seq, addr, data)
-        for attempt in range(self.retries):
+        for _ in range(self.retries):
             self.port.reset_input_buffer()      # drop any late reply to an earlier try
             self.port.write(pkt)
             self.port.flush()
@@ -116,11 +183,30 @@ class Sender:
         self._send_packet(exec_addr, b"")
 
 
+def set_low_latency(port):
+    """Ask the driver to pass replies on at once; True if it accepted. On Linux this
+    turns an FTDI adapter's 16 ms latency timer down to 1 ms (until it's unplugged),
+    with no sudo. Elsewhere, or on a port without the setting, it does nothing."""
+    try:
+        port.set_low_latency_mode(True)
+        return True
+    except (AttributeError, ValueError, OSError):
+        return False
+
+
+def open_port(name, baud, timeout=2.0, rtscts=False):
+    """Open a serial port for the receiver, in low-latency mode where the driver offers it."""
+    import serial  # imported here so the module is usable without pyserial for tests
+    port = serial.Serial(name, baud, timeout=timeout, rtscts=rtscts)
+    set_low_latency(port)
+    return port
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--port", required=True, help="e.g. /dev/ttyUSB0")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--addr", type=lambda s: int(s, 0), help="load address, e.g. 0x2000")
     ap.add_argument("--exec", dest="exec_addr", type=lambda s: int(s, 0), default=0,
                     help="JSR to this address when done (default 0: display HGR page 1)")
@@ -130,8 +216,6 @@ def main():
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--rtscts", action="store_true", help="hardware flow control")
     args = ap.parse_args()
-
-    import serial  # imported here so the module is usable without pyserial for tests
 
     data = open(args.file, "rb").read()
     addr = args.addr
@@ -150,7 +234,7 @@ def main():
     if not 1 <= args.chunk <= 255:
         sys.exit("--chunk must be 1-255")
 
-    port = serial.Serial(args.port, args.baud, timeout=2.0, rtscts=args.rtscts)
+    port = open_port(args.port, args.baud, rtscts=args.rtscts)
     s = Sender(port, args.chunk, args.retries)
     t0 = time.time()
 

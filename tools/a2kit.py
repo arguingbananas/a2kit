@@ -8,13 +8,19 @@
   a2kit send   FILE --port DEV       upload one block through the receiver
   a2kit stream OUT.a2v --port DEV    play a video stream
   a2kit ping   --port DEV            check the serial link and measure its speed
+  a2kit peek   ADDR [LEN] --port DEV read Apple II memory over the link
+  a2kit crash  --port DEV [--watch]  report a crash, or wait for one and log it
+  a2kit canary --port DEV            fill free RAM with a pattern and log any change
+  a2kit ramload --port DEV           start a new boot image without touching the disk
   a2kit mon    FILE                  print a binary as Monitor entry lines
-  a2kit disk   [-o FILE.dsk]         make a disk that boots straight into the receiver
+  a2kit disk   [--baud 19200]        make a disk that boots straight into the receiver
   a2kit build                        assemble the 6502 programs (needs cc65)
   a2kit test                         run the whole test suite
   a2kit doctor                       check the toolchain and built binaries
 
-`a2kit COMMAND --help` shows each command's options.
+`a2kit COMMAND --help` shows each command's options. Commands that use the
+serial line take --baud (115200 by default); set A2KIT_BAUD=19200 to make the
+slower speed the default when you use a2kit-boot-19200.dsk.
 """
 import importlib
 import importlib.metadata
@@ -36,10 +42,15 @@ TOOLS = {
     "send": ("send", "upload a block"),
     "stream": ("stream", "play a video stream"),
     "ping": ("ping", "check and measure the serial link"),
+    "peek": ("peek", "read Apple II memory"),
+    "crash": ("crash", "report a crash, or wait for one"),
+    "canary": ("canary", "watch free RAM for changes"),
+    "ramload": ("ramload", "start a new boot image over the link"),
     "mon": ("bin2mon", "binary -> Monitor lines"),
     "disk": ("mkdisk", "bootable receiver disk image"),
 }
-BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "boot.bin", "a2kit-boot.dsk")
+BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "boot.bin", "a2kit-boot.dsk",
+            "receiver-19200.bin", "boot-19200.bin", "a2kit-boot-19200.dsk")
 
 
 def usage(code=0):

@@ -157,7 +157,7 @@ expect(res["ack"] == 3 and res["speed_ack"] == 4 and code == 0, "real receiver a
 expect(screen == ping.apple_text("A2KIT PING 3 OF 3"), "real receiver wrote the ping text to the bottom line ($07D0)")
 expect(scratch == want, "speed-test data landed at $4000")
 expect(not sim.exited, "the receiver is still listening afterwards (ping never ends the session)")
-touched = [a for a in range(0xC000) if sim.mem[a] and not (0x0000 <= a <= 0x01FF or 0x0300 <= a <= 0x0303
+touched = [a for a in range(0xC000) if sim.mem[a] and not (0x0000 <= a <= 0x01FF or 0x0300 <= a <= 0x0303 or 0x03F0 <= a <= 0x03F1
            or 0x0800 <= a <= 0x0AFF or ping.TEXT_LINE <= a < ping.TEXT_LINE + 40 or ping.SPEED_ADDR <= a < ping.SPEED_ADDR + 128
            )]
 expect(not touched, "ping writes nowhere except the text line and the scratch bytes")
@@ -167,6 +167,40 @@ lines = []
 res = ping.run(sim, BAUD, count=3, speed=0, out=lines.append, sleep=lambda s: None)
 print("real receiver, packet 2 damaged: ack %d nak %d" % (res["ack"], res["nak"]))
 expect(res["ack"] == 2 and res["nak"] == 1, "a damaged packet gets a NAK from the real receiver")
+
+
+# The real FTDI adapter on its 16 ms timer (8 Nov): pings showed 11 ms of port delay, but the
+# speed test still ran at 8,011 bytes/s, and the 1 ms timer only raised that to 8,546 (7%).
+ftdi = {"sent": 20, "ack": 20, "nak": 0, "other": 0, "none": 0, "others": set(), "rtt": [0.0159] * 20,
+        "turnaround": [0.0111] * 20, "speed": 8011.0, "speed_sent": 64, "speed_ack": 64}
+lines = []
+ping.report(ftdi, 115200, 128, out=lines.append)
+m = re.search(r"about (\d+)% faster", "\n".join(lines))
+print("FTDI on its 16 ms timer: %s%% faster predicted" % (m.group(1) if m else "?"))
+expect(m is not None and 5 <= int(m.group(1)) <= 15, "the gain is judged from the speed test, not by adding the ping delay to every packet")
+lines = []
+ping.report(dict(ftdi, speed=None, speed_sent=0, speed_ack=0), 115200, 128, out=lines.append)
+expect("up to" in "\n".join(lines), "without a speed test the gain is given as an upper limit")
+
+
+# ---------------------------------------------------------------- low-latency mode
+class LowLatencyPort:
+    def __init__(self, error=None): self.error, self.calls = error, []
+    def set_low_latency_mode(self, on):
+        self.calls.append(on)
+        if self.error: raise self.error
+
+p = LowLatencyPort()
+expect(send.set_low_latency(p) is True and p.calls == [True], "low-latency mode is switched on when the driver offers it")
+expect(send.set_low_latency(LowLatencyPort(ValueError("not supported"))) is False, "a driver that refuses it is ignored")
+expect(send.set_low_latency(object()) is False, "a port without the setting (Windows) is ignored")
+master, slave = os.openpty()
+pty = serial.Serial(os.ttyname(slave), BAUD)
+expect(send.set_low_latency(pty) is False, "a pseudo-terminal, which has no such setting, is ignored")
+pty.close()
+port = send.open_port(os.ttyname(slave), BAUD, timeout=0.5)
+expect(port.is_open and port.timeout == 0.5, "send.open_port opens the port even where low-latency mode isn't offered")
+port.close()
 
 
 # ---------------------------------------------------------------- 3. command line

@@ -2,7 +2,8 @@
 """videoconv: turn a video / animated GIF / folder of frames into an a2kit
 delta stream for runtime/video.s.
 
-Why deltas: a screen is 8 KB but the serial link moves ~1.9 KB/s (19200 baud).
+Why deltas: a screen is 8 KB but the serial link moves ~1.9 KB/s at 19200 baud
+(~11.5 KB/s at 115200).
 So each frame sends only the screen bytes that changed, as many as fit in a
 per-frame byte budget, most-changed first. Whatever doesn't fit stays pending
 and is sent on later frames, so the picture converges instead of dropping
@@ -10,7 +11,7 @@ detail permanently. Ordered (Bayer) dithering is the default because, unlike
 error diffusion, it doesn't shimmer between frames and keeps the deltas small.
 
   videoconv.py clip.gif -o clip.a2v --fps 6
-  videoconv.py frames/ -o clip.a2v --fps 8 --baud 19200
+  videoconv.py frames/ -o clip.a2v --fps 8 --baud 115200
   videoconv.py movie.mp4 -o clip.a2v --fps 6      (needs ffmpeg on PATH)
 
 Scrub (--scrub N): every frame also re-sends N screen bytes from a cursor that
@@ -198,7 +199,7 @@ def main():
     ap.add_argument("-o", "--output", required=True)
     ap.add_argument("--fps", type=int, default=6, help="playback frames per second, a whole number 1-60 (default 6)")
     ap.add_argument("--src-fps", type=float, help="frame rate of the input (default: same as --fps)")
-    ap.add_argument("--baud", type=int, default=19200)
+    a2hdr.add_baud_arg(ap)
     ap.add_argument("--budget", type=int, help="bytes per frame (default: what the baud rate allows)")
     ap.add_argument("--dither", choices=["ordered", "atkinson", "threshold"], default="ordered")
     ap.add_argument("--crop", action="store_true")
@@ -206,6 +207,8 @@ def main():
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
+    ap.add_argument("--gain", type=float, default=1.0, help="audio volume multiplier, as in `a2kit audio` (default 1.0)")
+    ap.add_argument("--even-out", action="store_true", help="even out the audio's volume, as in `a2kit audio`; for speech")
     a = ap.parse_args()
 
     if not 1 <= a.fps <= 60:
@@ -214,6 +217,8 @@ def main():
         sys.exit("--src-fps must be positive")
     if a.burst_pages < 1:
         sys.exit("--burst-pages must be at least 1")
+    if not a.audio and (a.gain != 1.0 or a.even_out):
+        sys.exit("--gain and --even-out apply to the sound, so they need --audio")
     budget = a.budget or int(a.baud / 10 / a.fps * 0.95)
     if budget < 8 or budget > 0xFFFF:
         sys.exit("bad budget %d" % budget)
@@ -223,7 +228,7 @@ def main():
 
     audio, bursts = b"", {}
     if a.audio:
-        audio = audioconv.convert(a.audio)
+        audio = audioconv.convert(a.audio, a.gain, even_out=a.even_out)
         P = len(audio) // 256
         if P > 96:
             sys.exit("audio is %d pages; only 96 (6 s) fit in $6000-$BFFF. Use a shorter clip." % P)

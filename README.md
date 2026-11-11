@@ -14,7 +14,7 @@ can show and play, and send them over a Super Serial Card.
 | [Installation Guide](docs/INSTALL.md) | Requirements, per-system setup, finding the serial port |
 | [Quick Start](docs/QUICKSTART.md) | Purpose, workflow diagram, first picture on screen |
 | [User Manual](docs/MANUAL.md) | Every command and option, formats, memory map, troubleshooting |
-| [Roadmap](docs/ROADMAP.md) | What to do after the first real-hardware test |
+| [Roadmap](docs/ROADMAP.md) | Current status, known problems and what comes next |
 
 PDF copies of all three are in `docs/` (keep them in one folder so the links between them work).
 Starter assets are in [`examples/`](examples/).
@@ -32,8 +32,9 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | `./a2kit image` / `audio` / `video` | Convert a picture, a WAV, or an animation |
 | `./a2kit show plan` / `show send` | Build and send a slideshow with sound (`show.toml`) |
 | `./a2kit ping` | Check the serial link to the Apple II and measure its speed |
+| `./a2kit peek` / `crash` / `canary` / `ramload` | Read Apple II memory / report or watch for crashes / watch free RAM for changes / start a new receiver build without the disk |
 | `./a2kit send` / `stream` | Upload one block / play a video over serial |
-| `./a2kit disk` | Make `a2kit-boot.dsk`, a disk that boots straight into the receiver (one is included) |
+| `./a2kit disk` | Make `a2kit-boot.dsk`, a disk that boots straight into the receiver (one is included, plus a 19200-baud one) |
 | `./a2kit mon receiver.bin` | Print the receiver as Monitor lines, if you'd rather type it in |
 | `./a2kit build` / `test` / `doctor` | Rebuild the 6502 programs (cc65) / run the tests / check the setup |
 
@@ -42,9 +43,10 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | Path | Contents |
 |---|---|
 | `tools/` | The Python tools; `tools/a2kit.py` is the `./a2kit` command |
-| `runtime/` | 6502 sources; `runtime/config.inc` sets the card's slot and baud rate |
-| `a2kit-boot.dsk` | Boot disk: boots the Apple II straight into the receiver, which restarts itself after each session |
-| `receiver.bin`, `sequencer.bin`, `video.bin`, `boot.bin` | Built 6502 programs (rebuild with `./a2kit build`) |
+| `runtime/` | 6502 sources; `runtime/config.inc` sets the card's slot and line speed |
+| `a2kit-boot.dsk` | Boot disk: boots the Apple II straight into the receiver (115200 baud), which restarts itself after each session |
+| `a2kit-boot-19200.dsk` | The same at 19200 baud, if your cable or card can't manage 115200 ([Line speed](docs/MANUAL.md#24-line-speed-115200-or-19200-baud)) |
+| `receiver.bin`, `receiver-19200.bin`, `sequencer.bin`, `video.bin`, `boot.bin`, `boot-19200.bin` | Built 6502 programs (rebuild with `./a2kit build`) |
 | `examples/` | Starter assets and `make_examples.py`, which regenerates them |
 | `docs/` | The guides above, the workflow diagram, and `make_pdfs.py` |
 

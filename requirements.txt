@@ -1,5 +1,6 @@
 # a2kit runtime requirements (Python 3.11 or newer).  Install with:
 #   python3 -m pip install -r requirements.txt
+# For exactly the versions it was tested with, add: -c constraints.txt
 pillow>=10.1      # images, GIFs, previews (10.1 added the font-size argument the example generator uses)
 numpy             # video and audio conversion
 pyserial          # talking to the Apple II over a USB-serial adapter

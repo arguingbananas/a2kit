@@ -1,0 +1,11 @@
+# The exact versions a2kit was last tested with (Python 3.12, Linux, 11 November 2026).
+# The requirements files stay loose so a2kit installs on other Pythons; add this file
+# with -c to get exactly the tested versions:
+#   python3 -m pip install -r requirements-dev.txt -c constraints.txt
+# Update it when a newer set has passed ./a2kit test (python3 -m pip freeze shows them).
+pillow==13.0.0
+numpy==2.5.4
+pyserial==3.5
+py65==1.2.0
+pypdf==7.0.0
+ruff==0.17.4
