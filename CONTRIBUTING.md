@@ -48,6 +48,18 @@ pseudo-terminals. Anything tried on real hardware goes in the Installation Guide
   rebuild them after the merge instead of choosing a side.
 - If behaviour changes, update the README and the guides in the same PR.
 
+## Versions and the changelog
+
+a2kit's version is `VERSION` in `tools/a2hdr.py`, printed by `./a2kit --version` and `./a2kit doctor`.
+Each PR that users would notice adds a line under *Unreleased* in [CHANGELOG.md](CHANGELOG.md).
+To release, rename *Unreleased* to the new version and date, start a fresh *Unreleased*, and raise
+`VERSION` in the same PR:
+
+- the last number (1.0.**1**) for fixes that change no behaviour you'd rely on;
+- the middle one (1.**1**.0) for new features, options or commands;
+- the first (**2**.0.0) when something that worked before needs changing: a file format, an option, or a
+  new receiver that old disks can't stand in for.
+
 ## Security
 
 Report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md). Never

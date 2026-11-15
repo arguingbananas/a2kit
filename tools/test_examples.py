@@ -64,7 +64,7 @@ bad = {c for t in (quick, manual, install, readme) for c in re.findall(r"\./a2ki
 check("docs only use real ./a2kit commands", not bad, str(bad))
 flags = {f.rstrip("-") for t in (quick, manual) for f in re.findall(r"`(--[a-z][a-z-]+)", t)} | \
         {f.rstrip("-") for t in (quick, manual) for f in re.findall(r"(?<=\s)(--[a-z][a-z-]+)", re.sub(r"[^\n]*<!--.*", "", t))}
-unknown = sorted(f for f in flags if f not in help_text and f not in ("--help",))
+unknown = sorted(f for f in flags if f not in help_text and f not in ("--help", "--version"))
 check("docs only mention real --options", not unknown, str(unknown))
 
 # ---- 4. links between the docs resolve (GitHub-style heading anchors)

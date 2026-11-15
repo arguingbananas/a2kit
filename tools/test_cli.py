@@ -31,6 +31,10 @@ w.writeframes((0.6 * np.sin(2 * np.pi * 440 * t) * 32767).astype("<i2").tobytes(
 open(P("show.toml"), "w").write('[[scene]]\nimage = "pic.png"\nhold = 1.0\n[[scene]]\naudio = "s.wav"\n')
 
 r = run("--help"); check("help lists commands", r.returncode == 0 and "a2kit video" in r.stdout)
+r = run("--version"); check("--version prints the version", r.returncode == 0 and r.stdout.strip() == "a2kit " + a2hdr.VERSION)
+r = run("doctor"); check("doctor starts with the version", r.stdout.startswith("a2kit " + a2hdr.VERSION))
+changelog = open(os.path.join(HERE, "..", "CHANGELOG.md")).read()
+check("CHANGELOG.md has an entry for this version", "## %s (" % a2hdr.VERSION in changelog and "## Unreleased" in changelog)
 r = run(); check("no arguments prints help, exit 0", r.returncode == 0 and "a2kit image" in r.stdout)
 r = run("bogus"); check("unknown command exits 2 with usage", r.returncode == 2 and "unknown command" in r.stderr)
 
