@@ -56,11 +56,15 @@ mkdir -p out
 ./a2kit image examples/logo.png   -o out/logo.a2b   --preview out/logo_preview.png
 ./a2kit image examples/sphere.png -o out/sphere.a2b --preview out/sphere_preview.png
 
-# An animation (a folder of frames, or the GIF): 6 frames per second.
-./a2kit video examples/frames -o out/bounce.a2v --fps 6
+# An animation (a folder of frames, or the GIF): 6 frames per second. --preview writes a GIF
+# of the screen as the Apple II will draw it.
+./a2kit video examples/frames -o out/bounce.a2v --fps 6 --preview out/bounce_preview.gif
 
 # The same animation with a "boing" sound added between frames.
 ./a2kit video examples/frames -o out/bounce_sound.a2v --fps 6 --audio examples/boing.wav
+
+# A sound on its own, with --preview: a WAV of what the Apple II's speaker will play.
+./a2kit audio examples/jingle.wav -o out/jingle.a2b --preview out/jingle_apple.wav
 
 # A stress test at the full byte budget, without and with sound (see Step 6). Hard edges, so no dithering.
 ./a2kit video examples/stress -o out/stress.a2v --fps 6 --dither threshold

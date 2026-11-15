@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 from py65.devices.mpu6502 import MPU
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
-import show as a2kit, a2hdr
+import show as a2kit, a2hdr, audioconv
 from testlib import expect, finish
 
 tmp = tempfile.mkdtemp()
@@ -93,6 +93,15 @@ expect(nib == want, "speaker clicks decode back to the audio data")
 bad = [p for p in per if p != a2hdr.SPEAKER_PLAYER_CYCLES]
 print("period: %d x %d cycles; %d page-boundary outliers %s" % (len(per) - len(bad), a2hdr.SPEAKER_PLAYER_CYCLES, len(bad), sorted(set(bad))))
 expect(set(bad) <= {140} and len(bad) == len(audio) // 256 - 1, "sample period is 128 cycles except one 140 at each page change")
+
+# audio --preview models these clicks; they must be the real player's, cycle for cycle
+model1, model2 = audioconv.speaker_edges(audio)
+t0 = e1[0]
+same = (list(model1[:len(e1)]) == [e - t0 for e in e1] and list(model2[:len(e2)]) == [e - t0 for e in e2])
+expect(same and len(e1) == len(model1), "audio --preview's click model matches the real player cycle for cycle (%d samples)" % len(e1))
+pv = audioconv.speaker_preview(audio)
+expect(abs(len(pv) / audioconv.PREVIEW_RATE - len(e1) / a2hdr.SPEAKER_RATE) < 0.01 and pv.std() > 1000,
+       "the preview lasts as long as the sound and isn't silent (%.2f s)" % (len(pv) / audioconv.PREVIEW_RATE))
 t_end = [c for n, c in log if n == "text"][0]
 waited = (t_end - e2[-1]) / a2hdr.CPU_HZ
 print("wait after audio: %.3f s (want 0.2)" % waited)

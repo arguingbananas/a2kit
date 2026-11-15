@@ -8,6 +8,12 @@ to fit in RAM, so in practice a few seconds.
   audioconv.py clip.wav -o clip.a2b
   audioconv.py clip.wav -o clip.a2b --max-seconds 5 --gain 1.5
   audioconv.py speech.wav -o speech.a2b --even-out
+  audioconv.py clip.wav -o clip.a2b --preview clip_apple.wav
+
+--preview also writes a WAV of what the Apple II's speaker will produce: the
+player's exact 1-bit clicks, worked out cycle by cycle, averaged to 44.1 kHz.
+It includes the whine at the 7,972 Hz sample rate. A real speaker and its
+cabinet soften the top end a little more.
 """
 import argparse
 import sys
@@ -97,6 +103,59 @@ def pack_nibbles(n):
     return bytes(data)
 
 
+PREVIEW_RATE = 44100
+PAGE_SAMPLES = 512                 # samples per 256-byte page
+PAGE_EXTRA = 12                    # extra cycles the player spends moving to the next page
+
+
+def unpack_nibbles(data):
+    b = np.frombuffer(bytes(data), np.uint8)
+    return np.stack([b >> 4, b & 15], axis=1).ravel()
+
+
+def speaker_edges(data):
+    """The cycles at which the player clicks the speaker, two clicks a sample. Sample
+    n is a pulse 5(n+1)+3 cycles wide, one every 128 cycles, with 12 more at each
+    page change (runtime/speaker.inc; tools/test_sequencer.py checks this against
+    the real player, click for click)."""
+    n = unpack_nibbles(data).astype(np.int64)
+    i = np.arange(len(n), dtype=np.int64)
+    first = i * a2hdr.SPEAKER_PLAYER_CYCLES + (i // PAGE_SAMPLES) * PAGE_EXTRA
+    return first, first + 5 * (n + 1) + 3
+
+
+def speaker_preview(data, rate=PREVIEW_RATE):
+    """16-bit mono samples of the speaker's sound for this player data: the 1-bit
+    signal at cycle resolution, averaged over each output sample, without its DC."""
+    first, second = speaker_edges(data)
+    total = int(second[-1]) + a2hdr.SPEAKER_PLAYER_CYCLES
+    step = np.zeros(total + 1, np.int8)
+    step[first] += 1
+    step[second] -= 1
+    high = np.cumsum(np.cumsum(step[:-1], dtype=np.int32), dtype=np.int64)  # cycles high so far
+    cuts = np.rint(np.arange(1, int(total * rate / a2hdr.CPU_HZ)) * a2hdr.CPU_HZ / rate).astype(np.int64)
+    level = np.diff(np.concatenate(([0], high[cuts - 1]))) / np.diff(np.concatenate(([0], cuts)))
+    level = level - level.mean()
+    a = np.exp(-2 * np.pi * 20.0 / rate)     # the cone doesn't hold a steady offset: a 20 Hz high-pass
+    out = np.empty_like(level)
+    prev_in = prev_out = 0.0
+    for k, v in enumerate(level):
+        prev_out = a * (prev_out + v - prev_in)
+        prev_in = v
+        out[k] = prev_out
+    peak = np.max(np.abs(out)) or 1.0
+    return (out / peak * 0.9 * 32767).astype("<i2")
+
+
+def write_preview(path, data, rate=PREVIEW_RATE):
+    w = wave.open(path, "wb")
+    w.setnchannels(1)
+    w.setsampwidth(2)
+    w.setframerate(rate)
+    w.writeframes(speaker_preview(data, rate).tobytes())
+    w.close()
+
+
 def convert(path, gain=1.0, max_seconds=None, dither=True, even_out=False):
     x, rate = load_wav(path)
     x = resample(x, rate, a2hdr.SPEAKER_RATE)
@@ -125,11 +184,15 @@ def main():
     ap.add_argument("--no-dither", action="store_true")
     ap.add_argument("--even-out", action="store_true", help="even out the volume (a compressor); makes speech much clearer")
     ap.add_argument("--raw", action="store_true")
+    ap.add_argument("--preview", metavar="WAV", help="also write what the Apple II's speaker will produce, as a WAV")
     a = ap.parse_args()
     data = convert(a.input, a.gain, a.max_seconds, not a.no_dither, a.even_out)
     out = data if a.raw else a2hdr.pack(a2hdr.TYPE_AUDIO, data, a2hdr.SPEAKER_PLAYER_CYCLES)
     open(a.output, "wb").write(out)
     print("wrote %s: %d bytes, %.1f s" % (a.output, len(out), len(data) * 2 / a2hdr.SPEAKER_RATE), file=sys.stderr)
+    if a.preview:
+        write_preview(a.preview, data)
+        print("wrote %s: what the Apple II's speaker will produce" % a.preview, file=sys.stderr)
 
 
 if __name__ == "__main__":

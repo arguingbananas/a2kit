@@ -7,6 +7,9 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- `audio --preview out.wav` writes what the Apple II's speaker will produce, from the
+  player's exact timing; `video --preview out.gif` shows the screen as the player
+  draws it, frame by frame, at the speed it plays.
 - a2kit now runs on Python 3.10 as well as 3.11 and newer: on 3.10 it reads show
   scripts with the `tomli` package, which `requirements.txt` installs there. Tested
   with the full suite on Python 3.10.22.

@@ -195,6 +195,7 @@ You **don't** need to run it before using sound in a show or video, because thos
    ```
 3. Read the line it prints, for example `wrote out/jingle.a2b: 6920 bytes, 1.7 s`. If it's over about 6 seconds it won't fit in a show or video (about 9 with a [language card](#a2kit-lcprobe)).
 4. If it's speech, add `--even-out`. If it's too quiet or too loud, adjust `--gain`. If it's too long, use `--max-seconds`.
+5. To hear it on your computer first, add `--preview out/jingle_apple.wav`: a WAV of what the Apple II's speaker will produce, worked out from the player's exact timing, whine and all.
 
 **Usage:** `./a2kit audio INPUT -o OUTPUT [options]`
 
@@ -206,6 +207,7 @@ You **don't** need to run it before using sound in a show or video, because thos
 | `--even-out` | Even out the volume, which makes speech much clearer (see *Speech* below). |
 | `--no-dither` | Turn off the noise added before quantising to 4 bits. It's usually left on because it hides the stepping. |
 | `--raw` | Write the bare samples with no header. |
+| `--preview FILE.wav` | Also write what the Apple II's speaker will produce: the player's 1-bit clicks, worked out cycle by cycle and averaged to 44.1 kHz. It includes the whine at the 7,972 Hz sample rate; a real speaker softens the top end a little more. In tests it matched MAME's recording of the same sound. |
 
 **How it sounds:** the sound is low-pass filtered, resampled to about 8 kHz, normalised to near full scale and squeezed to 16 levels. Speech and simple tones work; dense music turns to hiss.
 
@@ -231,6 +233,7 @@ spent on the changes that matter most first. Anything that doesn't fit stays pen
    ./a2kit video examples/frames -o out/bounce.a2v --fps 6
    ```
 3. Read the summary line: frames, bytes, how long it will take to play, and **unsent screen bytes after the last frame**. That last number should be 0 (the picture fully caught up). If it isn't, the clip is too busy: lower `--fps` (more bytes per frame), slow the motion, or shrink the moving part.
+   To see it first, add `--preview out/bounce.gif`: an animated GIF of the screen exactly as the player draws it, detail still catching up included, at the speed it plays.
 4. Play it: start the receiver, then `./a2kit stream out/bounce.a2v --port /dev/ttyUSB0 --install`.
 
 **With sound**
@@ -264,6 +267,7 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
 | `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
 | `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
+| `--preview FILE.gif` | Also write an animated GIF of the screen as the player leaves it after each frame, at the speed the clip plays: each frame lasts 1/fps, plus any sound burst after it. For the sound, use [`a2kit audio --preview`](#4-a2kit-audio). |
 
 **Notes**
 

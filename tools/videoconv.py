@@ -26,6 +26,11 @@ longer by the audio's duration. Audio lives in RAM ($6000-$BFFF, ~6 s max), or
 ~9 s with --language-card and a language card in slot 0.
 --burst-pages sets how many 64 ms pages play per burst (default 1; raised
 automatically if there are more bursts than frames).
+
+Preview (--preview clip.gif): an animated GIF of the screen exactly as the
+player leaves it after each frame, including detail still catching up, at the
+speed it plays: each frame lasts 1/fps, plus the sound burst played after it.
+a2kit audio --preview renders the sound itself.
 """
 import argparse
 import os
@@ -75,6 +80,23 @@ def pack_screen(bits):
     scr = np.zeros(0x2000, dtype=np.uint8)
     scr[IDX] = rows
     return scr
+
+
+def screen_image(scr):
+    """8192-byte HGR screen in memory order -> 280x192 black-and-white image."""
+    rows = scr[IDX]
+    bits = (rows[:, :, None] & WEIGHTS) > 0
+    return Image.fromarray(bits.reshape(H, W).astype(np.uint8) * 255, "L").convert("1")
+
+
+def write_preview(path, screens, durations):
+    """An animated GIF of these screens; durations in seconds."""
+    imgs = [screen_image(s) for s in screens]
+    # GIF stores times in 10 ms steps: round the running total, not each frame, so the
+    # rounding doesn't add up over a long clip
+    ends = np.rint(np.cumsum(durations) * 100).astype(int) * 10
+    ms = [max(20, int(e - s)) for s, e in zip(np.concatenate(([0], ends[:-1])), ends)]
+    imgs[0].save(path, save_all=True, append_images=imgs[1:], duration=ms, loop=0, disposal=1)
 
 
 def natural_key(name):
@@ -211,6 +233,7 @@ def main():
     a2hdr.add_language_card_arg(ap)
     ap.add_argument("--gain", type=float, default=1.0, help="audio volume multiplier, as in `a2kit audio` (default 1.0)")
     ap.add_argument("--even-out", action="store_true", help="even out the audio's volume, as in `a2kit audio`; for speech")
+    ap.add_argument("--preview", metavar="GIF", help="also write an animated GIF of the screen as the player draws it")
     a = ap.parse_args()
 
     if not 1 <= a.fps <= 60:
@@ -243,7 +266,7 @@ def main():
     if not 0 <= a.scrub < 0x2000:
         sys.exit("--scrub must be 0-8191")
     shown = np.zeros(0x2000, dtype=np.uint8)
-    frames, pending = [], []
+    frames, pending, screens = [], [], []
     cursor = 0
     for i, img in enumerate(imgs):
         gray = np.asarray(imgconv.prepare(img, a.crop, False), dtype=np.float64)
@@ -256,6 +279,7 @@ def main():
             data += bytes([0x7F, n, n ^ 0x55])
         frames.append(data)
         pending.append(int(np.count_nonzero(shown != target)))
+        screens.append(shown.copy())
 
     blob = bytearray(a2hdr.stream_header(a2hdr.TYPE_VIDEO, len(frames)))
     blob.append(a.fps)
@@ -275,6 +299,11 @@ def main():
     print("%d frames, %d stream bytes (avg %.0f/frame, budget %d); plays in about %.1f s at %d baud; "
           "unsent screen bytes after last frame: %d" % (len(frames), total, total / len(frames), budget,
                                                          play_s, a.baud, pending[-1]), file=sys.stderr)
+
+    if a.preview:
+        write_preview(a.preview, screens, [1.0 / a.fps + stream.burst_seconds(bursts.get(i, 0)) for i in range(len(screens))])
+        print("wrote %s: the screen as the player draws it, %d frames" % (a.preview, len(screens)), file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()
