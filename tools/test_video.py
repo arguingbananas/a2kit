@@ -166,6 +166,24 @@ print("6502 player, host schedule at 19200 baud (%.1f s): overruns %d, screen ==
     total, r["over"], r["screen"] == bytes(ref), len(r["stray"]) + len(r["io_bad"]), len(r["bad_reads"]), r["i_after"] is False))
 expect(r["over"] == 0 and r["screen"] == bytes(ref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"] and r["i_after"] is False,
        "player with the host's real schedule: no overruns, right picture, no stray access, interrupts restored")
+
+# video --preview: each GIF frame is the screen the stream leaves after that frame
+gif = os.path.join(tmp, "preview.gif")
+fps_p, frames_p, _ = convert(["--preview", gif])
+want, scr = [], np.zeros(0x2000, np.uint8)
+for f in frames_p:
+    ref_decode(f, scr)
+    want.append(np.asarray(videoconv.screen_image(scr).convert("L")))
+from PIL import ImageSequence
+g = Image.open(gif)
+got = [np.asarray(fr.convert("L")) for fr in ImageSequence.Iterator(g)]
+dur = [fr.info["duration"] for fr in ImageSequence.Iterator(Image.open(gif))]
+dedup = [w for k, w in enumerate(want) if k == 0 or not np.array_equal(w, want[k - 1])]
+same = len(got) == len(dedup) and all(np.array_equal(a > 127, b > 127) for a, b in zip(got, dedup))
+expect(same, "video --preview shows, frame by frame, the screen the stream leaves (%d GIF frames)" % len(got))
+expect(abs(sum(dur) / 1000 - len(frames_p) / fps_p) <= 0.01, "the preview plays for as long as the clip (%.2f s)" % (sum(dur) / 1000))
+expect(np.array_equal(got[-1] > 127, np.asarray(videoconv.screen_image(np.frombuffer(r["screen"], np.uint8)).convert("L")) > 127),
+       "the preview's last frame is what the real player left on the screen")
 stream_bytes = PRE + b"".join(frames) + END
 r = run_6502(arrivals(stream_bytes, 532), i_flag_before=True)
 print("   back-to-back at line rate, entered with interrupts off: overruns %d, screen ok: %s, I flag still set: %s" % (
