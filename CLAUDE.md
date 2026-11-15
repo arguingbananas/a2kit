@@ -40,7 +40,9 @@ docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md, CHANGELOG.md
 (with `VERSION` in `tools/a2hdr.py`; see CONTRIBUTING.md).
 Generated but committed: `*.bin`, `*.dsk`, `video.lbl` (rebuild with `./a2kit build`,
 never edit by hand) and `docs/*.pdf` (rebuild with `docs/make_pdfs.py`).
-Optional, not present: CI workflow, packaging.
+CI: `.github/workflows/test.yml` runs doctor, lint, a binaries-match-source check and the
+full suite on Python 3.10 and 3.12 for every PR and push to main. Optional, not present:
+packaging.
 
 ## Rules
 

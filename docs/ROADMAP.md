@@ -190,7 +190,6 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 
 ## 5. Project upkeep
 
-- **Continuous integration.** The code is on GitHub, but nothing runs `./a2kit test` automatically yet. The suite needs cc65 and py65, and no hardware.
 - **A guided hardware check.** A script that walks through the checklist below and records the results.
 - **macOS and Windows.** Run the install guide and the test suite on each.
 
@@ -228,6 +227,7 @@ Use this for any setup not yet listed as [tested](INSTALL.md#tested-setup), goin
 - **Restarting after Ctrl-Reset** (11 November 2026): the Manual explains why `980G` crashes after the first Reset and how to repair it, and the troubleshooting table lists the symptom.
 - **`show send` checks the sequencer** (11 November 2026): without `--install` it reads the sequencer back first, and uploads it if it's missing or different, so a show after a power cycle or a `canary` fill no longer jumps into whatever is at `$0C00`.
 - **The receiver says who it is, and reports stray interrupts** (11 November 2026): the banner is just `A2KIT`, which freed 22 bytes. Every command reads the receiver back on first contact, says whether it's this computer's build and at which speed (on the Apple II's bottom line too, for uploads), and names the `--baud` to use when the speeds don't match. The IRQ vector now points at the Monitor's `BRK` path, so a stray interrupt is reported like a crash instead of running wild. The banner is centred, and the status line, on the line above `ping`'s, reads `VERSION MATCH` or `VERSION MISMATCH`. Tested on the Apple II+: an old receiver was reported as a mismatch, `ramload` and then the new boot disk from the SD card both matched, `$03FE` read `$FA4C`, and a show sent without `--install` after a canary fill uploaded its own sequencer and played.
+- **Continuous integration** (15 November 2026): GitHub runs `doctor`, lint, a check that the committed 6502 programs and disks match their source, and the full suite on Python 3.10 and 3.12, for every pull request and push to `main` (`.github/workflows/test.yml`). The first run passed on both.
 - **Python 3.10** (15 November 2026): a2kit needs 3.10 or newer, not 3.11. On 3.10, `tomli` reads show scripts in place of the built-in `tomllib`; `constraints.txt` stays 3.11-only (its numpy). The full suite passed on Python 3.10.22 with what a 3.10 install gets (numpy 2.2.6, pillow 12.3.0, tomli 2.5.0).
 - **Version numbers** (14 November 2026): a2kit is 1.0.0. `./a2kit --version` and `doctor` print it, CHANGELOG.md lists what changed, and every command checks that the receiver in memory is this version's (`VERSION MATCH`).
 - **A lost final acknowledgement** (14 November 2026): when the reply to the last packet goes missing, the computer asks the receiver whether it's still listening before resending, so it no longer sends bytes into a program that has started, and says "most likely started" instead of reporting an error.

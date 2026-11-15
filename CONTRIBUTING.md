@@ -25,6 +25,13 @@ Tests never need an Apple II: they use a 6502 simulator, fake serial ports and
 pseudo-terminals. Anything tried on real hardware goes in the Installation Guide's
 *Tested setup* section.
 
+GitHub runs the same checks on every pull request and every push to `main`
+(`.github/workflows/test.yml`), on Python 3.10 and 3.12: `doctor`, `make lint`, a clean
+rebuild of the 6502 programs and disks, which must match the committed ones byte for
+byte, and `make test`. A PR shows a tick or a cross for each Python. A cross that
+says the binaries differ means a change in `runtime/` was committed without the files
+`./a2kit build` makes from it.
+
 ## Branches and pull requests
 
 - Work on a branch off `main`: `feature/<name>` for code, `docs/<name>` for docs only.

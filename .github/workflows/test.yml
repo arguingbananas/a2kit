@@ -1,0 +1,65 @@
+# Runs the whole test suite on every push to main and every pull request, on the
+# oldest and the newest-tested Python. No Apple II, serial port or network is
+# needed: the tests use the 6502 simulator and pseudo-terminals (see CONTRIBUTING.md).
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }}
+    # 24.04 is what the tested setup runs (Linux Mint 22), so cc65 is the same version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: System tools (cc65, make, ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cc65 make ffmpeg
+
+      - name: Python packages
+        run: |
+          python -m pip install --upgrade pip
+          # constraints.txt pins the versions tested on 3.12; its numpy needs 3.11 or newer
+          if [ "${{ matrix.python }}" = "3.12" ]; then
+            python -m pip install -r requirements-dev.txt -c constraints.txt
+          else
+            python -m pip install -r requirements-dev.txt
+          fi
+
+      - name: Doctor
+        run: python tools/a2kit.py doctor
+
+      - name: Lint
+        run: make lint PYTHON=python
+
+      - name: The committed 6502 programs and disks match their source
+        run: |
+          make clean
+          make all PYTHON=python
+          git diff --exit-code --stat -- '*.bin' '*.dsk' video.lbl
+
+      - name: Test suite
+        run: make test PYTHON=python

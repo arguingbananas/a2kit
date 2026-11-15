@@ -1,5 +1,7 @@
 # a2kit
 
+[![tests](https://github.com/arguingbananas/a2kit/actions/workflows/test.yml/badge.svg)](https://github.com/arguingbananas/a2kit/actions/workflows/test.yml)
+
 Turn pictures, animations and sound from a modern computer into things an Apple II
 can show and play, and send them over a Super Serial Card.
 
