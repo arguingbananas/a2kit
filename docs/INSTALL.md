@@ -16,7 +16,7 @@ a2kit has two halves:
 
 | Item | Needed for | Required? | Tested with |
 |---|---|---|---|
-| **Python 3.11 or newer** | Everything | **Yes** | 3.11, 3.12, 3.13 |
+| **Python 3.10 or newer** | Everything | **Yes** | 3.11, 3.12, 3.13 (3.10 is supported but hasn't had a test run yet) |
 | **pillow** 10.1+ | Images, GIFs, previews | **Yes** | 12.3, 13.0 |
 | **numpy** | Video and audio conversion | **Yes** | 2.4, 2.5 |
 | **pyserial** | Sending to the Apple II | **Yes** (for sending) | 3.5 |
@@ -101,7 +101,7 @@ You need no Apple II at all to convert files and look at previews.
 
 **Your computer**
 
-- Any computer that runs Python 3.11 or newer (see *Operating systems* below).
+- Any computer that runs Python 3.10 or newer (see *Operating systems* below).
 - An **RS-232 serial port**, either of:
   - a **built-in serial port** (`/dev/ttyS0` on Linux, `COM1` on Windows), often a DB-9 on the back of older desktops. This is the tested setup, and it adds the least delay per packet, though a tested FTDI adapter came within about 0.5 ms once its latency timer was turned down (see `a2kit ping` in the [User Manual](MANUAL.md#a2kit-ping));
   - a **USB-to-RS-232 adapter** (FTDI, Prolific, CH340, CP210x and similar chips are all fine). It must be a true **RS-232** adapter, normally with a **DB-9** plug.
@@ -158,7 +158,7 @@ tar xzf a2kit-starter.tar.gz
 cd a2kit
 ```
 
-### Step 2. Python 3.11 or newer
+### Step 2. Python 3.10 or newer
 
 Check what you have:
 
@@ -166,7 +166,7 @@ Check what you have:
 python3 --version
 ```
 
-If it's older than 3.11, or missing, install a current Python:
+If it's older than 3.10, or missing, install a current Python:
 
 | System | Command or download |
 |---|---|
@@ -199,7 +199,7 @@ python -m pip install -r requirements.txt
 Activate the environment (`source .venv/bin/activate`) in each new terminal before using a2kit. On Linux and macOS, `./a2kit` and `make` find `.venv` by themselves, so those two work without activating it.
 If you also want to run the tests, install `requirements-dev.txt` instead, which adds `py65` (and `pypdf`, used only to rebuild these PDFs).
 
-The requirements files ask for no particular versions, so a2kit installs on any Python from 3.11 up. To get exactly the versions it was last tested with, add `constraints.txt` (tested on Python 3.12):
+The requirements files ask for no particular versions, so a2kit installs on any Python from 3.10 up (on 3.10 it also installs `tomli`, which reads show scripts). To get exactly the versions it was last tested with, add `constraints.txt` (tested on Python 3.12; its numpy needs 3.11 or newer, so leave it out on 3.10):
 
 ```bash
 python3 -m pip install -r requirements-dev.txt -c constraints.txt
@@ -315,7 +315,7 @@ Requirements on the Apple II side: a 16-sector Disk II controller with the disk 
 | `./a2kit: command not found` / won't run (Windows) | Use `python tools\a2kit.py …`. |
 | `ModuleNotFoundError: No module named 'PIL'` (or `numpy`) | The environment isn't active, or packages weren't installed into it: activate it and re-run Step 3. |
 | `No module named 'serial'` | Install **`pyserial`**, not `serial` (see the note in Step 3). |
-| `ModuleNotFoundError: No module named 'tomllib'` | Python is older than 3.11. Install a newer one (Step 2). |
+| `ModuleNotFoundError: No module named 'tomli'` | Python 3.10 needs the `tomli` package: run `python3 -m pip install -r requirements.txt` again. |
 | `ca65: command not found` when building | Install cc65 (Step 4). You don't need it unless you're rebuilding. |
 | `make: command not found` (Windows) | Use WSL, or skip rebuilding; the included `.bin` files work. |
 | `ffmpeg isn't on PATH` | Install ffmpeg (Step 4), or convert your video to a GIF or a folder of frames. |

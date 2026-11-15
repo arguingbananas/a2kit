@@ -60,7 +60,7 @@ your file --(convert)--> .a2b / .a2v file --(send)--> serial cable --> Apple II
 
 Full instructions, with per-system commands and troubleshooting, are in the [Installation Guide](INSTALL.md). In short:
 
-1. Install Python 3.11 or newer.
+1. Install Python 3.10 or newer.
 2. `python3 -m pip install -r requirements.txt` (pillow, numpy, pyserial), preferably inside a virtual environment. Use `requirements-dev.txt` to add `py65` for the tests and `pypdf` for rebuilding the PDFs.
 3. Optional: **cc65** and **make** to rebuild the 6502 programs (the built `.bin` files are included), and **ffmpeg** to convert video files such as `.mp4`. GIFs and folders of frames need no ffmpeg.
 4. Run `./a2kit doctor`. It reports anything missing.
@@ -642,7 +642,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 | `audio doesn't fit below $C000` / `only 96 (6 s) fit` | Shorten or trim the sound (`--max-seconds`). |
 | `this clip has audio … use --install` | Add `--install` to the `stream` command. |
 | `ffmpeg isn't on PATH` | Install ffmpeg, or convert to a GIF or folder of frames. |
-| `ModuleNotFoundError` | Activate your virtual environment and run `python3 -m pip install -r requirements.txt`. Python 3.11+ is required. See the [Installation Guide](INSTALL.md#6-problems-with-the-install). |
+| `ModuleNotFoundError` | Activate your virtual environment and run `python3 -m pip install -r requirements.txt`. Python 3.10+ is required. See the [Installation Guide](INSTALL.md#6-problems-with-the-install). |
 
 If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your computer's setup), then `./a2kit ping` (the cable and the receiver; its verdict says which kind of fault), then `./a2kit test` (confirms your copy of a2kit works), then send a single small picture with `--chunk 32`, then try a lower baud rate.
 

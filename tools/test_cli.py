@@ -31,6 +31,13 @@ w.writeframes((0.6 * np.sin(2 * np.pi * 440 * t) * 32767).astype("<i2").tobytes(
 open(P("show.toml"), "w").write('[[scene]]\nimage = "pic.png"\nhold = 1.0\n[[scene]]\naudio = "s.wav"\n')
 
 r = run("--help"); check("help lists commands", r.returncode == 0 and "a2kit video" in r.stdout)
+# Python 3.10 has no tomllib: show.py falls back to tomli. Hide tomllib (and use it as the
+# stand-in tomli, which has the same interface) so the fallback is what reads the show.
+code = ("import sys, tomllib; sys.modules['tomli'] = tomllib; sys.modules['tomllib'] = None; "
+        "sys.path.insert(0, %r); import show; "
+        "print(show.tomllib.__name__, len(show.build(%r)))" % (HERE, os.path.join(HERE, "..", "examples", "show.toml")))
+r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+check("without tomllib (Python 3.10), show scripts are read through tomli", r.returncode == 0 and r.stdout.split()[:1] == ["tomllib"] and int(r.stdout.split()[1]) > 0, r.stderr[-300:])
 r = run(); check("no arguments prints help, exit 0", r.returncode == 0 and "a2kit image" in r.stdout)
 r = run("bogus"); check("unknown command exits 2 with usage", r.returncode == 2 and "unknown command" in r.stderr)
 
