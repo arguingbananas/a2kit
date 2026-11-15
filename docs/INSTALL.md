@@ -16,7 +16,7 @@ a2kit has two halves:
 
 | Item | Needed for | Required? | Tested with |
 |---|---|---|---|
-| **Python 3.10 or newer** | Everything | **Yes** | 3.11, 3.12, 3.13 (3.10 is supported but hasn't had a test run yet) |
+| **Python 3.10 or newer** | Everything | **Yes** | 3.10, 3.11, 3.12, 3.13 |
 | **pillow** 10.1+ | Images, GIFs, previews | **Yes** | 12.3, 13.0 |
 | **numpy** | Video and audio conversion | **Yes** | 2.4, 2.5 |
 | **pyserial** | Sending to the Apple II | **Yes** (for sending) | 3.5 |
