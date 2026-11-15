@@ -41,6 +41,8 @@ READ_SYNC = 0xA6
 CRASH_MARK = 0xC3       # the receiver's crash handler sends this by itself, at any moment
 ACK = 0x06
 NAK = 0x15
+PROBABLY_STARTED = ("the Apple II didn't acknowledge the start, but it isn't listening any more, "
+                    "so it has most likely started: check its screen")
 
 # default load address by block type (None = must pass --addr)
 DEFAULT_ADDR = {a2hdr.TYPE_IMAGE_HGR: 0x2000}
@@ -183,8 +185,40 @@ class Sender:
             if progress:
                 progress(pos, len(data))
 
-    def finish(self, exec_addr=0):
-        self._send_packet(exec_addr, b"")
+    def finish(self, exec_addr=0, probe=True):
+        """End the session: the receiver acknowledges, then runs exec_addr (0 shows
+        hi-res page 1). Returns True when acknowledged, False when no acknowledgement
+        came but the program has most likely started, so callers can say so instead
+        of reporting a failure.
+
+        Resending blindly would be wrong: once the program runs, the bytes land in
+        it. So after silence, a one-byte read asks whether the receiver is still
+        listening (the end packet never arrived): if it answers, resend; if not, the
+        program started and only the reply was lost. The read's bytes contain no $FE,
+        so a video player that has started ignores them. probe=False skips the read
+        for programs that talk back on the line themselves (lcprobe)."""
+        pkt = make_packet(self.seq, exec_addr, b"")
+        for _ in range(self.retries):
+            self.port.reset_input_buffer()
+            self.port.write(pkt)
+            self.port.flush()
+            reply = self.port.read(1)
+            if reply and reply[0] == ACK:
+                self.seq = (self.seq + 1) & 0xFF
+                return True
+            if reply and reply[0] == NAK:
+                continue                        # damaged on the way: the receiver is still listening
+            if not (probe and self.receiver_listening()):
+                return False
+        raise IOError("no ACK after %d tries (seq %d, end of session, run $%04X)" % (self.retries, self.seq, exec_addr))
+
+    def receiver_listening(self):
+        """True if the receiver answers a one-byte read of $0800 (its own first byte)."""
+        try:
+            read_memory(self.port, 0x0800, 1, retries=1)
+            return True
+        except IOError:
+            return False
 
 
 def set_low_latency(port):
@@ -249,8 +283,10 @@ def main():
         print("\r%d/%d bytes" % (done, total), end="", file=sys.stderr)
 
     s.send_blob(data, addr, progress)
-    s.finish(args.exec_addr)
+    started = s.finish(args.exec_addr)
     print("\ndone in %.1fs" % (time.time() - t0), file=sys.stderr)
+    if not started:
+        print(PROBABLY_STARTED, file=sys.stderr)
 
 
 if __name__ == "__main__":

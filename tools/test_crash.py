@@ -204,6 +204,51 @@ except SystemExit as e:
     msg = str(e)
 expect("use --baud %d" % BAUD in msg, "rxid finds a receiver running at the other speed and names the --baud to use (%s)" % msg)
 expect(p.baudrate == wrong, "...and leaves the port at the speed it was opened with")
+
+# a lost reply to the end packet: the program has started, so don't resend into it
+class Lossy:
+    """The receiver, with the line losing either the reply to the first end packet
+    or the first end packet itself. Counts the end packets and reads sent."""
+    def __init__(self, m, lose):
+        self.m, self.lose, self.ends, self.reads, self.drop_reply = m, lose, 0, 0, False
+    def write(self, d):
+        d = bytes(d)
+        if d[:1] == bytes([0xA6]):
+            self.reads += 1
+        if d[:1] == bytes([0xA5]) and d[2] == 0:            # an end packet
+            self.ends += 1
+            if self.ends == 1 and self.lose == "packet":
+                return
+            if self.ends == 1 and self.lose == "reply":
+                self.drop_reply = True
+        self.m.write(d)
+    def flush(self): pass
+    def reset_input_buffer(self): self.m.reset_input_buffer()
+    def read(self, k=1):
+        out = self.m.read(k)
+        if self.drop_reply and out:
+            self.drop_reply = False
+            return b""
+        return out
+def started_program():
+    m = idle(); m.tx.clear()
+    for i, b in enumerate([0xA9, 0x42, 0x8D, 0x00, 0x70, 0x4C, 0x05, 0x60]):     # LDA #$42 / STA $7000 / JMP *
+        m.mem[0x6000 + i] = b
+    m.mem[0x7000] = 0
+    return m
+for lose in ("reply", "packet"):
+    m = started_program(); p = Lossy(m, lose); m.timeout = 60_000
+    got = send.Sender(p).finish(0x6000)
+    m.step(5000)                                    # the receiver waits ~1 ms after its ACK, then runs the program
+    if lose == "reply":
+        expect(got is False and m.mem[0x7000] == 0x42 and p.ends == 1 and p.reads == 1,
+               "a lost reply to the end packet: the program ran, nothing was resent, and finish says it probably started")
+    else:
+        expect(got is True and m.mem[0x7000] == 0x42 and p.ends == 2 and p.reads == 1,
+               "a lost end packet: the receiver answers the check, so the end packet is resent and the program runs")
+m = started_program(); p = Lossy(m, "reply"); m.timeout = 60_000
+expect(send.Sender(p).finish(0x6000, probe=False) is False and p.reads == 0 and p.ends == 1,
+       "with probe=False (lcprobe, ramload) there is no read: finish just says it probably started")
 try:
     rxid.check(idle(), wrong, out=said.append); msg = ""     # a pseudo-terminal (MAME) answers at any speed
 except SystemExit as e:

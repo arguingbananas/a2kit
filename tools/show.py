@@ -212,8 +212,10 @@ def main():
     for addr, data, label in plan:
         print("sending", label, file=sys.stderr)
         s.send_blob(data, addr)
-    s.finish(SEQ_ADDR)
+    started = s.finish(SEQ_ADDR)
     print("uploaded in %.1f s; the show is playing" % (time.monotonic() - t0), file=sys.stderr)
+    if not started:
+        print(send.PROBABLY_STARTED, file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -52,7 +52,8 @@ def main():
     rxid.check(port, a.baud, screen=False)    # the probe prints its own report
     s = send.Sender(port)
     s.send_blob(open(path, "rb").read(), PROBE_ADDR)
-    s.finish(PROBE_ADDR)
+    if not s.finish(PROBE_ADDR, probe=False):   # the probe talks back on the line itself
+        print(send.PROBABLY_STARTED, file=sys.stderr)
     report = read_result(port)
     port.close()
     print(report or "No report from the test program.")

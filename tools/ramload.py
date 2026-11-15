@@ -59,7 +59,7 @@ def upload(port, boot, disk_slot=6, retries=5):
     s = send.Sender(port, retries=retries)
     s.send_blob(boot, IMAGE)
     s.send_blob(loader(disk_slot), LOADER)
-    s.finish(LOADER)
+    s.finish(LOADER, probe=False)      # verify() checks afterwards whether the new receiver started
 
 
 def verify(port, boot, retries=2):
