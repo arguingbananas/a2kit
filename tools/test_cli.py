@@ -44,6 +44,10 @@ else:
 r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
 check("show scripts are read through tomli where there is no tomllib (Python 3.10)",
       r.returncode == 0 and r.stdout.split()[:1] == [want] and int(r.stdout.split()[1]) > 0, r.stderr[-300:])
+r = run("--version"); check("--version prints the version", r.returncode == 0 and r.stdout.strip() == "a2kit " + a2hdr.VERSION)
+r = run("doctor"); check("doctor starts with the version", r.stdout.startswith("a2kit " + a2hdr.VERSION))
+changelog = open(os.path.join(HERE, "..", "CHANGELOG.md")).read()
+check("CHANGELOG.md has an entry for this version", "## %s (" % a2hdr.VERSION in changelog and "## Unreleased" in changelog)
 r = run(); check("no arguments prints help, exit 0", r.returncode == 0 and "a2kit image" in r.stdout)
 r = run("bogus"); check("unknown command exits 2 with usage", r.returncode == 2 and "unknown command" in r.stderr)
 

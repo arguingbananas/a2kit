@@ -18,6 +18,7 @@
   a2kit build                        assemble the 6502 programs (needs cc65)
   a2kit test                         run the whole test suite
   a2kit doctor                       check the toolchain and built binaries
+  a2kit --version                    print a2kit's version
 
 `a2kit COMMAND --help` shows each command's options. Commands that use the
 serial line take --baud (115200 by default); set A2KIT_BAUD=19200 to make the
@@ -84,9 +85,15 @@ def make(target):
     return subprocess.call(["make", "-C", ROOT, target])
 
 
+def version():
+    import a2hdr
+    return a2hdr.VERSION
+
+
 def doctor():
     """Report what is installed. Required items affect the exit code; optional ones don't."""
     ok = True
+    print("a2kit %s\n" % version())
 
     def line(good, text, required=True):
         nonlocal ok
@@ -127,6 +134,9 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] in ("-h", "--help", "help"):
         return usage(0)
+    if argv[0] in ("--version", "-V", "version"):
+        print("a2kit " + version())
+        return 0
     cmd, rest = argv[0], argv[1:]
     if cmd in TOOLS:
         return run_tool(cmd, rest)

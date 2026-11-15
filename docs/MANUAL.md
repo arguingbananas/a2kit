@@ -612,7 +612,7 @@ For a quick check after each change, `make smoke` runs the audio converter's tes
 
 ### `a2kit doctor`
 
-Checks that cc65, the Python packages and the built `.bin` files are present, and tells you what to install. Run it first whenever something looks off.
+Checks that cc65, the Python packages and the built `.bin` files are present, and tells you what to install. Run it first whenever something looks off. Its first line is a2kit's version, which `./a2kit --version` also prints; [CHANGELOG.md](../CHANGELOG.md) lists what changed in each.
 
 ---
 

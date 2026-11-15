@@ -11,8 +11,12 @@ import argparse
 import os
 import struct
 
+# a2kit's own version: ./a2kit --version prints it. Raise it, and add a CHANGELOG.md
+# entry, when a change is merged that users would notice (see CONTRIBUTING.md).
+VERSION = "1.0.0"
+
 MAGIC = b"A2"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 1                  # of the block format, not of a2kit
 HDR_SIZE = 8
 
 TYPE_IMAGE_HGR = 1

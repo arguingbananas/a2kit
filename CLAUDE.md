@@ -36,10 +36,11 @@ There is no formatter; don't reformat files wholesale.
 
 Required, and kept current: README.md, LICENSE (MIT), SECURITY.md, CONTRIBUTING.md,
 requirements*.txt, constraints.txt, pyproject.toml, Makefile, docs/INSTALL.md,
-docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md.
+docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md, CHANGELOG.md
+(with `VERSION` in `tools/a2hdr.py`; see CONTRIBUTING.md).
 Generated but committed: `*.bin`, `*.dsk`, `video.lbl` (rebuild with `./a2kit build`,
 never edit by hand) and `docs/*.pdf` (rebuild with `docs/make_pdfs.py`).
-Optional, not present: CHANGELOG, CI workflow, packaging.
+Optional, not present: CI workflow, packaging.
 
 ## Rules
 
@@ -59,3 +60,4 @@ Optional, not present: CHANGELOG, CI workflow, packaging.
 - `make lint` is clean.
 - No new high-severity `pip-audit` findings.
 - README and the guides updated (and PDFs rebuilt) if behaviour changed.
+- A line under *Unreleased* in CHANGELOG.md for anything users would notice.
