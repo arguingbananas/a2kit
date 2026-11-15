@@ -82,15 +82,9 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 
 ## 2. Finish the work in progress
 
-**Suggested merge order** (small and independent first, so conflicts are dealt with once, on the branch with the most to merge):
+Everything from the first rounds of work is merged: the roadmap, clearer speech, the crash reporter, the memory map, the language card, the project audit, and the receiver's self-identification (PRs #2–#18). One thing is left: **long sound on real hardware**, which waits for a replacement language card (the RAMCard hung the machine within 7 minutes of being refitted on 10 November). After fitting the new card, run `a2kit canary` for a few hours with the extra cooling still on, then work through the open items under *Longer sound* below.
 
-1. **This roadmap:** merged (PR #4).
-2. **Clearer speech:** merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)).
-3. **The crash reporter:** merged ([PR #6](https://github.com/arguingbananas/a2kit/pull/6)).
-4. **The language card.** `main` is merged in (11 Nov): the language-card lines sit in the receiver's shared `init` routine, so a restart after a crash re-enables the card too. The receiver is exactly the 380 bytes available, so there is no room left. The simulator tests pass, and on 11 November the long sound played correctly in MAME, in a show and in a video. The RAMCard hung the machine within 7 minutes of being refitted (10 Nov), so the real-hardware test waits for a replacement card; after fitting it, run `a2kit canary` for a few hours, with the extra cooling still on, before testing code on it.
-5. **The memory map:** merged ([PR #2](https://github.com/arguingbananas/a2kit/pull/2)); the language-card branch updates it for the bigger players and corrects the card's layout.
-
-### Crash reporter (`feature/crash-reporter`)
+### Crash reporter (merged, [PR #6](https://github.com/arguingbananas/a2kit/pull/6))
 
 Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit ramload`.
 
@@ -110,7 +104,7 @@ Adds `a2kit peek`, `a2kit crash` with `--watch`, `a2kit canary`, and `a2kit raml
 
 **Known limits:** a crash that never reaches `BRK` shows up only as silence. The `BRK` itself and the Monitor's register save overwrite the 5 stack bytes just below S. `peek` above `$D000` reads ROM, not a language card. Read replies go out back-to-back, so these commands may not work on a card refitted with a WDC 65C51.
 
-### Longer sound (`feature/language-card`)
+### Longer sound (merged, [PR #11](https://github.com/arguingbananas/a2kit/pull/11))
 
 Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. Machines without a card keep today's limit. Includes `a2kit lcprobe`, which reported 16K GOOD on the real Microsoft RAMCard.
 
@@ -119,8 +113,8 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 - [ ] On real hardware, with a replacement card: rerun `a2kit lcprobe`, then play `examples/long_show.toml`, listening for a glitch where the sound reaches the card at 6.2 s
 - [ ] Play the stress clip with long sound (`out/stress_long.a2v` locally, which needs regenerating elsewhere)
 - [x] Update the Manual, Quick Start, Install Guide and README, and rebuild the PDFs (11 Nov)
-- [ ] Correct the Install Guide's Apple II row, which still describes this machine as 48K
-- [ ] Open a PR
+- [ ] Once the new card is fitted and tested: list it in the Install Guide's tested setup (the machine is 48K again until then)
+- [x] Merged ([PR #11](https://github.com/arguingbananas/a2kit/pull/11))
 
 **After that:** the card's second `$D000` bank could take the limit to about 10.2 s. `peek` could also learn to read the card.
 
@@ -180,7 +174,7 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 - **`a2kit music FILE --port …`:** converts and streams. `--preview out.wav` renders the register stream on the computer with a small AY model, so it can be heard and tested without the Apple II.
 - **Shows:** a `music = "tune.ym"` scene, played from memory.
 - **Video:** `a2kit video --music tune.ym`, as part of the stream.
-- **The receiver doesn't change.** It is at its 380-byte limit with the language card, so the players are separate uploaded programs, like `sequencer.bin` and `video.bin`.
+- **The receiver doesn't change.** It has only 18 of the boot disk's 380 bytes to spare, so the players are separate uploaded programs, like `sequencer.bin` and `video.bin`.
 - **Tests:** a VIA and AY model in the py65 simulator records register writes, so tests can check the right writes at the right times; the preview renderer turns them into sound. AppleWin and MAME emulate the card, for checks before real hardware.
 
 **Steps.**
@@ -199,7 +193,7 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 ## 5. Project upkeep
 
 - **Continuous integration.** The code is on GitHub, but nothing runs `./a2kit test` automatically yet. The suite needs cc65 and py65, and no hardware.
-- **Version numbers.** Show a version in the receiver's banner and `./a2kit --version`, so it's clear which build is on a disk or in memory. This matters more now that `ramload` can put a different build in memory.
+- **Version numbers.** Half done: every command now checks whether the receiver in memory is this computer's build and says `VERSION MATCH` or `MISMATCH` ([PR #15](https://github.com/arguingbananas/a2kit/pull/15)). Still to do: a version number printed by `./a2kit --version`, and kept in a release history, so builds can be named and not just compared.
 - **A guided hardware check.** A script that walks through the checklist below and records the results.
 - **macOS and Windows.** Run the install guide and the test suite on each.
 
