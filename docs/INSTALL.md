@@ -92,6 +92,18 @@ With the 16 ms timer the adapter passes received bytes on only when the timer ru
 
 With the timer at 1 ms, the adapter is as good as the built-in port in practice: uploads differ by about 0.1 s, and video, which sends without waiting for replies, not at all.
 
+**With a2kit 1.0.0** (15 November 2026), booted from the current `a2kit-boot.dsk` on the built-in port. Before anything was sent, a read-only look found the receiver matching `receiver.bin`, no crash recorded, and the 45 KB of free RAM still holding the pattern a `canary` run had written four days earlier, apart from the places a show had used since. Then every step passed, and each picture and sound was checked by eye and ear:
+
+| | Result |
+|---|---|
+| `ping` | 10 of 10, 5.5 ms round trip, 8,644 bytes/s; the screen showed `A2KIT 115200 RX VERSION MATCH` |
+| Reading the ROMs with `peek` | `$D000–$FFFF`, the Disk II boot ROM and the serial card's ROM all matched earlier dumps and their known checksums |
+| An 8 KB picture | 1.0 s |
+| The starter show, without `--install` | 2.9 s; the sequencer was already in memory, so it wasn't sent again |
+| Bouncing ball with sound, `stream --install` | played in full; the receiver was listening again afterwards |
+| `lcprobe` with no card fitted | reported a failure cleanly and switched back to ROM |
+| Afterwards | no crash recorded, and a 15-minute `canary` run changed nothing |
+
 **Not yet tried on real hardware:** a USB-to-RS-232 adapter other than the FTDI one above; typing the receiver in instead of booting the disk; a real floppy; any other Apple II model; macOS or Windows; longer videos, busy videos at 19200, and `--scrub`; recovery from damaged bytes on a noisy line. If you try one of these, the [Roadmap](ROADMAP.md) lists what to note down.
 
 ### Hardware
