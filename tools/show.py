@@ -36,7 +36,11 @@ import argparse
 import os
 import sys
 import time
-import tomllib
+
+try:
+    import tomllib              # Python 3.11 and newer
+except ModuleNotFoundError:     # 3.10: the same library, installed as tomli (requirements.txt)
+    import tomli as tomllib
 
 import a2hdr
 import audioconv

@@ -9,7 +9,7 @@ or Windows. See README.md, docs/INSTALL.md, docs/QUICKSTART.md, docs/MANUAL.md.
 
 ## Environment
 
-- Python 3.11 or newer (last tested on 3.12). Dependencies: `requirements.txt`
+- Python 3.10 or newer (last tested on 3.12; 3.10 needs `tomli`, and not `constraints.txt`). Dependencies: `requirements.txt`
   (runtime), `requirements-dev.txt` (tests, docs, lint), `constraints.txt` (exact
   tested versions). Use a virtual environment: `.venv/`. `./a2kit` and `make` use it
   by themselves; `.claude/settings.json` activates it for every Claude Code session

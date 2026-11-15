@@ -102,7 +102,13 @@ def doctor():
         print(("ok      " if good else ("MISSING " if required else "optional")) + " " + text)
 
     v = sys.version_info
-    line(v >= (3, 11), "python %d.%d.%d%s" % (v[0], v[1], v[2], "" if v >= (3, 11) else "   (3.11 or newer is required)"))
+    line(v >= (3, 10), "python %d.%d.%d%s" % (v[0], v[1], v[2], "" if v >= (3, 10) else "   (3.10 or newer is required)"))
+    if v < (3, 11):
+        try:
+            importlib.import_module("tomli")
+            line(True, "python package tomli (reads show.toml on 3.10)")
+        except ImportError:
+            line(False, "python package tomli   (python3 -m pip install -r requirements.txt)")
     for mod, pkg, req in (("PIL", "pillow", True), ("numpy", "numpy", True), ("serial", "pyserial", True), ("py65", "py65", False)):
         try:
             importlib.import_module(mod)

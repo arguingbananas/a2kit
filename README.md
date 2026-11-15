@@ -22,7 +22,7 @@ Starter assets are in [`examples/`](examples/).
 ## In one minute
 
 ```bash
-python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Python 3.11+)
+python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Python 3.10+)
 ./a2kit doctor                                  # checks the install
 ./a2kit image examples/logo.png -o logo.a2b --preview logo_preview.png
 ```

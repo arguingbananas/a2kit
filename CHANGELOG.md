@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- a2kit now runs on Python 3.10 as well as 3.11 and newer: on 3.10 it reads show
+  scripts with the `tomli` package, which `requirements.txt` installs there. Tested
+  with the full suite on Python 3.10.22.
+
 ## 1.0.0 (14 November 2026)
 
 The first numbered release. Everything below works on a 1979 Apple II+ with a
