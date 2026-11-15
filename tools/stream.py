@@ -111,7 +111,8 @@ def main():
         here = os.path.dirname(os.path.abspath(__file__))
         player = open(os.path.join(here, "..", "video.bin"), "rb").read()
         s.send_blob(player, PLAYER_ADDR)
-        s.finish(PLAYER_ADDR)
+        if not s.finish(PLAYER_ADDR):
+            print(send.PROBABLY_STARTED, file=sys.stderr)
         time.sleep(1.0)                 # let it clear the screen and start listening
 
     print("playing %d frames, about %.1f s" % (len(frames), total), file=sys.stderr)

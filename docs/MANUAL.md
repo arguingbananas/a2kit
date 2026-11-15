@@ -366,7 +366,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--rtscts` | Turn on hardware flow control on your computer's port. Leave off unless your cable needs it. |
 | `--language-card` | Also allow `--addr` in `$D000–$FEFF`, which goes to a [language card](#a2kit-lcprobe)'s RAM. |
 
-**How it protects your data:** each packet carries an address and a checksum, and the Apple II replies ACK or NAK. A bad packet is resent and never written to memory.
+**How it protects your data:** each packet carries an address and a checksum, and the Apple II replies ACK or NAK. A bad packet is resent and never written to memory. The last packet starts the upload (or the show, or the video player); if its ACK goes missing, the computer first asks whether the receiver is still listening, and only resends if it is. If it isn't, the program has most likely started, so instead of an error you get a warning to check the Apple II's screen.
 
 **Protected memory:** `send` refuses (before opening the port) any destination that would overwrite zero page and the stack (`$0000–$01FF`), the receiver and its buffer (`$0800–$0AFF`), or I/O and ROM (`$C000–$FFFF`). With `--language-card`, `$D000–$FEFF` is allowed and goes to the card.
 
