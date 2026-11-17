@@ -203,7 +203,9 @@ audio = "chirp.wav"
 gain  = 1.0
 
 [[scene]]
-wait = 1.0
+image  = "colour.png"   # a third picture: kept packed, then unpacked onto page 1
+colour = true           # in colour (on a colour monitor or TV)
+hold   = 3.0
 ''')
 
 

@@ -40,7 +40,7 @@ for f, bursts in (("stress.a2v", 0), ("stress_sound.a2v", 27)):
     check(f + " really fills the 115200 byte budget", sum(1800 <= len(x) <= 1824 for x in _fr) >= 50, str([len(x) for x in _fr][:5]))
     check(f + " has %d sound bursts" % bursts, sum(1 for x in _fr if a2hdr.frame_audio_pages(x)) == bursts)
 plan = [o for c, o in outputs.items() if "show plan" in c]
-check("show plan lists 2 images, 2 sounds and the scene table", bool(plan) and plan[0].count("HGR page") == 2 and plan[0].count(".wav") == 2 and "scene table" in plan[0])
+check("show plan lists 3 images (the third kept packed), 2 sounds and the scene table", bool(plan) and plan[0].count("HGR page") == 3 and "packed, shown on HGR page 1" in plan[0] and plan[0].count(".wav") == 2 and "scene table" in plan[0])
 
 # ---- 2. every file the docs mention exists
 for doc, text in (("QUICKSTART", quick), ("MANUAL", manual), ("INSTALL", install), ("README", readme)):

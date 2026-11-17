@@ -301,14 +301,14 @@ that play between frames while the computer stays silent for a moment. Nothing i
 2. Edit it. Paths are relative to the script file.
 3. Check it: `./a2kit show plan myshow.toml`. It prints one line per piece (address, size, what it is, and "packed to N bytes" for a picture that goes [packed](#7-a2kit-send)), the total size and the estimated upload time.
 4. Make sure the receiver is listening (boot disk: it is; typed in: `0800G`).
-5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Without `--install`, `send` first reads the sequencer back from the Apple II, and uploads it too if it's missing or different, saying so. `--install` skips the check and always sends a fresh copy. It names each piece as it uploads it, then reports how long the upload took (about 2.5 s for the starter show at 115200 baud, about 10 s at 19200). Pictures that are quicker packed go first, each unpacked in a short session of its own, before any sound; `--no-pack` sends them as they are.
+5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Without `--install`, `send` first reads the sequencer back from the Apple II, and uploads it too if it's missing or different, saying so. `--install` skips the check and always sends a fresh copy. It names each piece as it uploads it, then reports how long the upload took (about 4 s for the starter show at 115200 baud). Pictures that are quicker packed go first, each unpacked in a short session of its own, before any sound; `--no-pack` sends them as they are.
 6. Watch. Press any key to stop between scenes (sound cannot be interrupted once it starts).
 
 **The script format**
 
 ```toml
 [[scene]]
-image = "logo.png"     # show this picture (page 1 first, then page 2)
+image = "logo.png"     # show this picture (pages 1 and 2 take turns)
 hold  = 3.0            # optional: stay on it for 3 seconds
 
 [[scene]]
@@ -321,7 +321,7 @@ wait = 2.0             # pause for 2 seconds
 
 | Scene key | Meaning |
 |---|---|
-| `image` | A picture, converted like `a2kit image` (letterboxed, Atkinson dither). The first image goes to page 1, the second to page 2. |
+| `image` | A picture, converted like `a2kit image` (letterboxed, Atkinson dither). The first image goes to page 1, the second to page 2, and later ones to whichever page isn't on screen (see *More than two pictures*). |
 | `hold` | Only with `image`. Seconds to wait after showing it. |
 | `crop`, `invert`, `dither`, `colour` | Only with `image`. Same meaning as the `a2kit image` options: `crop = true`, `invert = true`, `dither = "threshold"` (default `"atkinson"`), `colour = true` (or `color = true`). |
 | `audio` | A WAV file, played when this scene is reached. |
@@ -333,12 +333,14 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 **When the show ends the screen goes back to text.** If you want the last picture to stay up for a while, give it a `hold` or add a `wait` after it.
 
+**More than two pictures.** The first two pictures go straight to the two hi-res pages. A third or later one is kept [packed](#7-a2kit-send) in the space from `$6000` that sound uses, and when its turn comes the sequencer unpacks it onto the page that isn't on screen, then shows it. Unpacking takes 0.1–0.4 s, so the picture before it stays up that much longer than its `hold`. The starter show's colour landscape is kept this way (6,076 bytes).
+
 **Limits**
 
-- At most **two** image scenes (one per hi-res page). Showing a third picture isn't supported.
+- Pictures after the second share the space from `$6000` to `$BFFF` (24K) with the sound, packed: line art takes 1–3K, a dithered photo 4–8K.
 - Sound totals about **6 seconds** across the show, or about 9 with `--language-card` and a [language card](#a2kit-lcprobe).
 - About 40 scene entries (a `hold` counts as one extra).
-- If you break a limit, `plan` stops with a message such as `only two image scenes fit` or `audio doesn't fit below $C000`.
+- If you break a limit, `plan` stops with a message such as `picture doesn't fit below $C000` or `audio doesn't fit below $C000`.
 
 **Usage:** `./a2kit show plan|send SHOW.toml [options]`. Options: `--port`, `--baud` (default 115200, or `A2KIT_BAUD`), `--install`, `--rtscts`, `--language-card` (longer sound in a [language card](#a2kit-lcprobe); give it to `plan` and `send` alike).
 
@@ -654,7 +656,7 @@ Checks that cc65, the Python packages and the built `.bin` files are present, an
 | `a2kit COMMAND: error: …` | A one-line description of what went wrong (a missing file, a bad `show.toml`, the port not opening). Set `A2KIT_DEBUG=1` to see the full Python traceback. |
 | Small specks left on screen after a glitch | Re-encode with `--scrub 8` (or 16). |
 | Sound is chopped | That's how sound works alongside video. Use a show (picture + sound) if you want a continuous sound. |
-| `only two image scenes fit` | A show has two hi-res pages. Combine pictures or split into two shows. |
+| `picture doesn't fit below $C000` | Pictures after the second, and the sound, are kept from `$6000` to `$BFFF`. Use fewer pictures, simpler ones (they pack smaller) or less sound, or split into two shows. |
 | `audio doesn't fit below $C000` / `only 96 (6 s) fit` | Shorten or trim the sound (`--max-seconds`). |
 | `this clip has audio … use --install` | Add `--install` to the `stream` command. |
 | `ffmpeg isn't on PATH` | Install ffmpeg, or convert to a GIF or folder of frames. |
@@ -698,21 +700,21 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
-| `$0300–$039A` | The unpacker for packed pictures (155 bytes), only while one is unpacked; the rest of page 3, to `$03CF`, is free |
+| `$0300–$039A` | The unpacker for packed pictures (155 bytes), while one is unpacked and during a show with more than two pictures; the rest of page 3, to `$03CF`, is free |
 | `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
 | `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`, and which receiver it found on the line above, `$0750–$0777`) |
 | `$0800–$0969` | Receiver (362 bytes, at either speed; the boot disk has room for 380) |
 | `$0980–$09B2` | Boot disk only: the restart loop (`$0980`) and the boot code |
 | `$0A00–$0AFF` | Receiver's packet staging buffer |
 | `$0B00–$0BFF` | Show scene table |
-| `$0C00–$0C99` | Sequencer |
+| `$0C00–$0CBA` | Sequencer |
 | `$0D00–$0D7E` | Speaker routine used by the sequencer |
 | `$0E00–$0F3D` | Video player |
 | `$1000–$107E` | Speaker routine used by the video player |
 | `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`) |
 | `$2000–$3FFF` | Hi-res page 1 |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
-| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s). Before the sound is sent, packed pictures go here to be unpacked |
+| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked |
 | `$C000–$CFFF` | I/O and slot ROMs |
 | `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
 
@@ -739,7 +741,7 @@ If a program hits `BRK`, the Monitor saves the registers (PC at `$3A–$3B`; A, 
 | Screen | 280×192, black and white or six colours (140 across), two pages |
 | Sound in a show or video | about 6 seconds in total; about 9 with a language card and `--language-card` |
 | Sound quality | 4 bits at about 7972 Hz (one-bit speaker) |
-| Images in a show | 2 |
+| Images in a show | 2 on the hi-res pages, plus as many more as fit packed with the sound in `$6000–$BFFF` |
 | Video frame size | about 300 bytes at 6 fps and 19200 baud, about 1,800 at 115200 (budget = baud ÷ 10 ÷ fps × 0.95) |
 | Serial speed | 115200 baud, or 19200 with the 19200 receiver ([2.4](#24-line-speed-115200-or-19200-baud)) |
 | Tested on | a 1979 Apple II+, Super Serial Card II, Floppy Emu, Linux on a built-in serial port ([details](INSTALL.md#tested-setup)); and the simulator test suite |

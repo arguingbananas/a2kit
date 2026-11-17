@@ -5,12 +5,16 @@
 ;   op 1 SHOW  a=page (1 = $2000, 2 = $4000)      show that HGR page
 ;   op 2 PLAY  b=start page hi, c=number of pages  play 4-bit audio
 ;   op 3 WAIT  a=ticks lo, b=ticks hi              wait (1 tick = 0.1 s)
+;   op 4 LOAD  a=page hi ($20/$40), b/c=source     unpack a stored picture
+;                                                  into that page (unpack.bin)
 ;   op 0 END
 ;
 ; Any key stops the show between scenes (audio can't be interrupted: it's
-; cycle-timed). Memory map: table $0B00, this code $0C00-$0DFF, HGR pages
-; $2000/$4000, audio data from $6000 (must be page aligned), which can carry on
-; into a language card from $D000 (see splay in speaker.inc).
+; cycle-timed). Memory map: unpacker $0300, table $0B00, this code $0C00-$0DFF,
+; HGR pages $2000/$4000, audio data and packed pictures from $6000 (page
+; aligned); audio can carry on into a language card from $D000 (see splay in
+; speaker.inc). A show's third and later pictures are stored packed and
+; unpacked by LOAD into the page that isn't on screen, just before their SHOW.
 ;
 ; Interrupts are off and decimal mode is cleared while it runs; both are
 ; restored afterwards. Runs at the normal 1.02 MHz only: the sound and the
@@ -35,6 +39,9 @@ OP_END  = 0
 OP_SHOW = 1
 OP_PLAY = 2
 OP_WAIT = 3
+OP_LOAD = 4
+
+unpack  = $0300                 ; unpack.bin: jmp start, then source and destination
 
 aptr    = $06                   ; 2 bytes: audio read pointer (low byte = 0)
 atmp    = $08
@@ -60,6 +67,8 @@ next:   ldy idx
         beq do_play
         cmp #OP_WAIT
         beq do_wait
+        cmp #OP_LOAD
+        beq do_load
 done:   bit LOWSCR              ; page 1: PAGE2 also switches the TEXT screen to
         bit TXTSET              ; page 2 ($0800, our own code), so reset it first
         plp
@@ -85,6 +94,18 @@ do_play:
         lda table+3,y
         sta apages
         jsr splay
+        jmp adv
+
+do_load:
+        lda table+2,y           ; source
+        sta unpack+3
+        lda table+3,y
+        sta unpack+4
+        lda #0                  ; destination: the page
+        sta unpack+5
+        lda table+1,y
+        sta unpack+6
+        jsr unpack              ; uses $06-$0D, A, X and Y; idx is safe
         jmp adv
 
 do_wait:
