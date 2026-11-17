@@ -4,7 +4,7 @@ and generated from code, so you can edit the parameters and re-run:
 
     python3 examples/make_examples.py
 
-Writes: logo.png, sphere.png, frames/f00..f35.png, bounce.gif,
+Writes: logo.png, sphere.png, colour.png, frames/f00..f35.png, bounce.gif,
         stress/f000..f089.png, jingle.wav, boing.wav, chirp.wav, long.wav,
         show.toml, long_show.toml
 """
@@ -57,6 +57,26 @@ def make_sphere():
     shadow = (((x - 168) / 78) ** 2 + ((y - 168) / 11) ** 2 <= 1) & (r2 > 1) & (y > 150)
     img = np.where(shadow, img * 0.35, img)
     Image.fromarray(img.clip(0, 255).astype(np.uint8), "L").save(OUT("sphere.png"))
+
+
+def make_colour():
+    """A landscape for `a2kit image --colour`: a sky fading from blue to orange,
+    a sun, two rows of hills, a lake, a violet balloon and a strip of the six
+    hi-res colours, so both the pure colours and the mixes between them show."""
+    y, x = np.mgrid[0:H, 0:W].astype(float)
+    t = (y / 120).clip(0, 1)[..., None]
+    img = (1 - t) * np.array([40, 110, 230]) + t * np.array([250, 150, 60])            # sky
+    img[(x - 200) ** 2 + (y - 70) ** 2 <= 22 ** 2] = (255, 250, 220)                      # sun
+    img[y > 112 + 14 * np.sin(x / 23) + 8 * np.sin(x / 9 + 1)] = (60, 90, 170)             # far hills
+    near = y > 132 + 18 * np.sin(x / 41 + 2)
+    img[near] = np.array([40, 170, 50]) * (1 - (y[near] - 120) / 160)[:, None]            # near hills
+    img[((x - 70) / 52) ** 2 + ((y - 160) / 12) ** 2 <= 1] = (30, 120, 220)               # lake
+    img[((x - 92) / 15) ** 2 + ((y - 50) / 19) ** 2 <= 1] = (200, 50, 240)                # balloon
+    img[(abs(x - 92) < 4) & (y > 72) & (y < 80)] = (120, 70, 30)                           # basket
+    six = [(0, 0, 0), (230, 40, 255), (25, 215, 0), (25, 144, 255), (230, 111, 0), (255, 255, 255)]
+    for i, c in enumerate(six):                                                            # the six colours
+        img[(y >= 182) & (x >= i * W / 6) & (x < (i + 1) * W / 6)] = c
+    Image.fromarray(img.clip(0, 255).astype(np.uint8), "RGB").save(OUT("colour.png"))
 
 
 # ---------------------------------------------------------------- video
@@ -208,5 +228,5 @@ audio = "long.wav"
 
 
 if __name__ == "__main__":
-    make_logo(); make_sphere(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
+    make_logo(); make_sphere(); make_colour(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
     print("examples written to", HERE)

@@ -28,7 +28,7 @@ for c in cmds:
     r = subprocess.run(c, shell=True, cwd=work, capture_output=True, text=True)
     outputs[c] = r.stdout + r.stderr
     check("runs: " + (c if len(c) < 56 else c[:53] + "..."), r.returncode == 0, r.stderr[-200:])
-for f in ("logo.a2b", "logo_preview.png", "sphere.a2b", "sphere_preview.png", "bounce.a2v", "bounce_sound.a2v", "stress.a2v", "stress_sound.a2v", "a2kit-boot.dsk"):
+for f in ("logo.a2b", "logo_preview.png", "sphere.a2b", "sphere_preview.png", "colour.a2b", "colour_preview.png", "bounce.a2v", "bounce_sound.a2v", "stress.a2v", "stress_sound.a2v", "a2kit-boot.dsk"):
     check("produces out/" + f, os.path.getsize(os.path.join(work, "out", f)) > 0 if os.path.exists(os.path.join(work, "out", f)) else False)
 for c, o in outputs.items():
     if "a2kit video" in c:

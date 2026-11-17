@@ -148,7 +148,7 @@ Video: convert with the speed you'll play at (add `--baud 19200` for the 19200 d
 
 ## 3. `a2kit image`
 
-**What it does:** converts any picture to a 280×192 black-and-white hi-res screen, ready to display.
+**What it does:** converts any picture to a 280×192 hi-res screen, in black and white or in colour, ready to display.
 
 **When to use it:** title cards, still pictures, and checking how artwork will dither. `--preview` shows you the result without any hardware.
 
@@ -170,12 +170,21 @@ Video: convert with the speed you'll play at (add `--baud 19200` for the 19200 d
 | `--dither atkinson` / `threshold` | `atkinson` (default) spreads shading into dots and looks photographic. `threshold` makes pure black and white, best for line art and text. |
 | `--crop` | Scale and trim to fill the whole screen. Default is to fit the whole picture and fill the rest with black. |
 | `--invert` | Swap black and white. |
-| `--preview FILE` | Also write the dithered 280×192 result as a PNG. |
+| `--colour` (or `--color`) | Use the six hi-res colours, for a colour monitor or TV. See *Colour* below. |
+| `--preview FILE` | Also write a PNG of the screen as the Apple II shows it: 280×192 black and white, or with `--colour` 560×384 in colour. |
 | `--raw` | Write the bare 8192-byte screen with no header (for your own programs). |
 
 **Output:** an 8200-byte `.a2b` (8-byte header + 8192-byte screen). The screen is stored in the Apple II's interleaved memory order, so it can be copied straight to `$2000`.
 
-**Tips:** the picture is converted in grey, so colour is lost. White-on-black looks best on a green or white monitor; on a colour TV, fine dot patterns can show coloured fringes (an artefact of how the Apple II makes colour).
+**Tips:** without `--colour` the picture is converted in grey. White-on-black looks best on a green or white monitor; on a colour TV, fine dot patterns can show coloured fringes (an artefact of how the Apple II makes colour).
+
+**Colour.** The Apple II makes colour from the dot pattern itself, so `--colour` works within its rules:
+
+- **Six colours:** black, white, violet, green, blue and orange. A dot on its own is coloured by its column (even or odd) and by its byte's palette bit (each byte holds 7 dots): violet or green with the bit off, blue or orange with it on. Two dots side by side are white.
+- **Half the width:** a colour needs every other dot, so colour detail is 140 dots across.
+- **Two colours per 7 dots:** besides black and white, each group of 7 dots shows either violet and green or blue and orange. Where a shape's colour changes group, its edge falls on the 7-dot grid, so edges can look blocky.
+
+The converter tries every value of each byte and keeps the one that looks closest to the picture, then dithers the difference into what follows, so shades in between become mixes of the six colours. Bold, flat areas of colour work best. The preview shows the colours as the MAME emulator draws them; a real monitor's depend on its tint and colour controls, and look softer. On a black-and-white monitor a colour picture shows as dot patterns.
 
 ---
 
@@ -314,7 +323,7 @@ wait = 2.0             # pause for 2 seconds
 |---|---|
 | `image` | A picture, converted like `a2kit image` (letterboxed, Atkinson dither). The first image goes to page 1, the second to page 2. |
 | `hold` | Only with `image`. Seconds to wait after showing it. |
-| `crop`, `invert`, `dither` | Only with `image`. Same meaning as the `a2kit image` options: `crop = true`, `invert = true`, `dither = "threshold"` (default `"atkinson"`). |
+| `crop`, `invert`, `dither`, `colour` | Only with `image`. Same meaning as the `a2kit image` options: `crop = true`, `invert = true`, `dither = "threshold"` (default `"atkinson"`), `colour = true` (or `color = true`). |
 | `audio` | A WAV file, played when this scene is reached. |
 | `gain` | Only with `audio`. Volume multiplier (default 1.0). |
 | `even_out` | Only with `audio`. `even_out = true` evens out the volume, like `a2kit audio --even-out`; use it for speech. |
