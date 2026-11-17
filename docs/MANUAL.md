@@ -299,9 +299,9 @@ that play between frames while the computer stays silent for a moment. Nothing i
 
 1. Copy the starter script: `cp examples/show.toml myshow.toml`.
 2. Edit it. Paths are relative to the script file.
-3. Check it: `./a2kit show plan myshow.toml`. It prints one line per piece (address, size, what it is), the total size and the estimated upload time.
+3. Check it: `./a2kit show plan myshow.toml`. It prints one line per piece (address, size, what it is, and "packed to N bytes" for a picture that goes [packed](#7-a2kit-send)), the total size and the estimated upload time.
 4. Make sure the receiver is listening (boot disk: it is; typed in: `0800G`).
-5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Without `--install`, `send` first reads the sequencer back from the Apple II, and uploads it too if it's missing or different, saying so. `--install` skips the check and always sends a fresh copy. It names each piece as it uploads it, then reports how long the upload took (about 3 s for the starter show at 115200 baud, about 15 s at 19200).
+5. Send it: `./a2kit show send myshow.toml --port /dev/ttyUSB0 --install`. Without `--install`, `send` first reads the sequencer back from the Apple II, and uploads it too if it's missing or different, saying so. `--install` skips the check and always sends a fresh copy. It names each piece as it uploads it, then reports how long the upload took (about 2.5 s for the starter show at 115200 baud, about 10 s at 19200). Pictures that are quicker packed go first, each unpacked in a short session of its own, before any sound; `--no-pack` sends them as they are.
 6. Watch. Press any key to stop between scenes (sound cannot be interrupted once it starts).
 
 **The script format**
@@ -378,6 +378,9 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--retries N` | Resends per packet before giving up (default 5). |
 | `--rtscts` | Turn on hardware flow control on your computer's port. Leave off unless your cable needs it. |
 | `--language-card` | Also allow `--addr` in `$D000–$FEFF`, which goes to a [language card](#a2kit-lcprobe)'s RAM. |
+| `--no-pack` | Send a picture as it is, never packed (see below). |
+
+**Packed pictures:** a picture goes packed when that's quicker, and `send` says so ("packed to 2600 bytes"). The packed bytes go to `$6000` with a 155-byte unpacker at `$0300`; a short extra session runs the unpacker, which writes the picture to its page, and the receiver starts listening again. Line art, text and flat areas pack well (the starter logo to 32%, a blank screen to 3%); dithered photos much less (the sphere to 55%, colour pictures to about 75%), and at 115200 baud those often go as they are, since unpacking takes a few tenths of a second. On the Apple II+ at 115200, the logo took 0.6 s instead of 0.9 s. At 19200 baud almost every picture is quicker packed. Nothing in the receiver or the boot disk changed for this.
 
 **How it protects your data:** each packet carries an address and a checksum, and the Apple II replies ACK or NAK. A bad packet is resent and never written to memory. The last packet starts the upload (or the show, or the video player); if its ACK goes missing, the computer first asks whether the receiver is still listening, and only resends if it is. If it isn't, the program has most likely started, so instead of an error you get a warning to check the Apple II's screen.
 
@@ -695,7 +698,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
-| `$0300–$03CF` | **Free** (208 bytes) |
+| `$0300–$039A` | The unpacker for packed pictures (155 bytes), only while one is unpacked; the rest of page 3, to `$03CF`, is free |
 | `$03D0–$03FF` | Vectors: the receiver points BRK (`$03F0–$03F1`) at its crash handler; the reset vector is at `$03F2–$03F4`. Leave the rest alone |
 | `$0400–$07FF` | Text page 1 (`ping` writes the bottom line, `$07D0–$07F7`, and which receiver it found on the line above, `$0750–$0777`) |
 | `$0800–$0969` | Receiver (362 bytes, at either speed; the boot disk has room for 380) |
@@ -709,7 +712,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`) |
 | `$2000–$3FFF` | Hi-res page 1 |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
-| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s) |
+| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s). Before the sound is sent, packed pictures go here to be unpacked |
 | `$C000–$CFFF` | I/O and slot ROMs |
 | `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
 
@@ -733,7 +736,7 @@ If a program hits `BRK`, the Monitor saves the registers (PC at `$3A–$3B`; A, 
 | Thing | Limit |
 |---|---|
 | Apple II | 48K II, II+ or IIe at 1.02 MHz with a Super Serial Card in slot 2 ([details](INSTALL.md#hardware)) |
-| Screen | 280×192, black and white, two pages |
+| Screen | 280×192, black and white or six colours (140 across), two pages |
 | Sound in a show or video | about 6 seconds in total; about 9 with a language card and `--language-card` |
 | Sound quality | 4 bits at about 7972 Hz (one-bit speaker) |
 | Images in a show | 2 |
