@@ -19,6 +19,12 @@ sweeps the whole screen, so pixels left wrong by a lost serial byte get
 repainted eventually (a full sweep takes 8192/N frames) at a cost of ~N bytes
 of each frame's budget. Off by default; 8-16 is cheap insurance on a flaky link.
 
+Colour (--colour): each frame is converted as `image --colour` does, in the
+six hi-res colours (dither threshold by default, or atkinson). The palette
+bits travel as $FC/$FD ops, so black and white streams are unchanged. Flat
+areas and motion in steps of 2 dots work best; converting takes about a
+second a frame.
+
 Audio (--audio clip.wav): the speaker player can't listen to the serial port,
 so audio plays in bursts between frames while the video stream pauses. It
 keeps its place between bursts, so nothing is dropped; the show just gets
@@ -89,9 +95,9 @@ def screen_image(scr):
     return Image.fromarray(bits.reshape(H, W).astype(np.uint8) * 255, "L").convert("1")
 
 
-def write_preview(path, screens, durations):
+def write_preview(path, screens, durations, colour=False):
     """An animated GIF of these screens; durations in seconds."""
-    imgs = [screen_image(s) for s in screens]
+    imgs = [imgconv.colour_preview(bytes(s)) if colour else screen_image(s) for s in screens]
     # GIF stores times in 10 ms steps: round the running total, not each frame, so the
     # rounding doesn't add up over a long clip
     ends = np.rint(np.cumsum(durations) * 100).astype(int) * 10
@@ -160,22 +166,32 @@ def _runs(addrs, merge_gap):
 
 
 def _emit(runs, target):
-    """Frame = $FE, then skip/literal ops. Every data byte is < $80 (HGR bit 7 is
-    always clear) and every control byte is >= $80, so the player can tell when
-    it has lost sync; $FE is the resync mark. Skips are 1-125 ($81-$FD); longer
-    ones are $FF lo hi with 7-bit lo/hi."""
+    """Frame = $FE, then skip/literal ops. Every data byte is < $80 and every
+    control byte is >= $80, so the player can tell when it has lost sync; $FE is
+    the resync mark. Skips are 1-123 ($81-$FB); longer ones are $FF lo hi with
+    7-bit lo/hi. A screen byte's bit 7 (its palette bit, in colour) is sent as
+    state instead: $FD turns it on for the literal bytes that follow, $FC off,
+    and each frame starts with it off, so black and white frames never need it."""
     out = bytearray([0xFE])
-    pos = 0
+    pos, pal = 0, 0
     for s, e in runs:
         gap = s - pos
-        if gap > 125:
+        if gap > 123:
             out += bytes([0xFF, gap & 0x7F, gap >> 7])
         elif gap > 0:
             out.append(0x80 | gap)
-        for c in range(s, e, 126):          # $7F is the audio-burst op, so runs stop at 126
-            chunk = target[c:min(c + 126, e)]
-            out.append(len(chunk))
-            out += bytes(chunk)
+        c = s
+        while c < e:
+            p = target[c] & 0x80
+            if p != pal:
+                out.append(0xFD if p else 0xFC)
+                pal = p
+            n = 1                           # the bytes from c with the same palette bit,
+            while c + n < e and n < 126 and target[c + n] & 0x80 == p:     # at most 126 ($7F is the audio op)
+                n += 1
+            out.append(n)
+            out += bytes(b & 0x7F for b in target[c:c + n])
+            c += n
         pos = e
     return bytes(out)
 
@@ -224,7 +240,9 @@ def main():
     ap.add_argument("--src-fps", type=float, help="frame rate of the input (default: same as --fps)")
     a2hdr.add_baud_arg(ap)
     ap.add_argument("--budget", type=int, help="bytes per frame (default: what the baud rate allows)")
-    ap.add_argument("--dither", choices=["ordered", "atkinson", "threshold"], default="ordered")
+    ap.add_argument("--dither", choices=["ordered", "atkinson", "threshold"],
+                    help="ordered (default), atkinson or threshold; with --colour, threshold (default) or atkinson")
+    ap.add_argument("--colour", "--color", action="store_true", help="use the six hi-res colours, for a colour monitor or TV")
     ap.add_argument("--crop", action="store_true")
     ap.add_argument("--max-seconds", type=float)
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
@@ -236,6 +254,9 @@ def main():
     ap.add_argument("--preview", metavar="GIF", help="also write an animated GIF of the screen as the player draws it")
     a = ap.parse_args()
 
+    a.dither = a.dither or ("threshold" if a.colour else "ordered")
+    if a.colour and a.dither == "ordered":
+        sys.exit("--colour works with --dither threshold or atkinson")
     if not 1 <= a.fps <= 60:
         sys.exit("--fps must be a whole number from 1 to 60")
     if a.src_fps is not None and a.src_fps <= 0:
@@ -269,8 +290,11 @@ def main():
     frames, pending, screens = [], [], []
     cursor = 0
     for i, img in enumerate(imgs):
-        gray = np.asarray(imgconv.prepare(img, a.crop, False), dtype=np.float64)
-        target = pack_screen(to_bits(gray, a.dither))
+        if a.colour:
+            target = np.frombuffer(imgconv.colour_screen(imgconv.prepare(img, a.crop, False, "RGB"), a.dither), np.uint8)
+        else:
+            gray = np.asarray(imgconv.prepare(img, a.crop, False), dtype=np.float64)
+            target = pack_screen(to_bits(gray, a.dither))
         n = bursts.get(i, 0)
         window = (cursor + np.arange(a.scrub)) % 0x2000
         cursor = (cursor + a.scrub) % 0x2000
@@ -301,7 +325,7 @@ def main():
                                                          play_s, a.baud, pending[-1]), file=sys.stderr)
 
     if a.preview:
-        write_preview(a.preview, screens, [1.0 / a.fps + stream.burst_seconds(bursts.get(i, 0)) for i in range(len(screens))])
+        write_preview(a.preview, screens, [1.0 / a.fps + stream.burst_seconds(bursts.get(i, 0)) for i in range(len(screens))], a.colour)
         print("wrote %s: the screen as the player draws it, %d frames" % (a.preview, len(screens)), file=sys.stderr)
 
 

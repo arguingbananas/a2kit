@@ -258,6 +258,21 @@ that play between frames while the computer stays silent for a moment. Nothing i
 - the show runs **longer than the video alone**, by the length of the sound plus a short pause (0.05 s) per burst; the summary line gives the total;
 - the sound is uploaded first and lives in memory, so clips with sound **need `--install`** when streamed, and the whole sound must fit in about 6 seconds (about 9 with `--language-card` and a [language card](#a2kit-lcprobe)).
 
+**In colour**
+
+```bash
+./a2kit video examples/balloon.gif -o out/balloon.a2v --fps 10 --colour --preview out/balloon_preview.gif
+./a2kit stream out/balloon.a2v --port /dev/ttyUSB0 --install
+```
+
+`--colour` converts each frame as [`image --colour`](#3-a2kit-image) does, with the same six colours and the same rules, and the preview GIF is in colour. The example is the colour landscape with the balloon drifting across its sky, 16 seconds at 10 frames a second. What works best:
+
+- **Flat areas in the six colours**, as in the example. The default dither for colour video is `threshold`, which keeps still areas still; `atkinson` shades better but its dots can crawl as things move.
+- **Move things 2 dots at a time** (or any even number). A colour is 2 dots wide, so a shape moved by an odd number of dots changes colour along its edges.
+- **Converting takes about a second a frame**, much longer than black and white.
+
+Colour streams play only with the player from this version of a2kit, which `--install` uploads.
+
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
 | Option | Meaning |
@@ -267,7 +282,8 @@ that play between frames while the computer stays silent for a moment. Nothing i
 | `--src-fps N` | The frame rate of your *input*, if different (default: same as `--fps`). Example: a folder shot at 24 fps played at 6 fps is `--src-fps 24 --fps 6`, which keeps every 4th frame. |
 | `--baud N` | The link speed used to work out the byte budget: 115200 (default) or 19200 ([2.4](#24-line-speed-115200-or-19200-baud)). |
 | `--budget N` | Set the bytes-per-frame budget directly, overriding the baud-based default. |
-| `--dither ordered` / `atkinson` / `threshold` | `ordered` (default) gives stable dots that don't shimmer between frames and keep the changes small. `atkinson` looks better on stills but flickers in motion. |
+| `--dither ordered` / `atkinson` / `threshold` | `ordered` (default) gives stable dots that don't shimmer between frames and keep the changes small. `atkinson` looks better on stills but flickers in motion. With `--colour`: `threshold` (default) or `atkinson`. |
+| `--colour` (or `--color`) | Use the six hi-res colours, for a colour monitor or TV (see *In colour* above). |
 | `--crop` | Fill the screen instead of letterboxing. |
 | `--max-seconds N` | Use only the first N seconds. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
@@ -716,13 +732,14 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 **Video stream** (`.a2v`): an 8-byte header whose length field holds the *frame count*, one byte of fps, then for each frame a 2-byte length and the frame bytes. Optionally `AU`, a 2-byte length and the sound, which `stream` uploads before starting.
 
-**Frame commands** (what the Apple II player understands). Every data byte is below `$80` and every control byte is `$80` or above, which is how the player notices damage:
+**Frame commands** (what the Apple II player understands). Every data byte is below `$80` and every control byte is `$80` or above, which is how the player notices damage. A screen byte's top bit, its palette bit in colour, is therefore not sent with it: `$FC` and `$FD` set it for the literal bytes that follow, and each frame starts with it off.
 
 | Byte | Meaning |
 |---|---|
 | `$FE` | Start of frame (also the resynchronisation mark) |
 | `$01–$7E n` | Literal run: n data bytes follow, written at the current screen position |
-| `$81–$FD` | Skip 1–125 screen bytes |
+| `$81–$FB` | Skip 1–123 screen bytes |
+| `$FC` / `$FD` | Palette bit off / on for the literal bytes that follow (colour only) |
 | `$FF lo hi` | Long skip of lo + 128×hi bytes |
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
 | `$80 $80` | End of video |
@@ -731,7 +748,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Address | Used for |
 |---|---|
-| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
+| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$19`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
 | `$0300–$039A` | The unpacker for packed pictures (155 bytes), while one is unpacked and during a show with more than two pictures; the rest of page 3, to `$03CF`, is free |

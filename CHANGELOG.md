@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- Colour video: `video --colour` converts an animation in the six hi-res colours.
+  New example: `examples/balloon.gif`, a balloon drifting across the colour
+  landscape. `video.bin` is rebuilt (`stream --install` uploads it); older
+  players can't show colour streams.
 - `a2kit chargen` reads the Apple II's character ROM off its screen with a USB
   video grabber (Linux), for the MAME emulator, and checks it against the real
   ROM's checksum; on the tested II+ it matched exactly. The ROM is never part of
