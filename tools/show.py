@@ -46,6 +46,7 @@ except ModuleNotFoundError:     # 3.10: the same library, installed as tomli (re
 import a2hdr
 import audioconv
 import imgconv
+import pack
 import rxid
 import send
 from PIL import Image
@@ -192,17 +193,28 @@ def main():
     a2hdr.add_baud_arg(ap)
     ap.add_argument("--install", action="store_true", help="also upload the sequencer")
     ap.add_argument("--rtscts", action="store_true")
+    ap.add_argument("--no-pack", action="store_true", help="send pictures as they are, never packed")
     a2hdr.add_language_card_arg(ap)
     a = ap.parse_args()
 
     plan = build(a.project, a.language_card)
     if a.install:
         plan.insert(0, (SEQ_ADDR, sequencer_bin(), "sequencer"))
-    total = sum(len(d) for _, d, _ in plan)
+    # pictures that are quicker packed go first, each unpacked in a session of
+    # its own, while the buffer at $6000 is still free of sound
+    packed = {}
+    if not a.no_pack:
+        for addr, data, _ in plan:
+            if addr in HGR_PAGES.values() and len(data) == 0x2000:
+                p, plain_t, packed_t = pack.plan(data, addr, a.baud)
+                if p:
+                    packed[addr] = (p, plain_t - packed_t)
+    total = sum(len(packed[addr][0]) if addr in packed else len(d) for addr, d, _ in plan)
     for addr, data, label in plan:
-        print("$%04X  %6d bytes  %s" % (addr, len(data), label))
-    print("total %d bytes, about %.0f s to upload at %d baud" % (
-        total, send.upload_seconds([len(d) for _, d, _ in plan], a.baud), a.baud))
+        how = "  (packed to %d bytes)" % len(packed[addr][0]) if addr in packed else ""
+        print("$%04X  %6d bytes  %s%s" % (addr, len(data), label, how))
+    seconds = send.upload_seconds([len(d) for _, d, _ in plan], a.baud) - sum(saved for _, saved in packed.values())
+    print("total %d bytes to send, about %.0f s to upload at %d baud" % (total, seconds, a.baud))
     if a.command == "plan":
         return
 
@@ -221,8 +233,13 @@ def main():
     s = send.Sender(port, language_card=a.language_card)
     t0 = time.monotonic()
     for addr, data, label in plan:
-        print("sending", label, file=sys.stderr)
-        s.send_blob(data, addr)
+        if addr in packed:
+            print("sending", label, "packed", file=sys.stderr)
+            pack.send_packed(s, data, addr, packed[addr][0])
+    for addr, data, label in plan:
+        if addr not in packed:
+            print("sending", label, file=sys.stderr)
+            s.send_blob(data, addr)
     started = s.finish(SEQ_ADDR)
     print("uploaded in %.1f s; the show is playing" % (time.monotonic() - t0), file=sys.stderr)
     if not started:

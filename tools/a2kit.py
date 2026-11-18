@@ -52,7 +52,7 @@ TOOLS = {
     "mon": ("bin2mon", "binary -> Monitor lines"),
     "disk": ("mkdisk", "bootable receiver disk image"),
 }
-BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "lcprobe.bin", "boot.bin", "a2kit-boot.dsk",
+BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "lcprobe.bin", "unpack.bin", "boot.bin", "a2kit-boot.dsk",
             "receiver-19200.bin", "boot-19200.bin", "a2kit-boot-19200.dsk")
 
 

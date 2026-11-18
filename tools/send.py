@@ -28,6 +28,11 @@ Destinations are checked first: the tool refuses to write over zero page and
 the stack ($0000-$01FF), the receiver itself ($0800-$0AFF) or I/O and ROM
 ($C000-$FFFF). --language-card allows $D000-$FEFF, which goes to bank 2 of a
 language card in slot 0 (a2kit lcprobe checks for one).
+
+A picture (an image block) goes packed when that is quicker: the Apple II
+unpacks it with a small program uploaded for the purpose (see tools/pack.py).
+That pays for line art and flat areas, and at 19200 baud for nearly any
+picture; --no-pack sends it as it is.
 """
 import argparse
 import struct
@@ -253,11 +258,13 @@ def main():
     ap.add_argument("--chunk", type=int, default=128)
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--rtscts", action="store_true", help="hardware flow control")
+    ap.add_argument("--no-pack", action="store_true", help="send a picture as it is, never packed")
     a2hdr.add_language_card_arg(ap)
     args = ap.parse_args()
 
     data = open(args.file, "rb").read()
     addr = args.addr
+    btype = None
     if not args.raw:
         btype, _cycles, payload = a2hdr.unpack(data)
         if addr is None:
@@ -282,7 +289,15 @@ def main():
     def progress(done, total):
         print("\r%d/%d bytes" % (done, total), end="", file=sys.stderr)
 
-    s.send_blob(data, addr, progress)
+    packed = None
+    if btype == a2hdr.TYPE_IMAGE_HGR and not args.keep_header and not args.no_pack:
+        import pack             # here, as pack imports this module
+        packed, plain_t, packed_t = pack.plan(data, addr, args.baud)
+    if packed:
+        print("packed to %d bytes: about %.1f s instead of %.1f s" % (len(packed), packed_t, plain_t), file=sys.stderr)
+        pack.send_packed(s, data, addr, packed)
+    else:
+        s.send_blob(data, addr, progress)
     started = s.finish(args.exec_addr)
     print("\ndone in %.1fs" % (time.time() - t0), file=sys.stderr)
     if not started:

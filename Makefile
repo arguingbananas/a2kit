@@ -5,7 +5,11 @@ PYTHON ?= $(if $(wildcard .venv/bin/python3),.venv/bin/python3,python3)
 # Two receivers and boot disks: 115200 baud (the default) and 19200 baud.
 # Everything else (sequencer, video player, host tools) works with either.
 all: receiver.bin sequencer.bin video.bin boot.bin a2kit-boot.dsk \
-     receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin
+     receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin unpack.bin
+
+unpack.bin: runtime/unpack.s runtime/unpack.cfg
+	ca65 -I runtime runtime/unpack.s -o unpack.o
+	ld65 -C runtime/unpack.cfg unpack.o -o unpack.bin
 
 lcprobe.bin: runtime/lcprobe.s runtime/lcprobe.cfg runtime/config.inc
 	ca65 -I runtime runtime/lcprobe.s -o lcprobe.o
@@ -44,6 +48,7 @@ a2kit-boot-19200.dsk: boot-19200.bin tools/mkdisk.py
 test: all
 	$(PYTHON) tools/test_a2kit.py
 	$(PYTHON) tools/test_colour.py
+	$(PYTHON) tools/test_pack.py
 	$(PYTHON) tools/test_receiver.py receiver.bin
 	$(PYTHON) tools/test_receiver.py receiver-19200.bin
 	$(PYTHON) tools/test_crash.py
@@ -72,4 +77,4 @@ smoke: all
 
 clean:
 	rm -f *.o receiver.bin sequencer.bin video.bin video.lbl boot.bin a2kit-boot.dsk \
-	      receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin
+	      receiver-19200.bin boot-19200.bin a2kit-boot-19200.dsk lcprobe.bin unpack.bin

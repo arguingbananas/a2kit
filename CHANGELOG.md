@@ -11,6 +11,11 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   uses the Apple II's six hi-res colours, for a colour monitor or TV, and its
   `--preview` shows the colours as the MAME emulator draws them. New example:
   `examples/colour.png`.
+- Pictures upload packed when that's quicker: `send` and `show send` pack them,
+  and a 155-byte unpacker on the Apple II unpacks them (`--no-pack` turns it off).
+  Line art packs best: the starter show uploads in 2.5 s instead of 2.9 s at
+  115200 baud, and about 10 s instead of 15 at 19200. The receiver and boot disk
+  are unchanged; `unpack.bin` is a new built file.
 - `audio --preview out.wav` writes what the Apple II's speaker will produce, from the
   player's exact timing; `video --preview out.gif` shows the screen as the player
   draws it, frame by frame, at the speed it plays.
