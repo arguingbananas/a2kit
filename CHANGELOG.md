@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- `a2kit chargen` reads the Apple II's character ROM off its screen with a USB
+  video grabber (Linux), for the MAME emulator, and checks it against the real
+  ROM's checksum; on the tested II+ it matched exactly. The ROM is never part of
+  a2kit. New built file: `screenhold.bin`.
 - Shows can have more than two pictures: the third and later are kept packed in
   the space sound uses and unpacked onto the hidden page just before they show
   (it takes 0.1-0.4 s). The starter show now ends on the colour landscape.

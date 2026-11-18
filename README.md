@@ -38,6 +38,7 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | `./a2kit peek` / `crash` / `canary` / `ramload` | Read Apple II memory / report or watch for crashes / watch free RAM for changes / start a new receiver build without the disk |
 | `./a2kit send` / `stream` | Upload one block / play a video over serial |
 | `./a2kit disk` | Make `a2kit-boot.dsk`, a disk that boots straight into the receiver (one is included, plus a 19200-baud one) |
+| `./a2kit chargen` | Read the character ROM off the screen with a USB video grabber, for the MAME emulator (Linux) |
 | `./a2kit mon receiver.bin` | Print the receiver as Monitor lines, if you'd rather type it in |
 | `./a2kit build` / `test` / `doctor` | Rebuild the 6502 programs (cc65) / run the tests / check the setup |
 | `./a2kit --version` | Show which version you have ([what changed](CHANGELOG.md)) |
