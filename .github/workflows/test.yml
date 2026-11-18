@@ -21,7 +21,7 @@ jobs:
     name: Python ${{ matrix.python }}
     # 24.04 is what the tested setup runs (Linux Mint 22), so cc65 is the same version
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

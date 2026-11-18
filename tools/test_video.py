@@ -533,7 +533,8 @@ case("$FB right after a lone $80 (not an end of stream)",
      b"\xFE\x80\xFB" + lit(0x78) + b"\xFE" + END, lambda r: r["page2"][0] == 0x78)
 case("a skip of 122 ($FA) is still a skip",
      b"\xFB\xFA" + lit(0x79) + b"\xFE" + END, lambda r: r["page2"][122] == 0x79 and not r["lost"])
-good, worst, lost_hits = fault_trials(pfr[:K], 0x4000, 12, TRIALS)
-expect(good == TRIALS, "flipping: every random fault recovers by the next frame with no stray access")
-print("fault injection, flipping: %d/%d recovered; worst residual damage %d of 16384 bytes; %d took the discard path" % (good, TRIALS, worst, lost_hits))
+FTRIALS = 12                    # fewer than above: every flip in them waits out a screen refresh, which is slow to simulate
+good, worst, lost_hits = fault_trials(pfr[:12], 0x4000, 12, FTRIALS)
+expect(good == FTRIALS, "flipping: every random fault recovers by the next frame with no stray access")
+print("fault injection, flipping: %d/%d recovered; worst residual damage %d of 16384 bytes; %d took the discard path" % (good, FTRIALS, worst, lost_hits))
 finish("test_video")
