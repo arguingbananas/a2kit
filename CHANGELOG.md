@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- Shows can have more than two pictures: the third and later are kept packed in
+  the space sound uses and unpacked onto the hidden page just before they show
+  (it takes 0.1-0.4 s). The starter show now ends on the colour landscape.
+  `sequencer.bin` is rebuilt; `show send` uploads the new one by itself.
 - Colour pictures: `image --colour` (and `colour = true` in a show's image scene)
   uses the Apple II's six hi-res colours, for a colour monitor or TV, and its
   `--preview` shows the colours as the MAME emulator draws them. New example:

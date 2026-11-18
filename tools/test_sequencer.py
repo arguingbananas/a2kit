@@ -33,12 +33,15 @@ plan = a2kit.build(os.path.join(tmp, "show.toml"))
 for addr, data, label in plan: print("  plan $%04X %6d  %s" % (addr, len(data), label))
 audio = [d for a, d, l in plan if a == a2kit.AUDIO_START][0]
 
-def make(key_after=None, i_flag_before=False, d_flag_before=False, cpu=MPU):
+def make(key_after=None, i_flag_before=False, d_flag_before=False, cpu=MPU, shown=None):
     mem = ObservableMemory(); mpu = cpu(memory=mem)
     log, edges = [], []
     names = {0xC050: "gfx", 0xC051: "text", 0xC052: "full", 0xC054: "page1", 0xC055: "page2", 0xC057: "hires"}
     for a, n in names.items():
         mem.subscribe_to_read([a], lambda addr, _n=n: (log.append((_n, mpu.processorCycles)), 0)[1])
+    if shown is not None:           # what is on each page as it is switched in
+        for a, base in ((0xC054, 0x2000), (0xC055, 0x4000)):
+            mem.subscribe_to_read([a], lambda addr, _b=base: (shown.append(bytes(mem[_b:_b + 0x2000])), 0)[1])
     i_at_click = set()
     mem.subscribe_to_read([0xC030], lambda a: (edges.append(mpu.processorCycles), i_at_click.add(bool(mpu.p & 4)), 0)[2])
     key = {"v": 0}
@@ -47,13 +50,13 @@ def make(key_after=None, i_flag_before=False, d_flag_before=False, cpu=MPU):
     for addr, data, _ in plan:
         for i, b in enumerate(data): mem[addr + i] = b
     for i, b in enumerate(open(os.path.join(HERE, "..", "sequencer.bin"), "rb").read()): mem[0x0C00 + i] = b
-    for i, b in enumerate([0x20, 0x00, 0x0C, 0x00]): mem[0x0300 + i] = b
-    mpu.pc = 0x0300; mpu.sp = 0xFF
+    for i, b in enumerate([0x20, 0x00, 0x0C, 0x00]): mem[0x0280 + i] = b     # JSR $0C00, then BRK
+    mpu.pc = 0x0280; mpu.sp = 0xFF
     if i_flag_before: mpu.p |= 4
     else: mpu.p &= ~4
     if d_flag_before: mpu.p |= 8
     n = 0
-    while mpu.pc != 0x0303:
+    while mpu.pc != 0x0283:
         mpu.step(); n += 1
         if key_after and mpu.processorCycles > key_after: key["v"] = 0x8D
         assert n < 5_000_000, "runaway"
@@ -127,4 +130,35 @@ print("key abort: stopped early:", stopped)
 expect(stopped, "a key during a hold stops the show")
 log3, _, _, _ = make(key_after=t_p2 + 50_000)
 expect(screen_after([n for n, _ in log3]) == ("text", 1), "a key while page 2 is showing still ends on text page 1")
+
+# more than two pictures: the third and later are kept packed and unpacked into
+# the page that isn't on screen, just before they show
+shapes = []
+for k in range(5):
+    im = Image.new("RGB", (280, 192), "black")
+    ImageDraw.Draw(im).rectangle((20 + 30 * k, 20, 120 + 30 * k, 170), fill="white")
+    im.save(os.path.join(tmp, "p%d.png" % k))
+    shapes.append(a2kit.convert_image(os.path.join(tmp, "p%d.png" % k)))
+open(os.path.join(tmp, "five.toml"), "w").write("".join(
+    '[[scene]]\nimage = "p%d.png"\nhold = 0.2\n%s' % (k, '[[scene]]\naudio = "s.wav"\n' if k == 2 else "")
+    for k in range(5)))
+plan = a2kit.build(os.path.join(tmp, "five.toml"))
+for addr, data, label in plan: print("  plan $%04X %6d  %s" % (addr, len(data), label))
+expect(sum(1 for _, _, l in plan if "packed, shown on" in l) == 3 and any(l == "unpacker" for _, _, l in plan),
+       "five pictures: two on the pages, three kept packed, and the unpacker")
+expect(all(a % 256 == 0 for a, _, l in plan if a >= a2kit.AUDIO_START), "kept pictures and sounds start on a page")
+shown = []
+log5, edges5, mpu5, _ = make(shown=shown)
+seq5 = [n for n, _ in log5]
+expect(seq5.count("page1") + seq5.count("page2") == 6, "five pictures, five page switches (and back to page 1 at the end)")
+expect(shown[:5] == shapes, "each picture is on its page when it is shown (%s)" % [shapes.index(x) if x in shapes else None for x in shown[:5]])
+expect(len(edges5) > 1000, "the sound between pictures still plays")
+expect(not (mpu5.p & 4) and not (mpu5.p & 8), "flags restored after a show that unpacks")
+Image.fromarray(np.random.default_rng(1).integers(0, 256, (192, 280), dtype=np.uint8)).save(os.path.join(tmp, "noise.png"))
+open(os.path.join(tmp, "full.toml"), "w").write('[[scene]]\nimage = "noise.png"\n' * 6)
+try:
+    a2kit.build(os.path.join(tmp, "full.toml"))
+    expect(False, "pictures that don't fit below $C000 are refused")
+except ValueError as e:
+    expect("scene 6: picture doesn't fit below $C000" in str(e), "pictures that don't fit below $C000 are refused (%s)" % e)
 finish("test_sequencer")

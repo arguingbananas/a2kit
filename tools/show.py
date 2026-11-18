@@ -7,7 +7,8 @@
 show.toml (asset paths are relative to the file):
 
   [[scene]]
-  image = "logo.png"      # shown on HGR page 1, then page 2 (two images max)
+  image = "logo.png"      # the first two go to HGR pages 1 and 2; later ones are kept
+                          # packed from $6000 and unpacked when their turn comes
   hold  = 3.0             # optional: seconds to stay on it
   crop  = false           # optional, as in `a2kit image`: fill the screen
   invert = false          # optional: swap black and white
@@ -25,8 +26,13 @@ show.toml (asset paths are relative to the file):
 At the end of the show the screen goes back to text, so give the last
 picture a hold (or add a wait) if you want it to stay up.
 
+A third or later picture is unpacked into the page that isn't on screen just
+before it shows, which takes 0.1-0.4 s: the picture before it stays up that
+much longer. Kept pictures share the space from $6000 with the sound.
+
 Memory map (matches runtime/sequencer.s):
-  $0B00 scene table | $0C00 sequencer | $2000 / $4000 HGR pages | $6000.. audio
+  $0300 unpacker | $0B00 scene table | $0C00 sequencer | $2000 / $4000 HGR pages
+  $6000.. audio and kept pictures
 --install also uploads sequencer.bin. Without it, send first reads the
 sequencer back from the Apple II and uploads it anyway if it's missing or
 different, saying so; --install skips that check and always sends a fresh copy.
@@ -57,7 +63,7 @@ SEQ_ADDR = 0x0C00
 HGR_PAGES = {1: 0x2000, 2: 0x4000}
 AUDIO_START = a2hdr.AUDIO_START
 
-OP_END, OP_SHOW, OP_PLAY, OP_WAIT = 0, 1, 2, 3
+OP_END, OP_SHOW, OP_PLAY, OP_WAIT, OP_LOAD = 0, 1, 2, 3, 4
 
 
 def entry(op, a=0, b=0, c=0, d=0, e=0):
@@ -127,20 +133,32 @@ def build(project_path, language_card=False):
         raise ValueError("no [[scene]] entries")
 
     plan, table = [], bytearray()
-    next_page, audio_used = 1, 0
+    pictures, audio_used = 0, 0
 
     for i, sc in enumerate(scenes, 1):
         where = "scene %d" % i
         kind = check_scene(sc, where)
         if kind == "image":
-            if next_page > 2:
-                raise ValueError("%s: only two image scenes fit (HGR pages 1 and 2)" % where)
             data = convert_image(os.path.join(base, sc["image"]), bool(sc.get("crop", False)),
                                  bool(sc.get("invert", False)), sc.get("dither", "atkinson"),
                                  sc.get("colour", sc.get("color", False)))
-            plan.append((HGR_PAGES[next_page], data, "%s: %s -> HGR page %d" % (where, sc["image"], next_page)))
-            table += entry(OP_SHOW, next_page)
-            next_page += 1
+            page = pictures % 2 + 1         # pages take turns, so the next one is never on screen
+            pictures += 1
+            if pictures <= 2:
+                plan.append((HGR_PAGES[page], data, "%s: %s -> HGR page %d" % (where, sc["image"], page)))
+            else:
+                kept = pack.pack(data)
+                if audio_used + len(kept) > a2hdr.AUDIO_MAIN_END - AUDIO_START:
+                    raise ValueError("%s: picture doesn't fit below $%04X, even packed (%d bytes); "
+                                     "use fewer pictures or less sound" % (where, a2hdr.AUDIO_MAIN_END, len(kept)))
+                src = a2hdr.audio_addr(audio_used)
+                if pictures == 3:
+                    plan.append((pack.UNPACKER_ADDR, pack.unpacker_bin(), "unpacker"))
+                plan.append((src, kept, "%s: %s -> $%04X, packed, shown on HGR page %d" % (
+                    where, sc["image"], src, page)))
+                table += entry(OP_LOAD, HGR_PAGES[page] >> 8, src & 0xFF, src >> 8)
+                audio_used += -(-len(kept) // 256) * 256        # the next sound starts on a page
+            table += entry(OP_SHOW, page)
             if sc.get("hold"):
                 table += entry(OP_WAIT, *divmod(ticks(sc["hold"]), 256)[::-1])
         elif kind == "audio":
