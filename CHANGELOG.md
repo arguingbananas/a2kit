@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- Video without tearing: `video --flip` draws each frame on the hidden hi-res
+  page and flips to it when it's complete, at the cost of up to twice the bytes
+  a frame. `video.bin` is rebuilt (`stream --install` uploads it); older players
+  can't play flipped streams. Older streams play as before.
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.

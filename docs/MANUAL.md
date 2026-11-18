@@ -273,6 +273,21 @@ that play between frames while the computer stays silent for a moment. Nothing i
 
 Colour streams play only with the player from this version of a2kit, which `--install` uploads.
 
+**Without tearing**
+
+```bash
+./a2kit video examples/hello_apple.gif -o out/hello_apple.a2v --fps 10 --flip --preview out/hello_apple_preview.gif
+./a2kit stream out/hello_apple.a2v --port /dev/ttyUSB0 --install
+```
+
+Normally the player changes the picture while it's on screen, so in busy moments the screen shows part of the old frame and part of the new one, a tear. With `--flip` the player draws each frame on the hidden hi-res page and switches to it when the frame is complete, so you only ever see whole frames. The costs:
+
+- **More bytes.** Each page catches up from two frames back, so a busy scene needs up to twice the bytes. On `hello_apple.gif` at 10 frames a second it's 777 bytes a frame instead of 622, and the full-screen wipes take longer to finish. Use a lower `--fps` or simpler scenes if the summary line shows bytes left unsent.
+- **One frame later.** What you see is always the frame before the one being drawn, and the stream ends with one extra frame mark to show the last one.
+- The switch itself isn't timed to the screen yet, so a flip can still land mid-screen; the [roadmap](ROADMAP.md#4-bigger-features) has the next step.
+
+Flipped streams play only with the player from this version of a2kit, which `--install` uploads.
+
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
 | Option | Meaning |
@@ -286,13 +301,14 @@ Colour streams play only with the player from this version of a2kit, which `--in
 | `--colour` (or `--color`) | Use the six hi-res colours, for a colour monitor or TV (see *In colour* above). |
 | `--crop` | Fill the screen instead of letterboxing. |
 | `--max-seconds N` | Use only the first N seconds. |
+| `--flip` | Draw each frame on the hidden page and flip to it when complete, so there's no tearing (see *Without tearing* above). Needs up to twice the bytes. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
 | `--language-card` | Only with `--audio`. Allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe). Stream the clip with `--language-card` too. |
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
 | `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
 | `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
-| `--preview FILE.gif` | Also write an animated GIF of the screen as the player leaves it after each frame, at the speed the clip plays: each frame lasts 1/fps, plus any sound burst after it. For the sound, use [`a2kit audio --preview`](#4-a2kit-audio). |
+| `--preview FILE.gif` | Also write an animated GIF of the screen as the player leaves it after each frame (with `--flip`, the page on screen while each frame is drawn), at the speed the clip plays: each frame lasts 1/fps, plus any sound burst after it. For the sound, use [`a2kit audio --preview`](#4-a2kit-audio). |
 
 **Notes**
 
@@ -737,19 +753,22 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 
 | Byte | Meaning |
 |---|---|
-| `$FE` | Start of frame (also the resynchronisation mark) |
+| `$FE` | Start of a frame drawn on page 1 (also the resynchronisation mark) |
+| `$FB` | Start of a frame drawn on page 2 (also a resynchronisation mark) |
 | `$01–$7E n` | Literal run: n data bytes follow, written at the current screen position |
-| `$81–$FB` | Skip 1–123 screen bytes |
+| `$81–$FA` | Skip 1–122 screen bytes |
 | `$FC` / `$FD` | Palette bit off / on for the literal bytes that follow (colour only) |
 | `$FF lo hi` | Long skip of lo + 128×hi bytes |
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
 | `$80 $80` | End of video |
 
+Each frame mark first shows the page the frame before it was drawn on. A stream that only uses `$FE` therefore draws on the page being shown, as older players did, and one that alternates `$FB` and `$FE` (`video --flip`) always draws on the hidden page. A run or skip that would go past the end of the frame's page is refused.
+
 ### 11.2 Memory map
 
 | Address | Used for |
 |---|---|
-| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$19`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
+| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$19–$1B`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
 | `$0300–$039A` | The unpacker for packed pictures (155 bytes), while one is unpacked and during a show with more than two pictures; the rest of page 3, to `$03CF`, is free |
@@ -765,7 +784,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$1000–$107E` | Speaker routine used by the video player |
 | `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`, `chargen capture` `$1200–$1230`) |
 | `$2000–$3FFF` | Hi-res page 1 |
-| `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
+| `$4000–$5FFF` | Hi-res page 2 (second show image; video with `--flip`, and the video player clears it when it starts; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked |
 | `$C000–$CFFF` | I/O and slot ROMs |
 | `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |

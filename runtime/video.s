@@ -1,7 +1,7 @@
-; video.s - a2kit streaming video player (HGR page 1, Super Serial Card)
+; video.s - a2kit streaming video player (HGR pages 1 and 2, Super Serial Card)
 ;
 ; Reads a delta stream from the serial port and applies it straight to the
-; screen. There is no flow control: bytes arrive at line rate (one per ~532
+; screen, or to the hidden page for page flipping. There is no flow control: bytes arrive at line rate (one per ~532
 ; cycles at 19200 baud, one per ~88.6 at 115200) and every path from one byte
 ; to the next finishes inside that (tools/test_video.py checks both speeds).
 ;
@@ -11,11 +11,16 @@
 ; has lost sync. A screen byte's bit 7 is its palette bit (colour only): it
 ; isn't sent with the byte, but set for the bytes that follow by $FC / $FD.
 ;
-;   $FE        frame start: next op writes from $2000 again (also the resync mark)
+;   $FE        frame start on page 1: next op writes from $2000 (also the resync mark)
+;   $FB        frame start on page 2: next op writes from $4000 (also a resync mark)
+;              Each frame start first shows the page the frame before was drawn
+;              on, so a stream that alternates $FB and $FE draws every frame on
+;              the hidden page and flips to it when it's complete; one that only
+;              sends $FE draws on the page being shown, as before page 2 existed.
 ;   $01-$7E    literal run: n data bytes follow, written at the current address
 ;   $7F n c    audio burst: play n pages (n*64 ms) from RAM, then carry on;
 ;              c = n xor $55 (a stray $7F in damaged data rarely passes this)
-;   $81-$FB    skip (b & $7F) bytes, 1-123
+;   $81-$FA    skip (b & $7F) bytes, 1-122
 ;   $FC        palette bit off for the literal bytes that follow (the default
 ;              at each frame start, so a black and white stream never sends it)
 ;   $FD        palette bit on for the literal bytes that follow
@@ -26,9 +31,10 @@
 ; Any key also quits.
 ;
 ; Recovery: a control byte inside a run, a run or skip that would go past the
-; end of the screen ($3FFF), or a bad audio burst makes the player discard
-; bytes until the next $FE. So a lost or corrupted byte costs at most the rest
-; of that one frame, the player never writes outside $2000-$3FFF, and audio is
+; end of the page being drawn ($3FFF or $5FFF), or a bad audio burst makes the
+; player discard bytes until the next $FE or $FB. So a lost or corrupted byte
+; costs at most the rest of that one frame, the player never writes outside
+; the page the frame started on ($2000-$3FFF or $4000-$5FFF), and audio is
 ; only ever read from $6000-$BFFF or a language card's $D000-$FEFF. Interrupts are off and decimal mode is
 ; cleared while it runs (both restored on return). Sound needs the normal
 ; 1.02 MHz clock: on an accelerated machine it plays at the wrong pitch.
@@ -56,6 +62,7 @@ TXTCLR  = $C050
 TXTSET  = $C051
 MIXCLR  = $C052
 LOWSCR  = $C054
+HISCR   = $C055
 HIRES   = $C057
 
 ptr     = $06                   ; 2 bytes: current screen address
@@ -67,16 +74,18 @@ apages  = $0D
 atmp    = $0E
 atmp2   = $0F
 pal     = $19                   ; $80 or $00: the palette bit for literal bytes
+top     = $1A                   ; $40 or $60: the end of the page being drawn
+sw      = $1B                   ; <LOWSCR or <HISCR: the switch that shows that page
 
-        .export lost, ctl, vframe
+        .export lost, ctl, vframe, vframe2
         .segment "CODE"
 
 start:
         php                     ; keep the caller's interrupt state
         sei                     ; audio bursts are cycle-timed
         cld                     ; binary arithmetic (plp restores the caller's mode)
-        lda #0                  ; clear HGR page 1 so the encoder knows the
-        sta ptr                 ; starting state is black
+        lda #0                  ; clear both HGR pages so the encoder knows
+        sta ptr                 ; the starting state is black
         lda #$20
         sta ptr+1
 clr:    lda #0
@@ -86,8 +95,12 @@ clr:    lda #0
         bne @c
         inc ptr+1
         lda ptr+1
-        cmp #$40
+        cmp #$60
         bne clr
+        lda #$40                ; page 1 is drawn on (and shown) until a $FB
+        sta top
+        lda #<LOWSCR
+        sta sw
 
         bit TXTCLR              ; show it
         bit MIXCLR
@@ -101,11 +114,17 @@ clr:    lda #0
         lda #AUDIO_BASE
         sta aptr+1
 
-vframe: lda #0
+vframe: ldy sw                  ; $FE: draw on page 1. First show the page
+        lda $C000,y             ; the last frame was drawn on (LOWSCR or HISCR)
+        lda #<LOWSCR
+        sta sw
+        lda #$40
+        sta top
+        lda #$20
+frame:  sta ptr+1               ; start of the new frame's page
+        lda #0
         sta ptr
         sta pal                 ; each frame starts with the palette bit off
-        lda #$20
-        sta ptr+1
 vop:    jsr getb
         beq vop                 ; $00: ignored
         bmi ctlop
@@ -113,16 +132,16 @@ vop:    jsr getb
         bne @run
         jmp burst
 @run:   sta cnt                 ; literal run of cnt bytes
-        clc                     ; refuse a run that would end past $3FFF
+        clc                     ; refuse a run that would end past the page
         adc ptr
         sta tmp                 ; tmp = low byte of the run's end
         lda ptr+1
         adc #0
-        cmp #$40
-        bcc @fits               ; ends below $4000
-        bne @nofit              ; ends at $41xx or later
+        cmp top
+        bcc @fits               ; ends below $4000 (or $6000)
+        bne @nofit              ; ends at $41xx (or $61xx) or later
         lda tmp
-        beq @fits               ; ends exactly at $4000
+        beq @fits               ; ends exactly at the end of the page
 @nofit: jmp lost
 @fits:  ldy #0
 @lit:   jsr getb
@@ -139,12 +158,12 @@ vop:    jsr getb
         sta ptr
         bcc chk
         inc ptr+1
-chk:    lda ptr+1               ; never let a bad stream walk off the screen
-        cmp #$40
-        bcc @ok                 ; below $4000
-        bne @bad                ; $4100 or more
+chk:    lda ptr+1               ; never let a bad stream walk off the page
+        cmp top
+        bcc @ok                 ; below $4000 (or $6000)
+        bne @bad                ; $4100 (or $6100) or more
         lda ptr
-        beq @ok                 ; exactly $4000: just past the end, which is fine
+        beq @ok                 ; exactly at the end: just past it, which is fine
 @bad:   jmp lost                ; (any further write or skip is refused)
 @ok:    jmp vop
 
@@ -152,12 +171,14 @@ ctlop:  cmp #$FF
         beq @long
         cmp #$FE
         beq vframe
+        cmp #$FB
+        beq vframe2
         cmp #$80
         bne @skip
         jmp endop               ; (out of branch range)
 @skip:  cmp #$FC
         bcs @pal
-        and #$7F                ; skip 1-123
+        and #$7F                ; skip 1-122
         clc
         adc ptr
         sta ptr
@@ -187,6 +208,16 @@ ctlop:  cmp #$FF
         sta ptr+1
         jmp chk
 
+vframe2:
+        ldy sw                  ; $FB: draw on page 2 (as vframe, the other way)
+        lda $C000,y
+        lda #<HISCR
+        sta sw
+        lda #$60
+        sta top
+        lda #$40
+        jmp frame               ; (out of branch range)
+
 burst:  jsr getb                ; page count
         bmi ctl
         sta apages
@@ -213,11 +244,15 @@ burst:  jsr getb                ; page count
 ; a control byte turned up where data was expected (A = that byte)
 ctl:    cmp #$FE
         beq resync
+        cmp #$FB
+        beq resync2
         cmp #$80
         beq endop
 lost:   jsr getb                ; discard until the next frame mark / end
         cmp #$FE
         beq resync
+        cmp #$FB
+        beq resync2
         cmp #$80
         bne lost
 endop:  jsr getb                ; a real end of stream is $80 $80
@@ -225,11 +260,16 @@ endop:  jsr getb                ; a real end of stream is $80 $80
         beq vdone
         cmp #$FE
         beq resync
+        cmp #$FB
+        beq resync2
         bne lost                ; always
 vdone:  bit TXTSET
+        bit LOWSCR              ; page 2 of text is the receiver's memory
         plp
         rts
 resync: jmp vframe              ; (vframe is out of branch range from here)
+resync2:
+        jmp vframe2
 
 ; wait for a serial byte; a keypress aborts the whole player
 getb:   lda KBD
@@ -243,6 +283,7 @@ getb:   lda KBD
         pla
         bit KBDSTRB
         bit TXTSET
+        bit LOWSCR
         plp                     ; the php from start
         rts
 
