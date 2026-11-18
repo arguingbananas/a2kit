@@ -298,6 +298,7 @@ Colour streams play only with the player from this version of a2kit, which `--in
 
 - GIF frame timings are ignored: every frame is played at `--fps`.
 - The screen starts black, so a dark background costs nothing, while a bright or noisy one takes many frames to paint at the start.
+- A change to the whole screen (a cut, a wipe) needs about 8 KB, several frames' budget, so the picture catches up over about a second with a visible sweep. `examples/hello_apple.gif` shows this at its transitions; between them, at 10 frames a second, it keeps up.
 - Video files need `ffmpeg` on your PATH. Tested with an H.264 `.mp4` made from the example frames; frame folders and GIFs are tested too. Other video formats go through the same ffmpeg step but haven't been tried.
 
 ---

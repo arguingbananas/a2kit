@@ -4,7 +4,8 @@ and generated from code, so you can edit the parameters and re-run:
 
     python3 examples/make_examples.py
 
-Writes: logo.png, sphere.png, colour.png, frames/f00..f35.png, bounce.gif,
+Writes: logo.png, sphere.png, colour.png, balloon.gif, hello_apple.gif,
+        frames/f00..f35.png, bounce.gif,
         stress/f000..f089.png, jingle.wav, boing.wav, chirp.wav, long.wav,
         show.toml, long_show.toml
 """
@@ -129,6 +130,172 @@ def make_frames():
     pics[0].save(OUT("bounce.gif"), save_all=True, append_images=pics[1:], duration=167, loop=0)
 
 
+# ---------------------------------------------------------------- silhouettes
+SIL_FPS = 10
+
+
+def ease(u):
+    u = min(max(u, 0.0), 1.0)
+    return u * u * (3 - 2 * u)
+
+
+def draw_apple(d, cx, cy, s, fill):
+    """An apple of size s centred at (cx, cy): two lobes, a dent on top, a stem and a leaf."""
+    if s < 1:
+        return
+    r = 0.62 * s
+    for dx in (-0.33 * s, 0.33 * s):
+        d.ellipse((cx + dx - r, cy - r, cx + dx + r, cy + r * 1.05), fill=fill)
+    d.ellipse((cx - 0.6 * s, cy - 0.15 * s, cx + 0.6 * s, cy + 0.75 * s), fill=fill)
+    bg = 255 - fill
+    d.ellipse((cx - 0.12 * s, cy - 0.72 * s, cx + 0.12 * s, cy - 0.5 * s), fill=bg)      # the dent
+    d.line((cx, cy - 0.55 * s, cx + 0.08 * s, cy - 0.95 * s), fill=fill, width=max(1, int(0.09 * s)))
+    leaf = [(cx + 0.1 * s + 0.4 * s * u, cy - 0.85 * s - 0.25 * s * math.sin(math.pi * u) * sgn - 0.12 * s * u)
+            for sgn in (1, -1) for u in (np.linspace(0, 1, 8) if sgn > 0 else np.linspace(1, 0, 8))]
+    d.polygon(leaf, fill=fill)
+
+
+def leaf_shape(cx, cy, size, angle):
+    pts = []
+    for a in np.linspace(0, 2 * math.pi, 12, endpoint=False):
+        x, y = size * math.cos(a), 0.45 * size * math.sin(a)
+        pts.append((cx + x * math.cos(angle) - y * math.sin(angle), cy + x * math.sin(angle) + y * math.cos(angle)))
+    return pts
+
+
+def hill_y(x):
+    return 150 - 28 * math.exp(-((x - 130) / 85) ** 2)
+
+
+def draw_walker(d, x, t):
+    """A figure walking, feet on the hill; t sets the stride."""
+    fy = hill_y(x)
+    swing = 0.5 * math.sin(t * 0.9)
+    hip = (x, fy - 18)
+    for sgn in (1, -1):                                                    # legs
+        a = sgn * swing
+        knee = (hip[0] + 6 * math.sin(a), hip[1] + 9)
+        d.line((hip, knee, (knee[0] + 6 * math.sin(a - 0.25 * abs(a)), fy)), fill=0, width=3)
+    neck = (x + 1, fy - 34)
+    d.line((hip, neck), fill=0, width=5)                                   # body
+    for sgn in (1, -1):                                                    # arms
+        a = -sgn * swing
+        d.line((neck[0], neck[1] + 3, neck[0] + 8 * math.sin(a), neck[1] + 15), fill=0, width=2)
+    d.ellipse((x - 4, fy - 44, x + 6, fy - 34), fill=0)                    # head
+
+
+def draw_tree(d, x):
+    y = hill_y(x)
+    d.line((x, y + 2, x, y - 30), fill=0, width=5)
+    for dx, dy, r in ((0, -42, 16), (-12, -32, 11), (12, -33, 12), (-5, -52, 10), (8, -50, 9)):
+        d.ellipse((x + dx - r, y + dy - r, x + dx + r, y + dy + r), fill=0)
+
+
+def silhouette_frame(f):
+    """Frame f of 'Hello, Apple': an original shadow-play animation, black and white."""
+    im = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(im)
+    # 1. an apple grows, bounces and splits to show the title (0-6 s)
+    if f < 60:
+        t = f
+        s = 60 * ease((t + 1) / 17)
+        cy = 96 - (abs(math.sin((t - 16) * math.pi / 9)) * 30 * max(0, 1 - (t - 16) / 26) if 17 <= t < 36 else 0)
+        if t < 36:
+            draw_apple(d, 140, cy, s, 255)
+        else:
+            centered(d, 82, "A2KIT", 30)
+            apple = Image.new("L", (W, H), 0)
+            draw_apple(ImageDraw.Draw(apple), 140, 96, 60, 255)
+            u = ((t - 35) / 25) ** 1.5
+            for x0, x1, sgn in ((0, 140, -1), (140, W, 1)):
+                half = apple.crop((x0, 0, x1, H)).rotate(sgn * 50 * u, center=((140 - x0), 96))
+                mask = half.point(lambda v: 255 if v else 0)
+                im.paste(half, (x0 + int(sgn * 150 * u), int(60 * u * u)), mask)
+        return im
+    # ink spills up from the bottom until the screen is white (6-7.2 s)
+    if f < 72:
+        t = f - 60
+        centered(d, 82, "A2KIT", 30)
+        for bx, k in ((40, 1.0), (120, 1.3), (200, 0.9), (260, 1.15), (90, 0.8)):
+            r = (t + 2) ** 2 * 1.1 * k
+            d.ellipse((bx - r, H - r, bx + r, H + r), fill=255)
+        return im
+    # 2. sunset on a hill: a figure walks past a tree, the sun sinks (7.2-16.2 s)
+    if f < 162:
+        t = f - 72
+        im.paste(255, (0, 0, W, H))
+        sy = 70 + 0.55 * t
+        for r, fill in ((34, 0), (27, 255), (22, 0)):
+            d.ellipse((190 - r, sy - r, 190 + r, sy + r), fill=fill)
+        for k, y in enumerate(range(32, 62, 8)):                           # bands of cloud
+            off = (t * (1 + k * 0.4)) % 340 - 60
+            d.rounded_rectangle((off, y, off + 50 + 10 * k, y + 3), radius=1, fill=0)
+        d.polygon([(0, H)] + [(x, hill_y(x)) for x in range(0, W + 1, 4)] + [(W, H)], fill=0)
+        draw_tree(d, 62)
+        draw_walker(d, -20 + 3.4 * t, t)
+        return im
+    # a diagonal wipe to black (16.2-17.2 s)
+    if f < 172:
+        t = f - 162
+        im = silhouette_frame(161)
+        d = ImageDraw.Draw(im)
+        k = (t + 1) * 47
+        d.polygon([(0, 0), (k, 0), (k - H, H), (0, H)], fill=0)
+        return im
+    # 3. a flock of birds, which fall and become leaves (17.2-26.2 s)
+    if f < 262:
+        t = f - 172
+        rng = np.random.default_rng(7)
+        start = rng.uniform(-120, 0, 14)
+        height = rng.uniform(30, 120, 14)
+        phase = rng.uniform(0, 6.3, 14)
+        for i in range(14):
+            x = start[i] + 4.5 * min(t, 45)
+            y = height[i] + 6 * math.sin(0.15 * t + phase[i])
+            if t < 45:
+                flap = 9 * math.sin(0.9 * t + phase[i])
+                d.line(((x - 13, y - flap), (x, y), (x + 13, y - flap)), fill=255, width=2)
+            else:
+                u = t - 45
+                fy = min(y + 2.2 * u + 0.03 * u * u, H - 6 - (i % 3) * 3)
+                fx = x + 12 * math.sin(0.25 * u + phase[i])
+                angle = 0.6 * math.sin(0.3 * u + phase[i]) if fy < H - 10 else 0.2 * i
+                d.polygon(leaf_shape(fx, fy, 6 + i % 3, angle), fill=255)
+        return im
+    # an iris opens to white (26.2-27.2 s)
+    if f < 272:
+        t = f - 262
+        im = silhouette_frame(261)
+        d = ImageDraw.Draw(im)
+        r = 18 * (t + 1)
+        d.ellipse((140 - r, 96 - r, 140 + r, 96 + r), fill=255)
+        return im
+    # 4. the apple again, the title, and an iris closing (27.2-32 s)
+    t = f - 272
+    im.paste(255, (0, 0, W, H))
+    draw_apple(d, 140, 70, 40 + 4 * math.sin(t * 0.35), 0)
+    centered(d, 120, "HELLO, APPLE", 22, 0)
+    bx, by = -20 + 7 * t, 34 + 4 * math.sin(0.4 * t)                     # a bird crosses
+    flap = 7 * math.sin(0.9 * t)
+    d.line(((bx - 11, by - flap), (bx, by), (bx + 11, by - flap)), fill=0, width=2)
+    if t >= 28:
+        r = 175 * (1 - ease((t - 28) / 19))
+        ring = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(ring).ellipse((140 - r, 96 - r, 140 + r, 96 + r), fill=255)
+        im = Image.composite(im, Image.new("L", (W, H), 0), ring)
+    return im
+
+
+SIL_FRAMES = 320        # 32 s at 10 fps
+
+
+def make_silhouettes():
+    """'Hello, Apple': an original black and white shadow-play animation, the
+    kind of full-screen motion that tests how fast the stream can keep up."""
+    pics = [silhouette_frame(f).point(lambda v: 255 if v > 127 else 0).convert("1") for f in range(SIL_FRAMES)]
+    pics[0].save(OUT("hello_apple.gif"), save_all=True, append_images=pics[1:], duration=1000 // SIL_FPS, loop=0)
+
+
 # ---------------------------------------------------------------- stress test
 STRESS_MOVING, STRESS_HOLD = 48, 42     # 8 s of motion, then 7 s of test card at 6 fps
 STRESS_RINGS = 8
@@ -251,5 +418,5 @@ audio = "long.wav"
 
 
 if __name__ == "__main__":
-    make_logo(); make_sphere(); make_colour(); make_balloon(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
+    make_logo(); make_sphere(); make_colour(); make_balloon(); make_silhouettes(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
     print("examples written to", HERE)
