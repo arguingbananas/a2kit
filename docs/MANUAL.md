@@ -333,7 +333,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 **When the show ends the screen goes back to text.** If you want the last picture to stay up for a while, give it a `hold` or add a `wait` after it.
 
-**More than two pictures.** The first two pictures go straight to the two hi-res pages. A third or later one is kept [packed](#7-a2kit-send) in the space from `$6000` that sound uses, and when its turn comes the sequencer unpacks it onto the page that isn't on screen, then shows it. Unpacking takes 0.1–0.4 s, so the picture before it stays up that much longer than its `hold`. The starter show's colour landscape is kept this way (6,076 bytes).
+**More than two pictures.** The first two pictures go straight to the two hi-res pages. A third or later one is kept [packed](#7-a2kit-send) in the space from `$6000` that sound uses, and when its turn comes the sequencer unpacks it onto the page that isn't on screen, then shows it. Unpacking takes 0.1–0.4 s, so the picture before it stays up that much longer than its `hold`. The starter show's colour landscape is kept this way (5,772 bytes).
 
 **Limits**
 

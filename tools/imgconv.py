@@ -212,13 +212,16 @@ def colour_screen(img, dither="atkinson"):
             last = b >> 6 & 1
             if dither != "atkinson":
                 continue
-            err = (buf[y, x + 3:x + 17] - palette[shown[b, 3:]]) / 8.0     # Atkinson: spread 6/8 of it
+            # the error of the half-dots now settled: the 3 before the byte and its
+            # first 11. Its last 3 depend on the next byte's dots too, so they wait
+            # for it (counting them now, as if black followed, specks flat areas)
+            err = (buf[y, x:x + 14] - palette[shown[b, :14]]) / 8.0     # Atkinson: spread 6/8 of it
             # right: a byte's half-dots are chosen together, so its error goes to
             # the same places in the next byte; down: to the half-dots below
-            buf[y, x + 17:x + 31] += 2 * err
+            buf[y, x + 14:x + 28] += 2 * err
             for dy, w in ((1, 3), (2, 1)):
                 if y + dy < H:
-                    buf[y + dy, x + 3:x + 17] += w * err
+                    buf[y + dy, x:x + 14] += w * err
             buf[y] = np.clip(buf[y], -128, 383)
     return bytes(out)
 
