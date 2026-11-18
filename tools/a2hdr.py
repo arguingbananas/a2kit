@@ -130,7 +130,7 @@ def parse_stream(data):
 def frame_audio_pages(frame):
     """Pages of audio the player will play in this frame (walks the stream
     grammar: $FE frame start, $7F n c audio burst, $01-$7E n literal bytes,
-    $81-$FD skip, $FF lo hi long skip)."""
+    $81-$FB skip, $FC/$FD palette bit off/on, $FF lo hi long skip)."""
     i, pages = 0, 0
     while i < len(frame):
         b = frame[i]

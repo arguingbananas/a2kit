@@ -7,15 +7,18 @@
 ;
 ; Stream grammar. The key property: every DATA byte (literal bytes, long-skip
 ; arguments, audio page counts) is < $80, and every byte >= $80 is a control
-; byte. HGR data is monochrome (bit 7 clear), so this costs nothing, and it
-; means a control byte showing up where data should be proves the stream has
-; lost sync.
+; byte, so a control byte showing up where data should be proves the stream
+; has lost sync. A screen byte's bit 7 is its palette bit (colour only): it
+; isn't sent with the byte, but set for the bytes that follow by $FC / $FD.
 ;
 ;   $FE        frame start: next op writes from $2000 again (also the resync mark)
 ;   $01-$7E    literal run: n data bytes follow, written at the current address
 ;   $7F n c    audio burst: play n pages (n*64 ms) from RAM, then carry on;
 ;              c = n xor $55 (a stray $7F in damaged data rarely passes this)
-;   $81-$FD    skip (b & $7F) bytes, 1-125
+;   $81-$FB    skip (b & $7F) bytes, 1-123
+;   $FC        palette bit off for the literal bytes that follow (the default
+;              at each frame start, so a black and white stream never sends it)
+;   $FD        palette bit on for the literal bytes that follow
 ;   $FF lo hi  long skip of lo + 128*hi bytes (lo, hi < $80)
 ;   $00        ignored
 ;   $80 $80    end of stream: restore text mode and return (twice, so one
@@ -63,6 +66,7 @@ aptr    = $0B                   ; 2 bytes: audio read pointer
 apages  = $0D
 atmp    = $0E
 atmp2   = $0F
+pal     = $19                   ; $80 or $00: the palette bit for literal bytes
 
         .export lost, ctl, vframe
         .segment "CODE"
@@ -99,6 +103,7 @@ clr:    lda #0
 
 vframe: lda #0
         sta ptr
+        sta pal                 ; each frame starts with the palette bit off
         lda #$20
         sta ptr+1
 vop:    jsr getb
@@ -123,7 +128,8 @@ vop:    jsr getb
 @lit:   jsr getb
         bpl @data
         jmp ctl                 ; control byte where data belongs: lost sync
-@data:  sta (ptr),y
+@data:  ora pal
+        sta (ptr),y
         iny
         cpy cnt
         bne @lit
@@ -147,14 +153,22 @@ ctlop:  cmp #$FF
         cmp #$FE
         beq vframe
         cmp #$80
-        beq endop
-        and #$7F                ; skip 1-125
+        bne @skip
+        jmp endop               ; (out of branch range)
+@skip:  cmp #$FC
+        bcs @pal
+        and #$7F                ; skip 1-123
         clc
         adc ptr
         sta ptr
         bcc chk
         inc ptr+1
         jmp chk
+@pal:   lsr a                   ; $FC -> carry 0, $FD -> carry 1
+        lda #0
+        ror a                   ; ... -> $00 or $80
+        sta pal
+        jmp vop
 @long:  jsr getb
         bmi ctl
         sta tmp                 ; lo (7 bits)

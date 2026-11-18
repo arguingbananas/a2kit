@@ -59,11 +59,11 @@ def make_sphere():
     Image.fromarray(img.clip(0, 255).astype(np.uint8), "L").save(OUT("sphere.png"))
 
 
-def make_colour():
+def landscape(bx=92, by=50):
     """A landscape for `a2kit image --colour`, drawn in the six hi-res colours, as
     Apple II artists drew: flat areas convert cleanly, where shades would turn to
     grain. The sky turns from blue to orange through stripes. Below: a sun, blue
-    mountains, green hills, a lake, a balloon and a strip of the six colours."""
+    mountains, green hills, a lake, a balloon at (bx, by) and a strip of the six colours."""
     BLACK, VIOLET, GREEN, BLUE, ORANGE, WHITE = (0, 0, 0), (230, 40, 255), (25, 215, 0), (25, 144, 255), (230, 111, 0), (255, 255, 255)
     y, x = np.mgrid[0:H, 0:W].astype(float)
     img = np.zeros((H, W, 3))
@@ -73,13 +73,31 @@ def make_colour():
     img[y > 112 + 14 * np.sin(x / 23) + 8 * np.sin(x / 9 + 1)] = BLUE                       # mountains
     img[y > 132 + 18 * np.sin(x / 41 + 2)] = GREEN                                         # hills
     img[((x - 70) / 52) ** 2 + ((y - 160) / 12) ** 2 <= 1] = BLUE                           # lake
-    balloon = ((x - 92) / 15) ** 2 + ((y - 50) / 19) ** 2 <= 1
+    balloon = ((x - bx) / 15) ** 2 + ((y - by) / 19) ** 2 <= 1
     img[balloon] = ORANGE                                                                  # balloon, orange
-    img[balloon & (abs(x - 92) < 4)] = WHITE                                               # with a white stripe:
-    img[(abs(x - 92) < 4) & (y > 72) & (y < 80)] = BLACK                                   # violet beside blue looks blocky
+    img[balloon & (abs(x - bx) < 4)] = WHITE                                               # with a white stripe:
+    img[(abs(x - bx) < 4) & (y > by + 22) & (y < by + 30)] = BLACK                         # violet beside blue looks blocky
     for i, c in enumerate((BLACK, VIOLET, GREEN, BLUE, ORANGE, WHITE)):                    # the six colours
         img[(y >= 182) & (x >= i * W / 6) & (x < (i + 1) * W / 6)] = c
-    Image.fromarray(img.astype(np.uint8), "RGB").save(OUT("colour.png"))
+    return Image.fromarray(img.astype(np.uint8), "RGB")
+
+
+def make_colour():
+    landscape().save(OUT("colour.png"))
+
+
+BALLOON_FRAMES = 160    # 16 s at 10 fps
+
+
+def make_balloon():
+    """The balloon drifting across the landscape's sky, for `a2kit video --colour`:
+    2 dots a frame, so it keeps its colours (a colour is 2 dots wide), bobbing a little."""
+    pics = []
+    for i in range(BALLOON_FRAMES):
+        bx = -24 + 2 * i
+        by = 50 + round(5 * math.sin(i / 12))
+        pics.append(landscape(bx, by).quantize(colors=8, method=Image.Quantize.FASTOCTREE, dither=Image.Dither.NONE))
+    pics[0].save(OUT("balloon.gif"), save_all=True, append_images=pics[1:], duration=100, loop=0)
 
 
 # ---------------------------------------------------------------- video
@@ -233,5 +251,5 @@ audio = "long.wav"
 
 
 if __name__ == "__main__":
-    make_logo(); make_sphere(); make_colour(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
+    make_logo(); make_sphere(); make_colour(); make_balloon(); make_frames(); make_stress(); make_audio(); make_long(); make_show()
     print("examples written to", HERE)

@@ -47,17 +47,18 @@ def convert(extra=(), src=None):
     return a2hdr.parse_stream(open(out, "rb").read())
 
 def ref_decode(stream, screen, written=None):
-    pos = i = 0
+    pos = i = pal = 0
     while i < len(stream):
         b = stream[i]; i += 1
-        if b == 0xFE: pos = 0
+        if b == 0xFE: pos = pal = 0
         elif b == 0: pass
         elif b == 0x80: break
         elif b == 0x7F: i += 2
         elif b == 0xFF: pos += stream[i] + 128 * stream[i + 1]; i += 2
+        elif b in (0xFC, 0xFD): pal = 0x80 if b == 0xFD else 0
         elif b > 0x80: pos += b & 0x7F
         else:
-            screen[pos:pos + b] = np.frombuffer(stream[i:i + b], np.uint8)
+            screen[pos:pos + b] = np.frombuffer(stream[i:i + b], np.uint8) | pal
             if written is not None: written.update(range(pos, pos + b))
             pos += b; i += b
     return screen
@@ -166,6 +167,27 @@ print("6502 player, host schedule at 19200 baud (%.1f s): overruns %d, screen ==
     total, r["over"], r["screen"] == bytes(ref), len(r["stray"]) + len(r["io_bad"]), len(r["bad_reads"]), r["i_after"] is False))
 expect(r["over"] == 0 and r["screen"] == bytes(ref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"] and r["i_after"] is False,
        "player with the host's real schedule: no overruns, right picture, no stray access, interrupts restored")
+
+print("--- 1b. colour ---")
+CFR = os.path.join(tmp, "colour"); os.makedirs(CFR)
+COLS = [(25, 144, 255), (230, 111, 0), (25, 215, 0), (230, 40, 255), (255, 255, 255)]
+for i in range(8):                      # a blue and orange sky, a green hill, a violet and white ball moving across
+    im = Image.new("RGB", (280, 192), COLS[0]); d = ImageDraw.Draw(im)
+    d.rectangle((0, 80, 279, 130), fill=COLS[1]); d.ellipse((-40, 110, 320, 260), fill=COLS[2])
+    d.ellipse((20 + 24 * i, 40, 60 + 24 * i, 80), fill=COLS[3]); d.rectangle((36 + 24 * i, 40, 44 + 24 * i, 80), fill=COLS[4])
+    im.save(os.path.join(CFR, "f%02d.png" % i))
+cfps, cframes, _ = convert(["--colour", "--budget", "9000"], src=CFR)
+cref = np.zeros(0x2000, np.uint8)
+for f in cframes: ref_decode(f, cref)
+ctarget = np.frombuffer(imgconv.colour_screen(Image.open(os.path.join(CFR, "f07.png")), "threshold"), np.uint8)   # video --colour's default
+expect(any(b in (0xFC, 0xFD) for f in cframes for b in f) and np.array_equal(cref, ctarget),
+       "colour: palette bits travel as $FC/$FD, and the stream decodes to the last frame's colour screen")
+rc = run_6502(arrivals(PRE + b"".join(cframes) + END, int(a2hdr.CPU_HZ * 10 / 115200)))
+print("6502 player, colour stream back-to-back at 115200: overruns %d, screen == decoder: %s, stray %d" % (
+    rc["over"], rc["screen"] == bytes(cref), len(rc["stray"]) + len(rc["io_bad"])))
+expect(rc["over"] == 0 and rc["screen"] == bytes(cref) and not rc["stray"] and not rc["io_bad"] and not rc["lost"],
+       "colour stream at 115200, back to back: no overruns, the palette bits land, no stray access")
+expect(not any(b in (0xFC, 0xFD) for f in frames for b in f), "black and white streams never send a palette op")
 
 # video --preview: each GIF frame is the screen the stream leaves after that frame
 gif = os.path.join(tmp, "preview.gif")
