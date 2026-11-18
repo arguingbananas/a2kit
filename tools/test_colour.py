@@ -50,6 +50,14 @@ for name, rgb in (("violet", imgconv.LORES[3]), ("green", imgconv.LORES[12]), ("
     prev = np.asarray(imgconv.colour_preview(scr))[100, 20:540]
     share = np.mean(np.all(prev == rgb, axis=1))
     expect(share > 0.95, "flat %s comes out %s (%.0f%%)" % (name, name, 100 * share))
+# bands of the six colours, one above another: away from where they meet, no stray dots
+SIX = [(0, 0, 0), imgconv.LORES[3], imgconv.LORES[12], imgconv.LORES[6], imgconv.LORES[9], (255, 255, 255)]
+bands = np.zeros((192, 280, 3), np.uint8)
+for i, rgb in enumerate(SIX):
+    bands[32 * i:32 * i + 32] = rgb
+prev = np.asarray(imgconv.colour_preview(imgconv.colour_screen(Image.fromarray(bands, "RGB"))))
+stray = sum(int(np.any(prev[64 * i + 8:64 * i + 56, 8:552] != rgb, axis=2).sum()) for i, rgb in enumerate(SIX))
+expect(stray == 0, "bands of the six colours, dithered: no stray dots inside them (%d)" % stray)
 
 # 3. the colour example: close to the picture once blurred, the way the eye sees it from a distance
 pic = imgconv.prepare(Image.open(os.path.join(HERE, "..", "examples", "colour.png")), False, False, "RGB")
