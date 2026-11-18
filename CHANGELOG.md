@@ -21,6 +21,8 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   `examples/colour.png`.
 - Colour pictures are cleaner: areas already in one of the six colours no longer
   get stray dots from the dither.
+- The colour example is redrawn in the six colours, as Apple II art was, so it
+  converts cleanly instead of grainy (and packs to 1,264 bytes instead of 6,076).
 - Pictures upload packed when that's quicker: `send` and `show send` pack them,
   and a 155-byte unpacker on the Apple II unpacks them (`--no-pack` turns it off).
   Line art packs best: the starter show uploads in 2.5 s instead of 2.9 s at
