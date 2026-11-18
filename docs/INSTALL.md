@@ -25,6 +25,7 @@ a2kit has two halves:
 | **make** | `./a2kit build`, `./a2kit test` | Only with cc65 | GNU Make 4.3 |
 | **ffmpeg** | Video files such as `.mp4` | Optional (GIFs and frame folders don't need it) | 6.1 |
 | **pandoc** + **Chrome/Chromium** | Rebuilding the PDF docs | Optional | pandoc 3.1, Chrome 153 |
+| **v4l-utils** (`v4l2-ctl`) + **ffmpeg** | `a2kit chargen capture`, with a USB video grabber (Linux) | Optional | v4l-utils 1.26 |
 
 ### Tested setup
 
@@ -160,6 +161,7 @@ You need no Apple II at all to convert files and look at previews.
 | …and send them to a real Apple II | + `pyserial` and the [hardware](#hardware) |
 | …and play `.mp4` files | + `ffmpeg` |
 | Change the 6502 programs, or run the tests | + `cc65`, `make`, `py65` |
+| Read the character ROM for MAME (`a2kit chargen`) | + `ffmpeg`, `v4l-utils` and a USB composite video grabber (Linux) |
 
 ## 3. Install, step by step
 

@@ -15,6 +15,7 @@
   a2kit ramload --port DEV           start a new boot image without touching the disk
   a2kit mon    FILE                  print a binary as Monitor entry lines
   a2kit disk   [--baud 19200]        make a disk that boots straight into the receiver
+  a2kit chargen capture|decode       read the character ROM off the screen (video grabber)
   a2kit build                        assemble the 6502 programs (needs cc65)
   a2kit test                         run the whole test suite
   a2kit doctor                       check the toolchain and built binaries
@@ -51,8 +52,9 @@ TOOLS = {
     "ramload": ("ramload", "start a new boot image over the link"),
     "mon": ("bin2mon", "binary -> Monitor lines"),
     "disk": ("mkdisk", "bootable receiver disk image"),
+    "chargen": ("chargen", "read the character ROM off the screen, for MAME"),
 }
-BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "lcprobe.bin", "unpack.bin", "boot.bin", "a2kit-boot.dsk",
+BINARIES = ("receiver.bin", "sequencer.bin", "video.bin", "lcprobe.bin", "unpack.bin", "screenhold.bin", "boot.bin", "a2kit-boot.dsk",
             "receiver-19200.bin", "boot-19200.bin", "a2kit-boot-19200.dsk")
 
 
@@ -121,7 +123,8 @@ def doctor():
             note = "   (python3 -m pip install -r requirements.txt)" if req else "   (only needed for tests: pip install -r requirements-dev.txt)"
             line(False, "python package " + pkg + note, req)
     for exe, why in (("ca65", "cc65 assembler; only to rebuild the 6502 programs"), ("ld65", "cc65 linker; only to rebuild the 6502 programs"),
-                     ("make", "needed by 'a2kit build' and 'a2kit test'"), ("ffmpeg", "only for video files like .mp4; GIFs and frame folders don't need it")):
+                     ("make", "needed by 'a2kit build' and 'a2kit test'"), ("ffmpeg", "only for video files like .mp4; GIFs and frame folders don't need it"),
+                     ("v4l2-ctl", "v4l-utils; only for a2kit chargen capture, on Linux")):
         line(bool(shutil.which(exe)), "%s (%s)" % (exe, why), required=False)
     for b in BINARIES:
         have = os.path.exists(os.path.join(ROOT, b))

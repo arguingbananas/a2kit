@@ -11,7 +11,7 @@ New here? Start with the [Quick Start](QUICKSTART.md). This manual covers every 
 6. [`a2kit show`](#6-a2kit-show): picture-and-sound shows
 7. [`a2kit send`](#7-a2kit-send): upload one block
 8. [`a2kit stream`](#8-a2kit-stream): play a video
-9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-lcprobe-disk-mon-build-test-doctor)
+9. [Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `chargen`, `build`, `test`, `doctor`](#9-housekeeping-ping-peek-crash-canary-ramload-lcprobe-disk-mon-chargen-build-test-doctor)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Reference](#11-reference): formats, memory map, protocol, limits
 
@@ -423,7 +423,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 ---
 
-## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `build`, `test`, `doctor`
+## 9. Housekeeping: `ping`, `peek`, `crash`, `canary`, `ramload`, `lcprobe`, `disk`, `mon`, `chargen`, `build`, `test`, `doctor`
 
 ### `a2kit ping`
 
@@ -618,6 +618,40 @@ Prints a binary as lines you can type at the Apple II Monitor.
 Each line is `ADDR:` and eight hex bytes. The last line is `ADDRG`, which runs the program. Use this once per power-up for `receiver.bin` if you aren't using the boot disk.
 The bigger programs (`sequencer.bin`, `video.bin`) are uploaded for you by `--install` and aren't meant to be typed in.
 
+### `a2kit chargen`
+
+Reads the Apple II's **character ROM** (the chip that draws the text, `341-0036` on a II+) off its screen, for the [MAME](https://www.mamedev.org/) emulator. MAME needs the ROMs of the machine it emulates; the others can be read by the 6502 (`a2kit peek`), but the character ROM can't, because only the video circuit sees it. This command gets it without a chip reader, and without downloading anything: it puts every character on the screen, records the screen with a USB video grabber, reads the dots back and checks the result against the real ROM's checksum. A match means the file is byte for byte the chip in your machine.
+
+**You need** a USB composite video grabber on the Apple II's video out, on Linux, with `ffmpeg` and `v4l-utils` (`sudo apt install ffmpeg v4l-utils`). Tested with a MacroSilicon MS210x ("USB Video", the common cheap one, about 2 samples per dot).
+
+```bash
+./a2kit chargen capture --port /dev/ttyUSB0      # about a minute; nobody needs to touch the Apple II
+./a2kit chargen decode                           # writes ~/a2kit-chargen/341-0036.chr
+```
+
+`capture` uploads 13 screens one after another, each held by a small program at `$1200` until the computer says go on, and records each one into `~/a2kit-chargen/` (`--dir` for elsewhere, `--device` if the grabber isn't `/dev/video0`):
+
+- a geometry screen of white lines and bars, to find where each dot lands in the recording;
+- 8 calibration screens of random dot patterns;
+- 4 screens with all 256 screen codes on them, normal, inverse and flashing (both phases of the flashing ones are kept).
+
+`decode` prints the 64 characters as it read them and says whether the checksum matched:
+
+```
+bit 7 set in $40-$7F and $C0-$FF: crc 64f415c6   MATCH
+wrote ~/a2kit-chargen/341-0036.chr: it matches the checksum, so it is byte for byte the ROM in your Apple II.
+```
+
+Copy the file into your MAME ROM folder as `apple2p/341-0036.chr`. **The ROM is Apple's:** keep it for your own use, and don't share it or commit it anywhere (a2kit's `.gitignore` ignores `*.chr`).
+
+**How it reads the dots.** A II+ sends no colour signal in text mode, and the grabber shows nothing without one, so the characters go on the four text lines of mixed mode, under a hi-res screen. At about 2 samples per dot, a single dot comes through the composite signal partly as colour, and the grabber blends each scanline a little with the ones above and below. So the calibration screens show the same kind of rows, random 7-dot patterns in the same places, in hi-res; from them `decode` learns how each of the 128 possible rows looks, and how much its neighbours show through, then reads each column of character rows together. `decode --check` reports how well the calibration reads itself back (on the tested grabber: every dark row, and 632–635 of 640 lit ones).
+
+- **Grabber settings:** `capture` sets the grabber's brightness to -128 and contrast to 150, which keeps the MS210x's black and white from clipping. For another grabber, pass `--controls` with its own `v4l2-ctl` settings, or `--controls ""` to leave it alone; check with a hi-res picture first that black isn't grey and white isn't flat.
+- **If nothing matches:** look at the printed characters. The inverse ones in the leftmost column sometimes read wrongly (the screen's dark edge is next to them); the four copies of each glyph outvote that. If the characters themselves look wrong, capture again; if they look right but nothing matches, your chip may hold something the screen can't show.
+- **Without a grabber:** photos of the screen don't work well enough; a CRT's glow makes each dot swell into its neighbours. Use a chip reader instead (a TL866II+ or T48, which may need an adapter for this mask ROM's chip-select pins).
+
+**Tested:** on a 1979 Apple II+ with an MS210x grabber; the result matched MAME's checksum `64f415c6`. The tests run the whole capture-and-decode path on a simulated grabber with made-up characters.
+
 ### `a2kit build`
 
 Assembles the 6502 programs (`receiver.bin` and `receiver-19200.bin`, `sequencer.bin`, `video.bin`) and both boot disks from the sources in `runtime/`. Needs cc65 and make. Built copies are already included, so you only need this if you change the sources or the slot in `runtime/config.inc`.
@@ -711,7 +745,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$0D00–$0D7E` | Speaker routine used by the sequencer |
 | `$0E00–$0F3D` | Video player |
 | `$1000–$107E` | Speaker routine used by the video player |
-| `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`) |
+| `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`, `chargen capture` `$1200–$1230`) |
 | `$2000–$3FFF` | Hi-res page 1 |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked |

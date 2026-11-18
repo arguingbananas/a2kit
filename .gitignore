@@ -17,3 +17,6 @@ docs/.*.pdfbuild.*
 
 # Personal Claude Code notes (see CLAUDE.md for the shared ones)
 CLAUDE.local.md
+
+# Character ROMs read with a2kit chargen are Apple's: never commit one
+*.chr
