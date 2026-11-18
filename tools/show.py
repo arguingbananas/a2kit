@@ -12,6 +12,7 @@ show.toml (asset paths are relative to the file):
   crop  = false           # optional, as in `a2kit image`: fill the screen
   invert = false          # optional: swap black and white
   dither = "atkinson"     # optional: or "threshold"
+  colour = false          # optional, as in `a2kit image --colour` (also spelt color)
 
   [[scene]]
   audio = "clip.wav"      # played over whatever is on screen
@@ -69,14 +70,16 @@ def ticks(seconds):
     return t
 
 
-KEYS = {"image": {"image", "hold", "crop", "invert", "dither"},
+KEYS = {"image": {"image", "hold", "crop", "invert", "dither", "colour", "color"},
         "audio": {"audio", "gain", "even_out"},
         "wait": {"wait"}}
 
 
-def convert_image(path, crop=False, invert=False, dither="atkinson"):
+def convert_image(path, crop=False, invert=False, dither="atkinson", colour=False):
     if not os.path.exists(path):
         raise ValueError("%s: no such file" % path)
+    if colour:
+        return imgconv.colour_screen(imgconv.prepare(Image.open(path), crop, invert, "RGB"), dither)
     img = imgconv.prepare(Image.open(path), crop=crop, invert=invert)
     bits = imgconv.atkinson(img) if dither == "atkinson" else imgconv.threshold(img)
     return imgconv.to_hgr(bits)
@@ -102,8 +105,11 @@ def check_scene(sc, where):
     for k in ("hold", "wait", "gain"):
         if k in sc and not isinstance(sc[k], (int, float)):
             raise ValueError("%s: %s must be a number" % (where, k))
-    if "even_out" in sc and not isinstance(sc["even_out"], bool):
-        raise ValueError("%s: even_out must be true or false" % where)
+    for k in ("even_out", "colour", "color"):
+        if k in sc and not isinstance(sc[k], bool):
+            raise ValueError("%s: %s must be true or false" % (where, k))
+    if "colour" in sc and "color" in sc:
+        raise ValueError("%s: give colour or color, not both" % where)
     return kinds[0]
 
 
@@ -129,7 +135,8 @@ def build(project_path, language_card=False):
             if next_page > 2:
                 raise ValueError("%s: only two image scenes fit (HGR pages 1 and 2)" % where)
             data = convert_image(os.path.join(base, sc["image"]), bool(sc.get("crop", False)),
-                                 bool(sc.get("invert", False)), sc.get("dither", "atkinson"))
+                                 bool(sc.get("invert", False)), sc.get("dither", "atkinson"),
+                                 sc.get("colour", sc.get("color", False)))
             plan.append((HGR_PAGES[next_page], data, "%s: %s -> HGR page %d" % (where, sc["image"], next_page)))
             table += entry(OP_SHOW, next_page)
             next_page += 1

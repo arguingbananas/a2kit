@@ -43,6 +43,7 @@ a2kit-boot-19200.dsk: boot-19200.bin tools/mkdisk.py
 
 test: all
 	$(PYTHON) tools/test_a2kit.py
+	$(PYTHON) tools/test_colour.py
 	$(PYTHON) tools/test_receiver.py receiver.bin
 	$(PYTHON) tools/test_receiver.py receiver-19200.bin
 	$(PYTHON) tools/test_crash.py

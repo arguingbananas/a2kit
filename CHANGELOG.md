@@ -7,6 +7,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 ## Unreleased
 
+- Colour pictures: `image --colour` (and `colour = true` in a show's image scene)
+  uses the Apple II's six hi-res colours, for a colour monitor or TV, and its
+  `--preview` shows the colours as the MAME emulator draws them. New example:
+  `examples/colour.png`.
 - `audio --preview out.wav` writes what the Apple II's speaker will produce, from the
   player's exact timing; `video --preview out.gif` shows the screen as the player
   draws it, frame by frame, at the speed it plays.
