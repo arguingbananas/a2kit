@@ -51,6 +51,7 @@
 
         .include "config.inc"           ; SLOT
 AUDIO_BASE = $60                ; audio data starts at $6000
+MARK    = $9B                   ; in the screen holes, for vsync (never a shown byte)
 
 ACIA_DATA = $C088
 ACIA_STAT = $C089
@@ -93,6 +94,16 @@ clr:    lda #0
 @c:     sta (ptr),y
         iny
         bne @c
+        lda #MARK               ; the screen holes ($xx78-$xx7F, $xxF8-$xxFF)
+        ldy #$78                ; get the marker vsync looks for
+@h:     sta (ptr),y
+        iny
+        cpy #$80
+        bne @h
+        ldy #$F8
+@h2:    sta (ptr),y
+        iny
+        bne @h2
         inc ptr+1
         lda ptr+1
         cmp #$60
@@ -115,7 +126,11 @@ clr:    lda #0
         sta aptr+1
 
 vframe: ldy sw                  ; $FE: draw on page 1. First show the page
-        lda $C000,y             ; the last frame was drawn on (LOWSCR or HISCR)
+        cpy #<HISCR             ; the last frame was drawn on (LOWSCR or HISCR),
+        bne @show               ; at the next vertical blank if that's a flip
+        jsr vsync
+        ldy sw
+@show:  lda $C000,y
         lda #<LOWSCR
         sta sw
         lda #$40
@@ -210,7 +225,11 @@ ctlop:  cmp #$FF
 
 vframe2:
         ldy sw                  ; $FB: draw on page 2 (as vframe, the other way)
-        lda $C000,y
+        cpy #<LOWSCR
+        bne @show
+        jsr vsync
+        ldy sw
+@show:  lda $C000,y
         lda #<HISCR
         sta sw
         lda #$60
@@ -285,6 +304,46 @@ getb:   lda KBD
         bit TXTSET
         bit LOWSCR
         plp                     ; the php from start
+        rts
+
+; wait for the start of the vertical blank (II, II+ and IIe alike). Reading a
+; soft switch returns the byte the video circuit last read (the floating bus).
+; In hi-res it reads the screen holes, which hold MARK and are never shown,
+; only during the top third of the screen and the vertical blank. So: wait
+; until about 6 lines go by without MARK (the beam is in the lower two
+; thirds), and the next MARK is the start of the blank. Takes up to one screen
+; (17,030 cycles); the host stays quiet meanwhile. Gives up after 200 restarts
+; or about 230 lines of waiting (no floating bus, an accelerator), so it never
+; hangs. Uses A, Y and tmp; X (the slot) is kept.
+vsync:  lda #200
+        sta tmp
+@quiet: ldy #20                 ; 20 x 21 cycles with no MARK, 2 reads each
+@q:     lda HIRES
+        cmp #MARK
+        beq @again
+        lda HIRES
+        cmp #MARK
+        beq @again
+        dey
+        bne @q
+        lda #2                  ; then the first MARK (3 reads every 29 cycles,
+        sta tmp                 ; which drifts against the 65-cycle line)
+@w:     lda HIRES
+        cmp #MARK
+        beq @done
+        lda HIRES
+        cmp #MARK
+        beq @done
+        lda HIRES
+        cmp #MARK
+        beq @done
+        dey
+        bne @w
+        dec tmp
+        bne @w
+@done:  rts
+@again: dec tmp
+        bne @quiet
         rts
 
         .include "speaker.inc"

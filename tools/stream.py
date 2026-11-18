@@ -12,6 +12,11 @@ serial line: each frame is sent at its due time, but never before the line is
 free, and while the Apple II plays an audio burst the line stays silent until
 the burst is over. This doesn't rely on the OS or the USB adapter reporting
 when bytes have actually left. Press a key on the Apple II to stop.
+
+A flipped stream (video --flip) changes page at every frame mark, and the
+player then waits for the screen's vertical blank before it flips, up to one
+screen refresh (about 17 ms) without reading the line, so the host sends each
+such mark on its own and stays quiet for FLIP_QUIET after it.
 """
 import argparse
 import os
@@ -27,6 +32,8 @@ BURST_MARGIN = 0.05     # extra quiet time after each burst, seconds (USB schedu
 PREAMBLE = b"\xFE" * 4  # frame-start marks: the player starts in sync
 END = b"\x80\x80"       # end of stream (twice: one corrupted byte mustn't end it)
 LATE_WARN = 0.25        # seconds
+FLIP_QUIET = 0.020      # quiet time after a mark that flips: one screen (16.7 ms) plus a little
+MARK_PAGE = {0xFE: 1, 0xFB: 2}
 
 
 def burst_seconds(pages):
@@ -37,7 +44,8 @@ def plan_stream(frames, fps, baud, margin=BURST_MARGIN, quiet_for_bursts=True):
     """Work out when to send each piece, in seconds from the start.
 
     Returns (schedule, total) where schedule is a list of (send_time, bytes,
-    kind) with kind "preamble", "frame" or "end", and total is when the last
+    kind) with kind "preamble", "frame", "rest" (the rest of a frame after a mark
+    that flips, sent FLIP_QUIET later) or "end", and total is when the last
     byte has arrived. The model: bytes cross the line at baud/10 per second; a
     frame is due at i/fps (shifted by the audio played so far) but can't start
     before the line is free; a burst starts when the Apple II has the frame's
@@ -48,10 +56,17 @@ def plan_stream(frames, fps, baud, margin=BURST_MARGIN, quiet_for_bursts=True):
     sched = [(0.0, PREAMBLE, "preamble")]
     line_free = len(PREAMBLE) * byte_t
     shift = 0.0
+    page = 1
     for i, f in enumerate(frames):
         start = max(i / fps + shift, line_free)
-        sched.append((start, f, "frame"))
-        line_free = start + len(f) * byte_t
+        if f and MARK_PAGE.get(f[0], page) != page:      # the player waits for the vertical blank
+            page = MARK_PAGE[f[0]]
+            sched.append((start, f[:1], "frame"))
+            sched.append((start + byte_t + FLIP_QUIET, f[1:], "rest"))
+            line_free = start + len(f) * byte_t + FLIP_QUIET
+        else:
+            sched.append((start, f, "frame"))
+            line_free = start + len(f) * byte_t
         pages = a2hdr.frame_audio_pages(f)
         if pages and quiet_for_bursts:
             quiet = burst_seconds(pages) + margin
@@ -66,13 +81,13 @@ def lateness(sched, fps):
     """Largest delay of a frame behind its due time (seconds), from the plan."""
     worst, shift, i = 0.0, 0.0, 0
     for t, f, kind in sched:
-        if kind != "frame":
-            continue
-        worst = max(worst, t - (i / fps + shift))
-        pages = a2hdr.frame_audio_pages(f)
-        if pages:
-            shift += burst_seconds(pages) + BURST_MARGIN
-        i += 1
+        if kind == "frame":
+            worst = max(worst, t - (i / fps + shift))
+            i += 1
+        if kind in ("frame", "rest"):
+            pages = a2hdr.frame_audio_pages(f)
+            if pages:
+                shift += burst_seconds(pages) + BURST_MARGIN
     return worst
 
 
