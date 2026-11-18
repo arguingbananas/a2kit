@@ -31,7 +31,10 @@ being shown, so during busy moments the picture shows old and new mixed
 player switches to it when the frame is complete. Each page then catches up
 from two frames back, so busy scenes need roughly twice the bytes: use about
 half the frame rate, or simpler scenes. The picture shows one frame later,
-and one more frame mark at the end shows the last frame.
+and one more frame mark at the end shows the last frame. Each flip waits for
+the screen's vertical blank (found through the floating bus, with a marker
+in the screen holes), so it never lands mid-screen; the host stays quiet for
+up to 20 ms meanwhile, which comes out of each frame's byte budget.
 
 Audio (--audio clip.wav): the speaker player can't listen to the serial port,
 so audio plays in bursts between frames while the video stream pauses. It
@@ -67,6 +70,25 @@ OFFS = np.array([imgconv.hgr_offset(y) for y in range(H)])
 IDX = OFFS[:, None] + np.arange(40)[None, :]
 WEIGHTS = (1 << np.arange(7)).astype(np.uint8)
 POP = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
+# The screen holes ($xx78-$xx7F and $xxF8-$xxFF, never shown) hold MARK, which
+# runtime/video.s puts there for its vertical-blank wait; no shown byte may equal it.
+MARK = 0x9B
+HOLES = (np.arange(0x2000) & 0x7F) >= 0x78
+
+
+def blank():
+    """A page as the player leaves it after clearing: black, MARK in the holes."""
+    page = np.zeros(0x2000, dtype=np.uint8)
+    page[HOLES] = MARK
+    return page
+
+
+def with_holes(target):
+    """target with MARK in the holes, and any shown byte that equals MARK changed by one dot."""
+    t = np.array(target, dtype=np.uint8)
+    t[(t == MARK) & ~HOLES] ^= 1
+    t[HOLES] = MARK
+    return t
 
 
 def bayer(n):
@@ -276,7 +298,10 @@ def main():
         sys.exit("--burst-pages must be at least 1")
     if not a.audio and (a.gain != 1.0 or a.even_out):
         sys.exit("--gain and --even-out apply to the sound, so they need --audio")
-    budget = a.budget or int(a.baud / 10 / a.fps * 0.95)
+    frame_s = 1.0 / a.fps - (stream.FLIP_QUIET if a.flip else 0)
+    if frame_s <= 0:
+        sys.exit("--flip leaves no time for the frame at %d frames a second; use a lower --fps" % a.fps)
+    budget = a.budget or int(a.baud / 10 * frame_s * 0.95)
     if budget < 8 or budget > 0xFFFF:
         sys.exit("bad budget %d" % budget)
     imgs = load_frames(a.input, a.fps, a.src_fps or a.fps, a.max_seconds)
@@ -297,7 +322,7 @@ def main():
 
     if not 0 <= a.scrub < 0x2000:
         sys.exit("--scrub must be 0-8191")
-    pages = [np.zeros(0x2000, dtype=np.uint8), np.zeros(0x2000, dtype=np.uint8)]   # what pages 1 and 2 hold
+    pages = [blank(), blank()]          # what pages 1 and 2 hold
     frames, pending, screens = [], [], []
     cursors = [0, 0]
     p = 0
@@ -307,6 +332,7 @@ def main():
         else:
             gray = np.asarray(imgconv.prepare(img, a.crop, False), dtype=np.float64)
             target = pack_screen(to_bits(gray, a.dither))
+        target = with_holes(target)
         n = bursts.get(i, 0)
         if a.flip:
             p = 1 - i % 2                   # frame 0 on page 2, while page 1 (black) is shown

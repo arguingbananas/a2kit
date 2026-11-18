@@ -10,7 +10,9 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 - Video without tearing: `video --flip` draws each frame on the hidden hi-res
   page and flips to it when it's complete, at the cost of up to twice the bytes
   a frame. `video.bin` is rebuilt (`stream --install` uploads it); older players
-  can't play flipped streams. Older streams play as before.
+  can't play flipped streams. Older streams play as before. Each flip waits for
+  the screen's vertical blank, so it never lands mid-screen; that keeps 20 ms of
+  each frame quiet (875 bytes a frame instead of 1,094 at 10 frames a second).
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.

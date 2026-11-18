@@ -68,10 +68,10 @@ def ref_decode(stream, screen, written=None):
     return screen
 
 def model(budget):
-    shown = np.zeros(0x2000, np.uint8)
+    shown = videoconv.blank()
     for i in range(N_MOVE + N_STILL):
         g = np.asarray(imgconv.prepare(Image.open(os.path.join(FR, "f%03d.png" % i)), False, False), dtype=np.float64)
-        target = videoconv.pack_screen(videoconv.to_bits(g, "ordered"))
+        target = videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(g, "ordered")))
         _, shown = videoconv.encode_frame(shown, target, budget)
     return shown, target
 
@@ -82,9 +82,21 @@ ACIA_D, ACIA_S = 0xC0A8, 0xC0A9
 KNOWN_IO = {0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057, ACIA_D, ACIA_S}
 
 
+FLIP_QUIET = int(host.FLIP_QUIET * a2hdr.CPU_HZ)
+
+
 def arrivals(data, spacing):
-    """Back-to-back bytes, one every `spacing` cycles."""
-    return [(b, START + k * spacing) for k, b in enumerate(data)]
+    """Back-to-back bytes, one every `spacing` cycles, except that after a frame
+    mark that changes page the line is quiet for FLIP_QUIET, as the host keeps it
+    (every $FE or $FB is a mark: data bytes are below $80)."""
+    out, t, page = [], START, 1
+    for b in data:
+        out.append((b, t))
+        t += spacing
+        if b in host.MARK_PAGE and host.MARK_PAGE[b] != page:
+            page = host.MARK_PAGE[b]
+            t += FLIP_QUIET
+    return out
 
 
 def from_plan(sched, baud=19200):
@@ -97,16 +109,24 @@ def from_plan(sched, baud=19200):
     return out
 
 
-def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=False):
+LINE, LINES = 65, 262          # cycles a scan line, lines a screen (60 Hz)
+HOLE_AT = 25                    # where in a line the model's scanner reads 8 hole bytes
+
+
+def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=False, bus=True):
     """items: [(byte, arrival_cycle)]. A byte that arrives while the previous one
     is still unread is an overrun (lost). pokes: {addr: value} written the first
     time the player reaches vframe (used to put the audio pointer near its limit).
     Returns screen (page 1) and page2, overruns, speaker edges, stray writes,
     unexpected reads of I/O or ROM, whether the recovery path ran, the interrupt
     flag, the page shown at the end (1 or 2), how often it changed, and how many
-    writes went to the page on screen once hi-res was on."""
+    writes went to the page on screen once hi-res was on, and the scan line of
+    each page change. bus: a floating bus, modelled as the real one behaves in
+    hi-res: on lines 0-63 and 192-261 the scanner reads the shown page's screen
+    holes (8 bytes a line), and otherwise bytes that are shown (here 0). With
+    bus=False every read gives 0, as on a machine without one."""
     mem = ObservableMemory(); mpu = MPU(memory=mem)
-    st = {"i": 0, "full": False, "reg": 0, "over": 0, "page": 1, "flips": 0, "hires": False, "onscreen": 0}
+    st = {"i": 0, "full": False, "reg": 0, "over": 0, "page": 1, "flips": 0, "hires": False, "onscreen": 0, "flip_lines": []}
     edges, iow, bad_reads, i_at_click = [], [], [], set()
 
     def advance():
@@ -122,12 +142,18 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
             advance(); st["full"] = False; return st["reg"]
         if a == 0xC030:
             edges.append(mpu.processorCycles); i_at_click.add(bool(mpu.p & 0x04)); return 0
+        line = (mpu.processorCycles // LINE) % LINES
         if a in (0xC054, 0xC055):
             page = 1 if a == 0xC054 else 2
-            st["flips"] += st["hires"] and page != st["page"]
+            if st["hires"] and page != st["page"]:
+                st["flips"] += 1
+                st["flip_lines"].append(line)
             st["page"] = page
         if a == 0xC057:
             st["hires"] = True
+            h = mpu.processorCycles % LINE
+            if bus and (line < 64 or line >= 192) and HOLE_AT <= h < HOLE_AT + 8:
+                return mem[(0x2000 if st["page"] == 1 else 0x4000) + 0x78 + h - HOLE_AT]
         if a not in KNOWN_IO:
             bad_reads.append(a)
         return 0
@@ -163,7 +189,7 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
                 io_bad=[a for a in iow if a not in acia], bad_reads=bad_reads,
                 lost=LABELS["lost"] in visited or LABELS["ctl"] in visited,
                 i_after=bool(mpu.p & 0x04), d_after=bool(mpu.p & 0x08), i_at_click=i_at_click,
-                page=st["page"], flips=st["flips"], onscreen=st["onscreen"])
+                page=st["page"], flips=st["flips"], onscreen=st["onscreen"], flip_lines=st["flip_lines"])
 
 
 PRE, END = b"\xFE" * 4, b"\x80\x80"
@@ -173,7 +199,7 @@ print("--- 1. video only ---")
 fps, frames, audio = convert()
 print("frames: %d | largest frame %d bytes (budget %d)" % (len(frames), max(map(len, frames)), budget))
 expect(max(map(len, frames)) <= budget, "every frame fits its byte budget")
-ref = np.zeros(0x2000, np.uint8)
+ref = videoconv.blank()
 for f in frames: ref_decode(f, ref)
 shown, target = model(budget)
 print("reference decoder == encoder model:", np.array_equal(ref, shown), "| converged (0 unsent bytes):", np.array_equal(shown, target))
@@ -184,7 +210,7 @@ print("6502 player, host schedule at 19200 baud (%.1f s): overruns %d, screen ==
     total, r["over"], r["screen"] == bytes(ref), len(r["stray"]) + len(r["io_bad"]), len(r["bad_reads"]), r["i_after"] is False))
 expect(r["over"] == 0 and r["screen"] == bytes(ref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"] and r["i_after"] is False,
        "player with the host's real schedule: no overruns, right picture, no stray access, interrupts restored")
-expect(r["page2"] == bytes(0x2000) and r["flips"] == 0 and r["page"] == 1,
+expect(r["page2"] == bytes(videoconv.blank()) and r["flips"] == 0 and r["page"] == 1,
        "a stream without $FB frames draws on page 1 only, and page 1 stays on screen")
 
 print("--- 1b. colour ---")
@@ -196,9 +222,9 @@ for i in range(8):                      # a blue and orange sky, a green hill, a
     d.ellipse((20 + 24 * i, 40, 60 + 24 * i, 80), fill=COLS[3]); d.rectangle((36 + 24 * i, 40, 44 + 24 * i, 80), fill=COLS[4])
     im.save(os.path.join(CFR, "f%02d.png" % i))
 cfps, cframes, _ = convert(["--colour", "--budget", "9000"], src=CFR)
-cref = np.zeros(0x2000, np.uint8)
+cref = videoconv.blank()
 for f in cframes: ref_decode(f, cref)
-ctarget = np.frombuffer(imgconv.colour_screen(Image.open(os.path.join(CFR, "f07.png")), "threshold"), np.uint8)   # video --colour's default
+ctarget = videoconv.with_holes(np.frombuffer(imgconv.colour_screen(Image.open(os.path.join(CFR, "f07.png")), "threshold"), np.uint8))   # video --colour's default
 expect(any(b in (0xFC, 0xFD) for f in cframes for b in f) and np.array_equal(cref, ctarget),
        "colour: palette bits travel as $FC/$FD, and the stream decodes to the last frame's colour screen")
 rc = run_6502(arrivals(PRE + b"".join(cframes) + END, int(a2hdr.CPU_HZ * 10 / 115200)))
@@ -211,7 +237,7 @@ expect(not any(b in (0xFC, 0xFD) for f in frames for b in f), "black and white s
 # video --preview: each GIF frame is the screen the stream leaves after that frame
 gif = os.path.join(tmp, "preview.gif")
 fps_p, frames_p, _ = convert(["--preview", gif])
-want, scr = [], np.zeros(0x2000, np.uint8)
+want, scr = [], videoconv.blank()
 for f in frames_p:
     ref_decode(f, scr)
     want.append(np.asarray(videoconv.screen_image(scr).convert("L")))
@@ -242,7 +268,7 @@ print("--- 2. with audio bursts ---")
 fps, afr, audio = convert(["--audio", os.path.join(tmp, "s.wav")])
 bursts = [a2hdr.frame_audio_pages(f) for f in afr]
 print("audio %d pages; bursts at frames %s (pages %s)" % (len(audio) // 256, [i for i, n in enumerate(bursts) if n], [n for n in bursts if n]))
-aref = np.zeros(0x2000, np.uint8)
+aref = videoconv.blank()
 for f in afr: ref_decode(f, aref)
 sched, total = host.plan_stream(afr, fps, 19200)
 gaps_ok = True
@@ -273,7 +299,7 @@ print("--- 2b. at 115200 baud (a2kit-boot.dsk) ---")
 FAST = 115200
 fps, ffr, _ = convert(["--baud", str(FAST)])
 fbudget = int(FAST / 10 / fps * 0.95)
-fref = np.zeros(0x2000, np.uint8)
+fref = videoconv.blank()
 for f in ffr: ref_decode(f, fref)
 print("frames: %d | largest frame %d bytes (budget %d, %.0fx the 19200 budget)" % (len(ffr), max(map(len, ffr)), fbudget, fbudget / budget))
 expect(max(map(len, ffr)) <= fbudget, "115200: every frame fits its byte budget")
@@ -288,7 +314,7 @@ r = run_6502(arrivals(PRE + b"".join(ffr) + END, cpb))
 print("   back-to-back at %.1f cycles a byte: overruns %d, screen ok: %s" % (cpb, r["over"], r["screen"] == bytes(fref)))
 expect(r["over"] == 0 and r["screen"] == bytes(fref), "115200: keeps up with bytes back to back")
 fps, fafr, faudio = convert(["--baud", str(FAST), "--audio", os.path.join(tmp, "s.wav")])
-far = np.zeros(0x2000, np.uint8)
+far = videoconv.blank()
 for f in fafr: ref_decode(f, far)
 sched, total = host.plan_stream(fafr, fps, FAST)
 r = run_6502(from_plan(sched, FAST), faudio)
@@ -345,7 +371,7 @@ case("control byte inside a literal run",
      b"\xFE\x05\x11\x22\x90\x33\x44\xFE" + lit(0x77) + END, lambda r: r["screen"][0] == 0x77 and r["lost"])
 case("run that would end past $3FFF is refused",
      b"\xFE" + skip_to(0x3FFD) + bytes([126]) + bytes([0x2A] * 126) + b"\xFE" + lit(0x12) + END,
-     lambda r: r["screen"][0] == 0x12 and r["screen"][0x1FFD] == 0 and r["page2"] == bytes(0x2000) and r["lost"])
+     lambda r: r["screen"][0] == 0x12 and r["screen"][0x1FFD] == videoconv.MARK and r["page2"] == bytes(videoconv.blank()) and r["lost"])
 case("run that ends exactly at $3FFF is allowed",
      b"\xFE" + skip_to(0x3FF0) + bytes([16]) + bytes(range(0x30, 0x40)) + END,
      lambda r: r["screen"][0x1FF0:0x2000] == bytes(range(0x30, 0x40)) and not r["lost"])
@@ -387,7 +413,7 @@ def fault_trials(sub, size, seed, trials=24):
         later = sorted(set().union(*W[k + 1:])) if k + 1 < len(W) else []
         recovered = (not later) or np.array_equal(scr[later], ref_per[later])
         dmg = int(np.count_nonzero(scr != ref_per))
-        stray = len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"]) + (size == 0x2000 and r["page2"] != bytes(0x2000))
+        stray = len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"]) + (size == 0x2000 and r["page2"] != bytes(videoconv.blank()))
         good += recovered and not stray
         worst = max(worst, dmg); lost_hits += r["lost"]
         print("  trial %2d %-7s byte %5d (frame %2d): later frames correct: %-5s | wrong bytes left %4d | recovery path %s | stray accesses %d" % (
@@ -411,7 +437,7 @@ def a2v_frames(extra):
 fr_scrub = a2v_frames(["--scrub", str(SCRUB)])
 fr_plain = a2v_frames([])
 def final_ref(fr):
-    scr = np.zeros(0x2000, np.uint8)
+    scr = videoconv.blank()
     for f in fr: ref_decode(f, scr)
     return scr
 ref_s, ref_p = final_ref(fr_scrub), final_ref(fr_plain)
@@ -440,7 +466,7 @@ for baud in (19200, FAST):
     marks = [f[0] for f in pfr]
     expect(marks == [0xFB if k % 2 == 0 else 0xFE for k in range(len(pfr))] and pfr[-1] in (b"\xFB", b"\xFE"),
            "%d: frames alternate page 2 / page 1, ending with a lone mark that shows the last frame" % baud)
-    pref = np.zeros(0x4000, np.uint8)
+    pref = np.concatenate([videoconv.blank()] * 2)
     for f in pfr: ref_decode(f, pref)
     if baud == FAST:
         expect(np.array_equal(pref[0x2000 * (marks[-2] == 0xFB):][:0x2000], target),
@@ -456,6 +482,18 @@ for baud in (19200, FAST):
     expect(r["onscreen"] == 0 and r["flips"] == len(pfr) - 1,
            "%d: nothing is drawn on the page being shown, and every frame mark after the first flips" % baud)
     expect(r["page"] == 1, "%d: page 1 is switched back on when the player returns (text page 2 is the receiver)" % baud)
+    fl = r["flip_lines"]
+    print("   flips landed on scan lines %d-%d (the vertical blank is 192-261)" % (min(fl), max(fl)))
+    expect(all(192 <= y < LINES for y in fl), "%d: every flip happens in the vertical blank" % baud)
+    if baud == FAST:
+        r0 = run_6502(from_plan(sched, baud), bus=False)
+        expect(r0["over"] == 0 and r0["screen"] + r0["page2"] == bytes(pref) and r0["flips"] == len(pfr) - 1,
+               "%d: without a floating bus the wait gives up in time: no overruns, right pictures, every flip made" % baud)
+m = re.search(r"^MARK\s*=\s*\$([0-9A-F]+)", open(os.path.join(ROOT, "runtime", "video.s")).read(), re.M)
+expect(m and int(m.group(1), 16) == videoconv.MARK, "the player and the encoder agree on the screen-hole marker")
+cm = videoconv.with_holes(np.full(0x2000, videoconv.MARK, np.uint8))
+expect(not np.any(cm[~videoconv.HOLES] == videoconv.MARK) and np.all(cm[videoconv.HOLES] == videoconv.MARK),
+       "no shown byte is ever the marker; the holes always are")
 cpb = a2hdr.CPU_HZ * 10 / FAST
 r = run_6502(arrivals(PRE + b"".join(pfr) + END, cpb))
 expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(pref), "flipping at 115200: keeps up with bytes back to back")
@@ -470,7 +508,7 @@ expect(hi < 0.85 * cpb, "flipping: the player has at least 15%% headroom at 1152
 
 # preview: each GIF frame is the page on screen while that frame is drawn
 fps_p, frames_p, _ = convert(["--flip", "--preview", gif])
-want, scr, last = [], np.zeros(0x4000, np.uint8), 1
+want, scr, last = [], np.concatenate([videoconv.blank()] * 2), 1
 for f in frames_p:
     on = scr[:0x2000] if last == 1 else scr[0x2000:]
     want.append(np.asarray(videoconv.screen_image(on.copy()).convert("L")))
@@ -484,10 +522,10 @@ expect(len(got) == len(dedup) and all(np.array_equal(a > 127, b > 127) for a, b 
 page2 = lambda addr: bytes([0xFB, 0xFF, (addr - 0x4000) & 0x7F, (addr - 0x4000) >> 7])     # page 2 frame, long skip to addr
 case("page 2 run that would end past $5FFF is refused",
      page2(0x5FFD) + bytes([126]) + bytes([0x2A] * 126) + b"\xFE" + lit(0x12) + END,
-     lambda r: r["screen"][0] == 0x12 and r["page2"][0x1FFD] == 0 and r["lost"])
+     lambda r: r["screen"][0] == 0x12 and r["page2"][0x1FFD] == videoconv.MARK and r["lost"])
 case("page 2 run that ends exactly at $5FFF is allowed",
      page2(0x5FF0) + bytes([16]) + bytes(range(0x30, 0x40)) + b"\xFE" + END,
-     lambda r: r["page2"][0x1FF0:] == bytes(range(0x30, 0x40)) and r["screen"] == bytes(0x2000) and not r["lost"] and r["page"] == 1)
+     lambda r: r["page2"][0x1FF0:] == bytes(range(0x30, 0x40)) and r["screen"] == bytes(videoconv.blank()) and not r["lost"] and r["page"] == 1)
 case("$FB resyncs after a damaged frame",
      b"\xFE\x05\x11\x22\x90\x33\x44\xFB" + lit(0x77) + b"\xFE" + END,
      lambda r: r["page2"][0] == 0x77 and r["lost"])

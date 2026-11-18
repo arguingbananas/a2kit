@@ -280,11 +280,11 @@ Colour streams play only with the player from this version of a2kit, which `--in
 ./a2kit stream out/hello_apple.a2v --port /dev/ttyUSB0 --install
 ```
 
-Normally the player changes the picture while it's on screen, so in busy moments the screen shows part of the old frame and part of the new one, a tear. With `--flip` the player draws each frame on the hidden hi-res page and switches to it when the frame is complete, so you only ever see whole frames. The costs:
+Normally the player changes the picture while it's on screen, so in busy moments the screen shows part of the old frame and part of the new one, a tear. With `--flip` the player draws each frame on the hidden hi-res page and switches to it when the frame is complete, so you only ever see whole frames. It also waits for the screen's vertical blank, the moment between one screen refresh and the next, before it switches, so a switch never lands halfway down the screen. The costs:
 
-- **More bytes.** Each page catches up from two frames back, so a busy scene needs up to twice the bytes. On `hello_apple.gif` at 10 frames a second it's 777 bytes a frame instead of 622, and the full-screen wipes take longer to finish. Use a lower `--fps` or simpler scenes if the summary line shows bytes left unsent.
+- **More bytes.** Each page catches up from two frames back, so a busy scene needs up to twice the bytes. On top of that, the wait for the vertical blank can take up to one screen refresh (17 ms), and nothing can be sent while the player waits, so the computer leaves 20 ms of each frame quiet. At 10 frames a second and 115200 baud that leaves 875 bytes a frame instead of 1,094. `hello_apple.gif` at 10 frames a second averages 724 bytes a frame, and the full-screen wipes take longer to finish. Use a lower `--fps` or simpler scenes if the summary line shows bytes left unsent. `--flip` works up to 49 frames a second.
 - **One frame later.** What you see is always the frame before the one being drawn, and the stream ends with one extra frame mark to show the last one.
-- The switch itself isn't timed to the screen yet, so a flip can still land mid-screen; the [roadmap](ROADMAP.md#4-bigger-features) has the next step.
+- **A real Apple II.** The wait reads the *floating bus*, the byte the video circuit last read, which is there on the II, II+ and IIe (tested on a II+). Where it's missing or the CPU is accelerated, the wait gives up in time and the switch is simply untimed.
 
 Flipped streams play only with the player from this version of a2kit, which `--install` uploads.
 
@@ -301,7 +301,7 @@ Flipped streams play only with the player from this version of a2kit, which `--i
 | `--colour` (or `--color`) | Use the six hi-res colours, for a colour monitor or TV (see *In colour* above). |
 | `--crop` | Fill the screen instead of letterboxing. |
 | `--max-seconds N` | Use only the first N seconds. |
-| `--flip` | Draw each frame on the hidden page and flip to it when complete, so there's no tearing (see *Without tearing* above). Needs up to twice the bytes. |
+| `--flip` | Draw each frame on the hidden page and flip to it in the vertical blank when complete, so there's no tearing (see *Without tearing* above). Needs up to twice the bytes, and 20 ms of each frame is kept quiet. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
 | `--language-card` | Only with `--audio`. Allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe). Stream the clip with `--language-card` too. |
@@ -762,7 +762,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
 | `$80 $80` | End of video |
 
-Each frame mark first shows the page the frame before it was drawn on. A stream that only uses `$FE` therefore draws on the page being shown, as older players did, and one that alternates `$FB` and `$FE` (`video --flip`) always draws on the hidden page. A run or skip that would go past the end of the frame's page is refused.
+Each frame mark first shows the page the frame before it was drawn on. A stream that only uses `$FE` therefore draws on the page being shown, as older players did, and one that alternates `$FB` and `$FE` (`video --flip`) always draws on the hidden page. When a mark changes page, the player first waits for the vertical blank, which takes up to 17 ms, and the host sends nothing for 20 ms after such a mark. To find the blank it keeps `$9B` in the screen holes of both pages (`$xx78–$xx7F` and `$xxF8–$xxFF`, never shown), which the video circuit reads only during the top third of the screen and the blank. It waits until about six lines go by without seeing `$9B` on the floating bus, then flips at the next one. No shown byte of a stream is `$9B`: the encoder changes one dot of any that would be. A run or skip that would go past the end of the frame's page is refused.
 
 ### 11.2 Memory map
 
@@ -780,11 +780,11 @@ Each frame mark first shows the page the frame before it was drawn on. A stream 
 | `$0B00–$0BFF` | Show scene table |
 | `$0C00–$0CBA` | Sequencer |
 | `$0D00–$0D7E` | Speaker routine used by the sequencer |
-| `$0E00–$0F3D` | Video player |
+| `$0E00–$0FF2` | Video player |
 | `$1000–$107E` | Speaker routine used by the video player |
 | `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`, `chargen capture` `$1200–$1230`) |
-| `$2000–$3FFF` | Hi-res page 1 |
-| `$4000–$5FFF` | Hi-res page 2 (second show image; video with `--flip`, and the video player clears it when it starts; `ping` scratch space) |
+| `$2000–$3FFF` | Hi-res page 1 (the video player puts `$9B` in its screen holes) |
+| `$4000–$5FFF` | Hi-res page 2 (second show image; video with `--flip`, and the video player clears it, with `$9B` in the screen holes, when it starts; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked |
 | `$C000–$CFFF` | I/O and slot ROMs |
 | `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
