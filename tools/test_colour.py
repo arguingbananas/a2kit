@@ -67,7 +67,7 @@ seen_img = np.asarray(imgconv.colour_preview(scr).resize((140, 96), Image.BOX), 
 want_img = np.asarray(pic.resize((140, 96), Image.BOX), dtype=float)
 rms = np.sqrt(((seen_img - want_img) ** 2).mean())
 print("colour example, blurred RMS difference: %.1f" % rms)
-expect(rms < 45, "colour example matches the picture when blurred (RMS %.1f)" % rms)
+expect(rms < 20, "colour example matches the picture when blurred (RMS %.1f)" % rms)
 grey = imgconv.colour_screen(Image.new("RGB", (280, 192), (128, 128, 128)), "threshold")
 expect(len(set(grey)) <= 3, "threshold: a flat grey is one byte pattern, no dither")
 

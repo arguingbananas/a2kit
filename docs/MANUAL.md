@@ -333,7 +333,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 
 **When the show ends the screen goes back to text.** If you want the last picture to stay up for a while, give it a `hold` or add a `wait` after it.
 
-**More than two pictures.** The first two pictures go straight to the two hi-res pages. A third or later one is kept [packed](#7-a2kit-send) in the space from `$6000` that sound uses, and when its turn comes the sequencer unpacks it onto the page that isn't on screen, then shows it. Unpacking takes 0.1–0.4 s, so the picture before it stays up that much longer than its `hold`. The starter show's colour landscape is kept this way (5,772 bytes).
+**More than two pictures.** The first two pictures go straight to the two hi-res pages. A third or later one is kept [packed](#7-a2kit-send) in the space from `$6000` that sound uses, and when its turn comes the sequencer unpacks it onto the page that isn't on screen, then shows it. Unpacking takes 0.1–0.4 s, so the picture before it stays up that much longer than its `hold`. The starter show's colour landscape is kept this way (1,264 bytes).
 
 **Limits**
 
@@ -382,7 +382,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--language-card` | Also allow `--addr` in `$D000–$FEFF`, which goes to a [language card](#a2kit-lcprobe)'s RAM. |
 | `--no-pack` | Send a picture as it is, never packed (see below). |
 
-**Packed pictures:** a picture goes packed when that's quicker, and `send` says so ("packed to 2600 bytes"). The packed bytes go to `$6000` with a 155-byte unpacker at `$0300`; a short extra session runs the unpacker, which writes the picture to its page, and the receiver starts listening again. Line art, text and flat areas pack well (the starter logo to 32%, a blank screen to 3%); dithered photos much less (the sphere to 55%, colour pictures to about 75%), and at 115200 baud those often go as they are, since unpacking takes a few tenths of a second. On the Apple II+ at 115200, the logo took 0.6 s instead of 0.9 s. At 19200 baud almost every picture is quicker packed. Nothing in the receiver or the boot disk changed for this.
+**Packed pictures:** a picture goes packed when that's quicker, and `send` says so ("packed to 2600 bytes"). The packed bytes go to `$6000` with a 155-byte unpacker at `$0300`; a short extra session runs the unpacker, which writes the picture to its page, and the receiver starts listening again. Line art, text and flat areas pack well (the starter logo to 32%, a blank screen to 3%); dithered photos much less (the sphere to 55%, colour photos to about 75%), and at 115200 baud those often go as they are, since unpacking takes a few tenths of a second. On the Apple II+ at 115200, the logo took 0.6 s instead of 0.9 s. At 19200 baud almost every picture is quicker packed. Nothing in the receiver or the boot disk changed for this.
 
 **How it protects your data:** each packet carries an address and a checksum, and the Apple II replies ACK or NAK. A bad packet is resent and never written to memory. The last packet starts the upload (or the show, or the video player); if its ACK goes missing, the computer first asks whether the receiver is still listening, and only resends if it is. If it isn't, the program has most likely started, so instead of an error you get a warning to check the Apple II's screen.
 
