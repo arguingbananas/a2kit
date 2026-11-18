@@ -25,6 +25,14 @@ bits travel as $FC/$FD ops, so black and white streams are unchanged. Flat
 areas and motion in steps of 2 dots work best; converting takes about a
 second a frame.
 
+Page flipping (--flip): without it the player changes the screen while it's
+being shown, so during busy moments the picture shows old and new mixed
+(tearing). With it, each frame is drawn on the hidden hi-res page and the
+player switches to it when the frame is complete. Each page then catches up
+from two frames back, so busy scenes need roughly twice the bytes: use about
+half the frame rate, or simpler scenes. The picture shows one frame later,
+and one more frame mark at the end shows the last frame.
+
 Audio (--audio clip.wav): the speaker player can't listen to the serial port,
 so audio plays in bursts between frames while the video stream pauses. It
 keeps its place between bursts, so nothing is dropped; the show just gets
@@ -165,18 +173,19 @@ def _runs(addrs, merge_gap):
     return runs
 
 
-def _emit(runs, target):
-    """Frame = $FE, then skip/literal ops. Every data byte is < $80 and every
-    control byte is >= $80, so the player can tell when it has lost sync; $FE is
-    the resync mark. Skips are 1-123 ($81-$FB); longer ones are $FF lo hi with
+def _emit(runs, target, mark=0xFE):
+    """Frame = a frame mark ($FE draws on page 1, $FB on page 2), then skip/literal
+    ops. Every data byte is < $80 and every control byte is >= $80, so the player
+    can tell when it has lost sync; the marks are the resync points. Skips are
+    1-122 ($81-$FA); longer ones are $FF lo hi with
     7-bit lo/hi. A screen byte's bit 7 (its palette bit, in colour) is sent as
     state instead: $FD turns it on for the literal bytes that follow, $FC off,
     and each frame starts with it off, so black and white frames never need it."""
-    out = bytearray([0xFE])
+    out = bytearray([mark])
     pos, pal = 0, 0
     for s, e in runs:
         gap = s - pos
-        if gap > 123:
+        if gap > 122:
             out += bytes([0xFF, gap & 0x7F, gap >> 7])
         elif gap > 0:
             out.append(0x80 | gap)
@@ -196,8 +205,9 @@ def _emit(runs, target):
     return bytes(out)
 
 
-def encode_frame(shown, target, budget, merge_gap=2, forced=None):
-    """Return (frame bytes <= budget, new `shown` state).
+def encode_frame(shown, target, budget, merge_gap=2, forced=None, mark=0xFE):
+    """Return (frame bytes <= budget, new `shown` state). `shown` is what the
+    page the frame draws on holds, and `mark` names that page ($FE or $FB).
 
     `forced` is an optional sorted array of screen addresses that are always
     sent (the scrub window); the changed bytes then fill whatever budget is
@@ -205,16 +215,16 @@ def encode_frame(shown, target, budget, merge_gap=2, forced=None):
     forced = np.zeros(0, dtype=np.int64) if forced is None else np.asarray(forced, dtype=np.int64)
     diff = np.nonzero(shown != target)[0]
     if len(diff) == 0 and len(forced) == 0:
-        return b"\xFE", shown
+        return bytes([mark]), shown
     score = POP[shown[diff] ^ target[diff]]
     cand = diff[np.lexsort((diff, -score.astype(np.int16)))]    # most changed first
 
     def build(k):
         addrs = np.unique(np.concatenate([forced, cand[:k]]))
         if len(addrs) == 0:
-            return b"\xFE", []
+            return bytes([mark]), []
         runs = _runs(addrs, merge_gap)
-        return _emit(runs, target), runs
+        return _emit(runs, target, mark), runs
 
     if len(build(0)[0]) > budget:
         raise ValueError("scrub window doesn't fit in the %d-byte frame budget; lower --scrub or raise --budget" % budget)
@@ -245,6 +255,7 @@ def main():
     ap.add_argument("--colour", "--color", action="store_true", help="use the six hi-res colours, for a colour monitor or TV")
     ap.add_argument("--crop", action="store_true")
     ap.add_argument("--max-seconds", type=float)
+    ap.add_argument("--flip", action="store_true", help="draw each frame on the hidden page and flip to it when complete (no tearing; about twice the bytes)")
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
@@ -286,9 +297,10 @@ def main():
 
     if not 0 <= a.scrub < 0x2000:
         sys.exit("--scrub must be 0-8191")
-    shown = np.zeros(0x2000, dtype=np.uint8)
+    pages = [np.zeros(0x2000, dtype=np.uint8), np.zeros(0x2000, dtype=np.uint8)]   # what pages 1 and 2 hold
     frames, pending, screens = [], [], []
-    cursor = 0
+    cursors = [0, 0]
+    p = 0
     for i, img in enumerate(imgs):
         if a.colour:
             target = np.frombuffer(imgconv.colour_screen(imgconv.prepare(img, a.crop, False, "RGB"), a.dither), np.uint8)
@@ -296,14 +308,22 @@ def main():
             gray = np.asarray(imgconv.prepare(img, a.crop, False), dtype=np.float64)
             target = pack_screen(to_bits(gray, a.dither))
         n = bursts.get(i, 0)
-        window = (cursor + np.arange(a.scrub)) % 0x2000
-        cursor = (cursor + a.scrub) % 0x2000
-        data, shown = encode_frame(shown, target, budget - (3 if n else 0), forced=np.sort(window))
+        if a.flip:
+            p = 1 - i % 2                   # frame 0 on page 2, while page 1 (black) is shown
+            screens.append(pages[1 - p].copy())     # on screen while this frame is drawn
+        window = (cursors[p] + np.arange(a.scrub)) % 0x2000
+        cursors[p] = (cursors[p] + a.scrub) % 0x2000
+        data, pages[p] = encode_frame(pages[p], target, budget - (3 if n else 0), forced=np.sort(window),
+                                      mark=0xFB if p else 0xFE)
         if n:
             data += bytes([0x7F, n, n ^ 0x55])
         frames.append(data)
-        pending.append(int(np.count_nonzero(shown != target)))
-        screens.append(shown.copy())
+        pending.append(int(np.count_nonzero(pages[p] != target)))
+        if not a.flip:
+            screens.append(pages[p].copy())
+    if a.flip:                              # a last mark shows the last frame
+        frames.append(bytes([0xFE if p else 0xFB]))
+        screens.append(pages[p].copy())
 
     blob = bytearray(a2hdr.stream_header(a2hdr.TYPE_VIDEO, len(frames)))
     blob.append(a.fps)
@@ -314,6 +334,8 @@ def main():
     open(a.output, "wb").write(blob)
     total = sum(len(f) for f in frames)
     _, play_s = stream.plan_stream(frames, a.fps, a.baud)
+    if a.flip:
+        print("page flipping: each frame is drawn on the hidden page (one extra frame mark at the end)", file=sys.stderr)
     if a.scrub:
         print("scrub: %d bytes/frame, a full sweep every %d frames (%.0f s)" % (
             a.scrub, -(-0x2000 // a.scrub), -(-0x2000 // a.scrub) / a.fps), file=sys.stderr)

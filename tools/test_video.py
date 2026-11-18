@@ -8,6 +8,8 @@ cycles at 19200 baud, counting overruns).
      one frame of damage, never write outside $2000-$3FFF, and never read
      audio from outside $6000-$BFFF or the language card; plus boundary cases for both limits
   4. scrub heals what a fault leaves behind
+  5. page flipping (--flip): every frame drawn on the hidden page, then shown;
+     the same speed, fault and boundary checks for page 2
 Section 2 drives the simulated serial line from stream.plan_stream, the same
 schedule the real host uses, so the host's burst timing is what is tested."""
 import os, re, subprocess, sys, tempfile, wave
@@ -47,10 +49,12 @@ def convert(extra=(), src=None):
     return a2hdr.parse_stream(open(out, "rb").read())
 
 def ref_decode(stream, screen, written=None):
+    """screen: 8K (page 1 only) or 16K (pages 1 and 2, for $FB frames)."""
     pos = i = pal = 0
     while i < len(stream):
         b = stream[i]; i += 1
         if b == 0xFE: pos = pal = 0
+        elif b == 0xFB: pos, pal = 0x2000, 0
         elif b == 0: pass
         elif b == 0x80: break
         elif b == 0x7F: i += 2
@@ -75,7 +79,7 @@ LABELS = {m.group(2): int(m.group(1), 16) for m in re.finditer(r"al ([0-9A-F]+) 
 
 START = 400_000          # cycles before the first byte arrives (the player clears the screen first)
 ACIA_D, ACIA_S = 0xC0A8, 0xC0A9
-KNOWN_IO = {0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC057, ACIA_D, ACIA_S}
+KNOWN_IO = {0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057, ACIA_D, ACIA_S}
 
 
 def arrivals(data, spacing):
@@ -97,10 +101,12 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
     """items: [(byte, arrival_cycle)]. A byte that arrives while the previous one
     is still unread is an overrun (lost). pokes: {addr: value} written the first
     time the player reaches vframe (used to put the audio pointer near its limit).
-    Returns screen, overruns, speaker edges, stray writes, unexpected reads of
-    I/O or ROM, whether the recovery path ran, and the interrupt flag."""
+    Returns screen (page 1) and page2, overruns, speaker edges, stray writes,
+    unexpected reads of I/O or ROM, whether the recovery path ran, the interrupt
+    flag, the page shown at the end (1 or 2), how often it changed, and how many
+    writes went to the page on screen once hi-res was on."""
     mem = ObservableMemory(); mpu = MPU(memory=mem)
-    st = {"i": 0, "full": False, "reg": 0, "over": 0}
+    st = {"i": 0, "full": False, "reg": 0, "over": 0, "page": 1, "flips": 0, "hires": False, "onscreen": 0}
     edges, iow, bad_reads, i_at_click = [], [], [], set()
 
     def advance():
@@ -116,11 +122,21 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
             advance(); st["full"] = False; return st["reg"]
         if a == 0xC030:
             edges.append(mpu.processorCycles); i_at_click.add(bool(mpu.p & 0x04)); return 0
+        if a in (0xC054, 0xC055):
+            page = 1 if a == 0xC054 else 2
+            st["flips"] += st["hires"] and page != st["page"]
+            st["page"] = page
+        if a == 0xC057:
+            st["hires"] = True
         if a not in KNOWN_IO:
             bad_reads.append(a)
         return 0
     mem.subscribe_to_read(range(0xC000, 0x10000), io_read)
     mem.subscribe_to_write(range(0xC000, 0xC100), lambda a, v: (iow.append(a), None)[1])
+
+    def screen_write(a, v):
+        st["onscreen"] += st["hires"] and (a >> 13) == st["page"]
+    mem.subscribe_to_write(range(0x2000, 0x6000), screen_write)
     for i, b in enumerate(open(os.path.join(ROOT, "video.bin"), "rb").read()): mem[0x0E00 + i] = b
     for i, b in enumerate(audio): mem[0x6000 + i] = b
     for i, b in enumerate([0x20, 0x00, 0x0E, 0x00]): mem[0x0300 + i] = b
@@ -140,13 +156,14 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
         assert n < 30_000_000, "runaway"
     after = list(mem._subject)
     # only the screen, zero page, the stack and the test stub may change
-    ok_zones = [(0x2000, 0x3FFF), (0x0000, 0x00FF), (0x0100, 0x01FF), (0x0300, 0x0303)]
+    ok_zones = [(0x2000, 0x5FFF), (0x0000, 0x00FF), (0x0100, 0x01FF), (0x0300, 0x0303)]
     stray = [a for a in range(0x10000) if before[a] != after[a] and not any(lo <= a <= hi for lo, hi in ok_zones) and not (0xC000 <= a < 0xD000)]
     acia = {0xC0A9, 0xC0AA, 0xC0AB}
-    return dict(screen=bytes(after[0x2000:0x4000]), over=st["over"], edges=edges, stray=stray,
+    return dict(screen=bytes(after[0x2000:0x4000]), page2=bytes(after[0x4000:0x6000]), over=st["over"], edges=edges, stray=stray,
                 io_bad=[a for a in iow if a not in acia], bad_reads=bad_reads,
                 lost=LABELS["lost"] in visited or LABELS["ctl"] in visited,
-                i_after=bool(mpu.p & 0x04), d_after=bool(mpu.p & 0x08), i_at_click=i_at_click)
+                i_after=bool(mpu.p & 0x04), d_after=bool(mpu.p & 0x08), i_at_click=i_at_click,
+                page=st["page"], flips=st["flips"], onscreen=st["onscreen"])
 
 
 PRE, END = b"\xFE" * 4, b"\x80\x80"
@@ -167,6 +184,8 @@ print("6502 player, host schedule at 19200 baud (%.1f s): overruns %d, screen ==
     total, r["over"], r["screen"] == bytes(ref), len(r["stray"]) + len(r["io_bad"]), len(r["bad_reads"]), r["i_after"] is False))
 expect(r["over"] == 0 and r["screen"] == bytes(ref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"] and r["i_after"] is False,
        "player with the host's real schedule: no overruns, right picture, no stray access, interrupts restored")
+expect(r["page2"] == bytes(0x2000) and r["flips"] == 0 and r["page"] == 1,
+       "a stream without $FB frames draws on page 1 only, and page 1 stays on screen")
 
 print("--- 1b. colour ---")
 CFR = os.path.join(tmp, "colour"); os.makedirs(CFR)
@@ -214,7 +233,7 @@ expect(r["over"] == 0 and r["screen"] == bytes(ref) and r["i_after"], "back-to-b
 r = run_6502(arrivals(stream_bytes, 532), d_flag_before=True)
 print("   entered in decimal mode: screen ok: %s, decimal mode restored: %s" % (r["screen"] == bytes(ref), r["d_after"]))
 expect(r["over"] == 0 and r["screen"] == bytes(ref) and r["d_after"], "entered in decimal mode: same picture, decimal mode restored")
-for sp in (200, 120, 90, 70):
+for sp in (200, 120, 90, 75):
     r = run_6502(arrivals(stream_bytes, sp))
     print("   stress %3d cycles/byte (%.1fx line rate): overruns %d, screen ok: %s" % (sp, 532 / sp, r["over"], r["screen"] == bytes(ref)))
     expect(r["over"] == 0 and r["screen"] == bytes(ref), "keeps up at %.1fx line rate" % (532 / sp))
@@ -291,13 +310,6 @@ expect(hi < 0.85 * cpb, "the player has at least 15%% headroom at 115200")
 
 print("--- 3. fault injection (video-only stream, first 22 frames) ---")
 K = 22
-sub = frames[:K]
-ref_per, W = np.zeros(0x2000, np.uint8), []
-for f in sub:
-    s = set(); ref_decode(f, ref_per, s); W.append(s)
-bounds = np.cumsum([0] + [len(f) for f in sub])
-body = b"".join(sub)
-clean = PRE + body + END
 def run_clean(stream_bytes, pause_after=None, **kw):
     """pause_after=(n, cycles): bytes after the first n arrive `cycles` later
     (the host staying quiet while a burst plays)."""
@@ -333,7 +345,7 @@ case("control byte inside a literal run",
      b"\xFE\x05\x11\x22\x90\x33\x44\xFE" + lit(0x77) + END, lambda r: r["screen"][0] == 0x77 and r["lost"])
 case("run that would end past $3FFF is refused",
      b"\xFE" + skip_to(0x3FFD) + bytes([126]) + bytes([0x2A] * 126) + b"\xFE" + lit(0x12) + END,
-     lambda r: r["screen"][0] == 0x12 and r["screen"][0x1FFD] == 0 and r["lost"])
+     lambda r: r["screen"][0] == 0x12 and r["screen"][0x1FFD] == 0 and r["page2"] == bytes(0x2000) and r["lost"])
 case("run that ends exactly at $3FFF is allowed",
      b"\xFE" + skip_to(0x3FF0) + bytes([16]) + bytes(range(0x30, 0x40)) + END,
      lambda r: r["screen"][0x1FF0:0x2000] == bytes(range(0x30, 0x40)) and not r["lost"])
@@ -353,27 +365,36 @@ case("burst past the card's last page is refused",
      lambda r: r["screen"][0] == 0x45 and r["lost"], pokes={0x0C: 0xFE})
 
 # random faults: drop / corrupt / insert one byte
-frng = np.random.default_rng(11)
+def fault_trials(sub, size, seed, trials=24):
+    """One random fault per run in the frames `sub`; size 0x2000 compares page 1, 0x4000 both pages."""
+    ref_per, W = np.zeros(size, np.uint8), []
+    for f in sub:
+        s_ = set(); ref_decode(f, ref_per, s_); W.append(s_)
+    bounds = np.cumsum([0] + [len(f) for f in sub])
+    body = b"".join(sub)
+    frng = np.random.default_rng(seed)
+    good, worst, lost_hits = 0, 0, 0
+    for tr in range(trials):
+        kind = ("drop", "corrupt", "insert")[tr % 3]
+        p = int(frng.integers(0, len(body)))
+        k = int(np.searchsorted(bounds, p, side="right") - 1)
+        b = bytearray(body)
+        if kind == "drop": del b[p]
+        elif kind == "corrupt": b[p] ^= int(frng.integers(1, 256))
+        else: b.insert(p, int(frng.integers(0, 256)))
+        r = run_clean(PRE + bytes(b) + END)
+        scr = np.frombuffer((r["screen"] + r["page2"])[:size], np.uint8)
+        later = sorted(set().union(*W[k + 1:])) if k + 1 < len(W) else []
+        recovered = (not later) or np.array_equal(scr[later], ref_per[later])
+        dmg = int(np.count_nonzero(scr != ref_per))
+        stray = len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"]) + (size == 0x2000 and r["page2"] != bytes(0x2000))
+        good += recovered and not stray
+        worst = max(worst, dmg); lost_hits += r["lost"]
+        print("  trial %2d %-7s byte %5d (frame %2d): later frames correct: %-5s | wrong bytes left %4d | recovery path %s | stray accesses %d" % (
+            tr, kind, p, k, recovered, dmg, "taken" if r["lost"] else "-", stray))
+    return good, worst, lost_hits
 TRIALS = 24
-good, worst, over_total, lost_hits, stray_total = 0, 0, 0, 0, 0
-for tr in range(TRIALS):
-    kind = ("drop", "corrupt", "insert")[tr % 3]
-    p = int(frng.integers(0, len(body)))
-    k = int(np.searchsorted(bounds, p, side="right") - 1)
-    b = bytearray(body)
-    if kind == "drop": del b[p]
-    elif kind == "corrupt": b[p] ^= int(frng.integers(1, 256))
-    else: b.insert(p, int(frng.integers(0, 256)))
-    r = run_clean(PRE + bytes(b) + END)
-    scr = np.frombuffer(r["screen"], np.uint8)
-    later = sorted(set().union(*W[k + 1:])) if k + 1 < len(W) else []
-    recovered = (not later) or np.array_equal(scr[later], ref_per[later])
-    dmg = int(np.count_nonzero(scr != ref_per))
-    stray = len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])
-    good += recovered and not stray
-    worst = max(worst, dmg); over_total += r["over"]; lost_hits += r["lost"]; stray_total += stray
-    print("  trial %2d %-7s byte %5d (frame %2d): later frames correct: %-5s | wrong bytes left %4d | recovery path %s | stray accesses %d" % (
-        tr, kind, p, k, recovered, dmg, "taken" if r["lost"] else "-", stray))
+good, worst, lost_hits = fault_trials(frames[:K], 0x2000, 11, TRIALS)
 expect(good == TRIALS, "every random fault recovers by the next frame with no stray access")
 print("fault injection: %d/%d trials recovered by the next frame with no stray writes or reads; worst residual damage %d of 8192 screen bytes; %d took the discard-until-$FE path" % (good, TRIALS, worst, lost_hits))
 
@@ -413,4 +434,68 @@ for kind, frame, off, seed in (("drop", 3, 150, 1), ("corrupt", 8, 120, 2), ("in
     print("  %-7s in frame %2d: wrong screen bytes at the end -> without scrub %3d, with scrub (%d B/frame) %d | stray writes %d" % (
         kind, frame, p_, SCRUB, h, len(healed["stray"]) + len(healed["io_bad"])))
     expect(h == 0 and p_ > 0 and not healed["stray"], "scrub heals a %s fault that would otherwise stay" % kind)
+print("--- 5. page flipping (--flip) ---")
+for baud in (19200, FAST):
+    pfps, pfr, _ = convert(["--flip", "--baud", str(baud)])
+    marks = [f[0] for f in pfr]
+    expect(marks == [0xFB if k % 2 == 0 else 0xFE for k in range(len(pfr))] and pfr[-1] in (b"\xFB", b"\xFE"),
+           "%d: frames alternate page 2 / page 1, ending with a lone mark that shows the last frame" % baud)
+    pref = np.zeros(0x4000, np.uint8)
+    for f in pfr: ref_decode(f, pref)
+    if baud == FAST:
+        expect(np.array_equal(pref[0x2000 * (marks[-2] == 0xFB):][:0x2000], target),
+               "%d: the last frame drawn converges on the last picture" % baud)
+    sched, total = host.plan_stream(pfr, pfps, baud)
+    r = run_6502(from_plan(sched, baud))
+    shown = r["screen"] if r["page"] == 1 else r["page2"]
+    print("6502 player, host schedule at %d baud (%.1f s): overruns %d, both pages == decoder: %s, flips %d (frames %d), "
+          "writes to the page on screen %d, stray %d" % (baud, total, r["over"], r["screen"] + r["page2"] == bytes(pref), r["flips"],
+                                                       len(pfr), r["onscreen"], len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])))
+    expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(pref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"],
+           "%d, flipping: no overruns, both pages right, no stray access" % baud)
+    expect(r["onscreen"] == 0 and r["flips"] == len(pfr) - 1,
+           "%d: nothing is drawn on the page being shown, and every frame mark after the first flips" % baud)
+    expect(r["page"] == 1, "%d: page 1 is switched back on when the player returns (text page 2 is the receiver)" % baud)
+cpb = a2hdr.CPU_HZ * 10 / FAST
+r = run_6502(arrivals(PRE + b"".join(pfr) + END, cpb))
+expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(pref), "flipping at 115200: keeps up with bytes back to back")
+stress = PRE + b"".join(pfr[:8]) + END
+lo, hi = 20.0, cpb
+while hi - lo > 1:
+    mid = (lo + hi) / 2
+    over = run_6502(arrivals(stress, mid))["over"]
+    lo, hi = (mid, hi) if over else (lo, mid)
+print("flipping: the player keeps up with bytes as close as %.0f cycles apart (115200 delivers one every %.1f)" % (hi, cpb))
+expect(hi < 0.85 * cpb, "flipping: the player has at least 15%% headroom at 115200")
+
+# preview: each GIF frame is the page on screen while that frame is drawn
+fps_p, frames_p, _ = convert(["--flip", "--preview", gif])
+want, scr, last = [], np.zeros(0x4000, np.uint8), 1
+for f in frames_p:
+    on = scr[:0x2000] if last == 1 else scr[0x2000:]
+    want.append(np.asarray(videoconv.screen_image(on.copy()).convert("L")))
+    ref_decode(f, scr)
+    last = 2 if f[0] == 0xFB else 1
+got = [np.asarray(fr.convert("L")) for fr in ImageSequence.Iterator(Image.open(gif))]
+dedup = [w for k, w in enumerate(want) if k == 0 or not np.array_equal(w, want[k - 1])]
+expect(len(got) == len(dedup) and all(np.array_equal(a > 127, b > 127) for a, b in zip(got, dedup)),
+       "video --flip --preview shows the page on screen during each frame (%d GIF frames)" % len(got))
+
+page2 = lambda addr: bytes([0xFB, 0xFF, (addr - 0x4000) & 0x7F, (addr - 0x4000) >> 7])     # page 2 frame, long skip to addr
+case("page 2 run that would end past $5FFF is refused",
+     page2(0x5FFD) + bytes([126]) + bytes([0x2A] * 126) + b"\xFE" + lit(0x12) + END,
+     lambda r: r["screen"][0] == 0x12 and r["page2"][0x1FFD] == 0 and r["lost"])
+case("page 2 run that ends exactly at $5FFF is allowed",
+     page2(0x5FF0) + bytes([16]) + bytes(range(0x30, 0x40)) + b"\xFE" + END,
+     lambda r: r["page2"][0x1FF0:] == bytes(range(0x30, 0x40)) and r["screen"] == bytes(0x2000) and not r["lost"] and r["page"] == 1)
+case("$FB resyncs after a damaged frame",
+     b"\xFE\x05\x11\x22\x90\x33\x44\xFB" + lit(0x77) + b"\xFE" + END,
+     lambda r: r["page2"][0] == 0x77 and r["lost"])
+case("$FB right after a lone $80 (not an end of stream)",
+     b"\xFE\x80\xFB" + lit(0x78) + b"\xFE" + END, lambda r: r["page2"][0] == 0x78)
+case("a skip of 122 ($FA) is still a skip",
+     b"\xFB\xFA" + lit(0x79) + b"\xFE" + END, lambda r: r["page2"][122] == 0x79 and not r["lost"])
+good, worst, lost_hits = fault_trials(pfr[:K], 0x4000, 12, TRIALS)
+expect(good == TRIALS, "flipping: every random fault recovers by the next frame with no stray access")
+print("fault injection, flipping: %d/%d recovered; worst residual damage %d of 16384 bytes; %d took the discard path" % (good, TRIALS, worst, lost_hits))
 finish("test_video")

@@ -1,3 +1,4 @@
-al 000F10 .ctl
-al 000F18 .lost
-al 000E34 .vframe
+al 000F3B .ctl
+al 000F47 .lost
+al 000E3C .vframe
+al 000EF9 .vframe2
