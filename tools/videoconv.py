@@ -28,13 +28,16 @@ second a frame.
 Page flipping (--flip): without it the player changes the screen while it's
 being shown, so during busy moments the picture shows old and new mixed
 (tearing). With it, each frame is drawn on the hidden hi-res page and the
-player switches to it when the frame is complete. Each page then catches up
-from two frames back, so busy scenes need roughly twice the bytes: use about
-half the frame rate, or simpler scenes. The picture shows one frame later,
-and one more frame mark at the end shows the last frame. Each flip waits for
-the screen's vertical blank (found through the floating bus, with a marker
-in the screen holes), so it never lands mid-screen; the host stays quiet for
-up to 20 ms meanwhile, which comes out of each frame's byte budget.
+player switches to it only once it's complete: when a frame doesn't fit its
+budget, the next frame's time goes on finishing the same page (the frames
+that come and go meanwhile are skipped), so the screen only ever shows whole
+frames of the clip, and busy moments play at a lower frame rate instead of
+mixing pictures. Each page catches up from two frames back, so busy scenes
+need roughly twice the bytes. The picture shows one frame later, and one more
+frame mark at the end shows the last frame. Each flip waits for the screen's
+vertical blank (found through the floating bus, with a marker in the screen
+holes), so it never lands mid-screen; the host stays quiet for up to 20 ms
+meanwhile, which comes out of the budget of each frame that flips.
 
 Audio (--audio clip.wav): the speaker player can't listen to the serial port,
 so audio plays in bursts between frames while the video stream pauses. It
@@ -298,11 +301,11 @@ def main():
         sys.exit("--burst-pages must be at least 1")
     if not a.audio and (a.gain != 1.0 or a.even_out):
         sys.exit("--gain and --even-out apply to the sound, so they need --audio")
-    frame_s = 1.0 / a.fps - (stream.FLIP_QUIET if a.flip else 0)
-    if frame_s <= 0:
+    budget = a.budget or int(a.baud / 10 / a.fps * 0.95)
+    flip_budget = a.budget or int(a.baud / 10 * (1.0 / a.fps - stream.FLIP_QUIET) * 0.95)  # a frame that flips
+    if a.flip and 1.0 / a.fps <= stream.FLIP_QUIET:
         sys.exit("--flip leaves no time for the frame at %d frames a second; use a lower --fps" % a.fps)
-    budget = a.budget or int(a.baud / 10 * frame_s * 0.95)
-    if budget < 8 or budget > 0xFFFF:
+    if min(budget, flip_budget if a.flip else budget) < 8 or budget > 0xFFFF:
         sys.exit("bad budget %d" % budget)
     imgs = load_frames(a.input, a.fps, a.src_fps or a.fps, a.max_seconds)
     if not imgs:
@@ -325,7 +328,19 @@ def main():
     pages = [blank(), blank()]          # what pages 1 and 2 hold
     frames, pending, screens = [], [], []
     cursors = [0, 0]
-    p = 0
+    p = 0                               # the page drawn last (page 1, black, when the player starts)
+    goal, done, held = None, True, 0    # with --flip: the frame page p is heading for, and whether it's there
+
+    def draw(target, bud, n):
+        nonlocal p
+        window = (cursors[p] + np.arange(a.scrub)) % 0x2000
+        cursors[p] = (cursors[p] + a.scrub) % 0x2000
+        data, pages[p] = encode_frame(pages[p], target, bud - (3 if n else 0), forced=np.sort(window),
+                                      mark=0xFB if p else 0xFE)
+        if n:
+            data += bytes([0x7F, n, n ^ 0x55])
+        frames.append(data)
+
     for i, img in enumerate(imgs):
         if a.colour:
             target = np.frombuffer(imgconv.colour_screen(imgconv.prepare(img, a.crop, False, "RGB"), a.dither), np.uint8)
@@ -334,22 +349,30 @@ def main():
             target = pack_screen(to_bits(gray, a.dither))
         target = with_holes(target)
         n = bursts.get(i, 0)
-        if a.flip:
-            p = 1 - i % 2                   # frame 0 on page 2, while page 1 (black) is shown
-            screens.append(pages[1 - p].copy())     # on screen while this frame is drawn
-        window = (cursors[p] + np.arange(a.scrub)) % 0x2000
-        cursors[p] = (cursors[p] + a.scrub) % 0x2000
-        data, pages[p] = encode_frame(pages[p], target, budget - (3 if n else 0), forced=np.sort(window),
-                                      mark=0xFB if p else 0xFE)
-        if n:
-            data += bytes([0x7F, n, n ^ 0x55])
-        frames.append(data)
-        pending.append(int(np.count_nonzero(pages[p] != target)))
         if not a.flip:
+            draw(target, budget, n)
+            pending.append(int(np.count_nonzero(pages[p] != target)))
             screens.append(pages[p].copy())
-    if a.flip:                              # a last mark shows the last frame
+            continue
+        flips = done                        # the page drawn last is complete: show it, and draw
+        if flips:                           # the newest frame on the other one
+            p, goal = 1 - p, target
+        else:
+            held += 1                       # still finishing it: this frame is skipped
+        screens.append(pages[1 - p].copy())     # on screen while this frame is drawn
+        draw(goal, flip_budget if flips else budget, n)
+        done = np.array_equal(pages[p], goal)
+        pending.append(int(np.count_nonzero(pages[p] != target)))
+    if a.flip:
+        while not (done and goal is target):    # finish the last page, and then the last frame,
+            if done:                            # before a last mark shows it
+                p, goal = 1 - p, target
+            screens.append(pages[1 - p].copy())
+            draw(goal, flip_budget if done else budget, 0)
+            done = np.array_equal(pages[p], goal)
         frames.append(bytes([0xFE if p else 0xFB]))
         screens.append(pages[p].copy())
+        pending.append(int(np.count_nonzero(pages[p] != target)))
 
     blob = bytearray(a2hdr.stream_header(a2hdr.TYPE_VIDEO, len(frames)))
     blob.append(a.fps)
@@ -361,7 +384,9 @@ def main():
     total = sum(len(f) for f in frames)
     _, play_s = stream.plan_stream(frames, a.fps, a.baud)
     if a.flip:
-        print("page flipping: each frame is drawn on the hidden page (one extra frame mark at the end)", file=sys.stderr)
+        print("page flipping: each frame is drawn on the hidden page and shown once it's complete; %d of %d frames "
+              "skipped while a page caught up; %d extra frame(s) at the end" % (held, len(imgs), len(frames) - len(imgs)),
+              file=sys.stderr)
     if a.scrub:
         print("scrub: %d bytes/frame, a full sweep every %d frames (%.0f s)" % (
             a.scrub, -(-0x2000 // a.scrub), -(-0x2000 // a.scrub) / a.fps), file=sys.stderr)

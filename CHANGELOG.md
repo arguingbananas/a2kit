@@ -11,8 +11,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   page and flips to it when it's complete, at the cost of up to twice the bytes
   a frame. `video.bin` is rebuilt (`stream --install` uploads it); older players
   can't play flipped streams. Older streams play as before. Each flip waits for
-  the screen's vertical blank, so it never lands mid-screen; that keeps 20 ms of
-  each frame quiet (875 bytes a frame instead of 1,094 at 10 frames a second).
+  the screen's vertical blank, so it never lands mid-screen, and only once the
+  page is complete: when a frame doesn't fit, frames are skipped while the page
+  catches up, so busy moments play at a lower frame rate instead of showing a
+  mix of pictures.
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.

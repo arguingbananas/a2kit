@@ -13,10 +13,12 @@
 ;
 ;   $FE        frame start on page 1: next op writes from $2000 (also the resync mark)
 ;   $FB        frame start on page 2: next op writes from $4000 (also a resync mark)
-;              Each frame start first shows the page the frame before was drawn
-;              on, so a stream that alternates $FB and $FE draws every frame on
-;              the hidden page and flips to it when it's complete; one that only
-;              sends $FE draws on the page being shown, as before page 2 existed.
+;              A frame start that changes page first shows the page the frame
+;              before was drawn on (at the next vertical blank, see vsync), so a
+;              --flip stream draws every frame on the hidden page and shows it
+;              once it's complete, and a frame start on the same page carries on
+;              finishing it unseen; a stream that only sends $FE draws on the
+;              page being shown, as before page 2 existed.
 ;   $01-$7E    literal run: n data bytes follow, written at the current address
 ;   $7F n c    audio burst: play n pages (n*64 ms) from RAM, then carry on;
 ;              c = n xor $55 (a stray $7F in damaged data rarely passes this)
@@ -125,13 +127,12 @@ clr:    lda #0
         lda #AUDIO_BASE
         sta aptr+1
 
-vframe: ldy sw                  ; $FE: draw on page 1. First show the page
-        cpy #<HISCR             ; the last frame was drawn on (LOWSCR or HISCR),
-        bne @show               ; at the next vertical blank if that's a flip
+vframe: lda sw                  ; $FE: draw on page 1. If the last frame was
+        cmp #<HISCR             ; drawn on page 2, that page is complete: show
+        bne @same               ; it, at the next vertical blank
         jsr vsync
-        ldy sw
-@show:  lda $C000,y
-        lda #<LOWSCR
+        bit HISCR
+@same:  lda #<LOWSCR
         sta sw
         lda #$40
         sta top
@@ -224,13 +225,12 @@ ctlop:  cmp #$FF
         jmp chk
 
 vframe2:
-        ldy sw                  ; $FB: draw on page 2 (as vframe, the other way)
-        cpy #<LOWSCR
-        bne @show
+        lda sw                  ; $FB: draw on page 2 (as vframe, the other way)
+        cmp #<LOWSCR
+        bne @same
         jsr vsync
-        ldy sw
-@show:  lda $C000,y
-        lda #<HISCR
+        bit LOWSCR
+@same:  lda #<HISCR
         sta sw
         lda #$60
         sta top
