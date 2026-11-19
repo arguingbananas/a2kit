@@ -14,7 +14,8 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   the screen's vertical blank, so it never lands mid-screen, and only once the
   page is complete: when a frame doesn't fit, frames are skipped while the page
   catches up, so busy moments play at a lower frame rate instead of showing a
-  mix of pictures.
+  mix of pictures. The skipping is planned so that every picture still appears
+  on time.
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.
