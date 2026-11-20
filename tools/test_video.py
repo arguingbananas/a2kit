@@ -48,8 +48,22 @@ def convert(extra=(), src=None):
     print("  " + r.stderr.strip().replace("\n", "\n  "))
     return a2hdr.parse_stream(open(out, "rb").read())
 
-def ref_decode(stream, screen, written=None):
-    """screen: 8K (page 1 only) or 16K (pages 1 and 2, for $FB frames)."""
+def fast_decode(blk, pos, screen, written=None):
+    """Draw a fast block (format in runtime/video.s) from screen offset pos; returns where it leaves off."""
+    q, k = pos - 2, 0
+    while k + 1 < len(blk):
+        s_, e_ = blk[k], blk[k + 1]
+        q += s_
+        if e_ == 0: break
+        if e_ >= 3:
+            screen[q + 2:q + e_] = np.frombuffer(bytes(blk[k + 2:k + e_]), np.uint8)
+            if written is not None: written.update(range(q + 2, q + e_))
+            k += e_
+        else: k += 2
+    return q + 2
+
+def ref_decode(stream, screen, written=None, mem=None):
+    """screen: 8K (page 1 only) or 16K (pages 1 and 2, for $FB frames). mem: preloaded blocks by address."""
     pos = i = pal = 0
     while i < len(stream):
         b = stream[i]; i += 1
@@ -57,7 +71,14 @@ def ref_decode(stream, screen, written=None):
         elif b == 0xFB: pos, pal = 0x2000, 0
         elif b == 0: pass
         elif b == 0x80: break
-        elif b == 0x7F: i += 2
+        elif b == 0x7F:
+            n, c = stream[i], stream[i + 1]
+            if c == n ^ a2hdr.OP_BLOCK:
+                pos = fast_decode(stream[i + 2:i + 2 + 2 * n], pos, screen, written); i += 2 + 2 * n
+            elif c == n ^ a2hdr.OP_PRELOAD:
+                a_ = a2hdr.preload_addr(n, stream[i + 2])
+                pos = fast_decode(bytes(mem[a_:a2hdr.PRELOAD_END]), pos, screen, written); i += 3
+            else: i += 2
         elif b == 0xFF: pos += stream[i] + 128 * stream[i + 1]; i += 2
         elif b in (0xFC, 0xFD): pal = 0x80 if b == 0xFD else 0
         elif b > 0x80: pos += b & 0x7F
@@ -85,17 +106,22 @@ KNOWN_IO = {0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC0
 FLIP_QUIET = int(host.FLIP_QUIET * a2hdr.CPU_HZ)
 
 
-def arrivals(data, spacing):
-    """Back-to-back bytes, one every `spacing` cycles, except that after a frame
-    mark that changes page the line is quiet for FLIP_QUIET, as the host keeps it
-    (every $FE or $FB is a mark: data bytes are below $80)."""
-    out, t, page = [], START, 1
-    for b in data:
+def arrivals(data, spacing, mem=None, block_spacing=None):
+    """Back-to-back bytes, one every `spacing` cycles, except that the line goes
+    quiet where the host keeps it quiet: while the player draws a fast block, and
+    after a page change without one (a2hdr.frame_waits). block_spacing: the
+    bytes of each block after a page change come this far apart instead (its
+    length is chosen to outlast the vertical-blank wait at the real line speed)."""
+    cuts = dict(a2hdr.frame_waits(data, 1, mem)[0])
+    blocks, start_ = set(), None
+    for kind, _v, end in a2hdr.walk_ops(data):
+        if kind == "block" and start_ is not None:
+            blocks.update(range(start_, end))
+        start_ = end if kind == "mark" else None
+    out, t = [], START
+    for j, b in enumerate(data):
         out.append((b, t))
-        t += spacing
-        if b in host.MARK_PAGE and host.MARK_PAGE[b] != page:
-            page = host.MARK_PAGE[b]
-            t += FLIP_QUIET
+        t += (block_spacing if block_spacing and j in blocks else spacing) + int(cuts.get(j + 1, 0) * a2hdr.CPU_HZ)
     return out
 
 
@@ -113,7 +139,7 @@ LINE, LINES = 65, 262          # cycles a scan line, lines a screen (60 Hz)
 HOLE_AT = 25                    # where in a line the model's scanner reads 8 hole bytes
 
 
-def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=False, bus=True):
+def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=False, bus=True, pre=None):
     """items: [(byte, arrival_cycle)]. A byte that arrives while the previous one
     is still unread is an overrun (lost). pokes: {addr: value} written the first
     time the player reaches vframe (used to put the audio pointer near its limit).
@@ -126,7 +152,7 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
     holes (8 bytes a line), and otherwise bytes that are shown (here 0). With
     bus=False every read gives 0, as on a machine without one."""
     mem = ObservableMemory(); mpu = MPU(memory=mem)
-    st = {"i": 0, "full": False, "reg": 0, "over": 0, "page": 1, "flips": 0, "hires": False, "onscreen": 0, "flip_lines": []}
+    st = {"i": 0, "full": False, "reg": 0, "over": 0, "page": 1, "flips": 0, "hires": False, "onscreen": 0, "flip_lines": [], "poll_gap": 0, "last_poll": None}
     edges, iow, bad_reads, i_at_click = [], [], [], set()
 
     def advance():
@@ -137,6 +163,12 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
 
     def io_read(a):
         if a == ACIA_S:
+            if LABELS["fblock"] <= mpu.pc < LABELS["fast"]:       # how far apart the block wait polls the line
+                if st["last_poll"] is not None:
+                    st["poll_gap"] = max(st["poll_gap"], mpu.processorCycles - st["last_poll"])
+                st["last_poll"] = mpu.processorCycles
+            else:
+                st["last_poll"] = None
             advance(); return 0x10 | (0x08 if st["full"] else 0)
         if a == ACIA_D:
             advance(); st["full"] = False; return st["reg"]
@@ -165,6 +197,8 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
     mem.subscribe_to_write(range(0x2000, 0x6000), screen_write)
     for i, b in enumerate(open(os.path.join(ROOT, "video.bin"), "rb").read()): mem[0x0E00 + i] = b
     for i, b in enumerate(audio): mem[0x6000 + i] = b
+    for a_, blob in (pre or {}).items():
+        for i, b in enumerate(blob): mem[a_ + i] = b
     for i, b in enumerate([0x20, 0x00, 0x0E, 0x00]): mem[0x0300 + i] = b
     before = list(mem._subject)
     mpu.pc = 0x0300; mpu.sp = 0xFF
@@ -182,14 +216,14 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
         assert n < 30_000_000, "runaway"
     after = list(mem._subject)
     # only the screen, zero page, the stack and the test stub may change
-    ok_zones = [(0x2000, 0x5FFF), (0x0000, 0x00FF), (0x0100, 0x01FF), (0x0300, 0x0303)]
+    ok_zones = [(0x2000, 0x5FFF), (0x0000, 0x00FF), (0x0100, 0x01FF), (0x0300, 0x0303), (a2hdr.FBUF, a2hdr.FBUF + 0xFF)]
     stray = [a for a in range(0x10000) if before[a] != after[a] and not any(lo <= a <= hi for lo, hi in ok_zones) and not (0xC000 <= a < 0xD000)]
     acia = {0xC0A9, 0xC0AA, 0xC0AB}
     return dict(screen=bytes(after[0x2000:0x4000]), page2=bytes(after[0x4000:0x6000]), over=st["over"], edges=edges, stray=stray,
                 io_bad=[a for a in iow if a not in acia], bad_reads=bad_reads,
                 lost=LABELS["lost"] in visited or LABELS["ctl"] in visited,
                 i_after=bool(mpu.p & 0x04), d_after=bool(mpu.p & 0x08), i_at_click=i_at_click,
-                page=st["page"], flips=st["flips"], onscreen=st["onscreen"], flip_lines=st["flip_lines"])
+                page=st["page"], flips=st["flips"], onscreen=st["onscreen"], flip_lines=st["flip_lines"], poll_gap=st["poll_gap"])
 
 
 PRE, END = b"\xFE" * 4, b"\x80\x80"
@@ -338,8 +372,8 @@ print("--- 3. fault injection (video-only stream, first 22 frames) ---")
 K = 22
 def run_clean(stream_bytes, pause_after=None, **kw):
     """pause_after=(n, cycles): bytes after the first n arrive `cycles` later
-    (the host staying quiet while a burst plays)."""
-    items = arrivals(stream_bytes, 150)
+    (the host staying quiet while a burst plays). pre={address: bytes}: preloaded blocks."""
+    items = arrivals(stream_bytes, 150, mem=a2hdr.preload_mem(next(iter(kw["pre"].items()))) if kw.get("pre") else None)
     if pause_after:
         n, extra = pause_after
         items = items[:n] + [(b, t + extra) for b, t in items[n:]]
@@ -485,8 +519,12 @@ for baud in (19200, FAST):
     expect(max(late) <= 1, "%d: even pacing: every picture goes on screen within a frame of when it's due" % baud)
     flips = sum(marks[k] != (marks[k - 1] if k else 0xFE) for k in range(len(marks)))
     print("   %d frames, %d page changes, %d frames spent finishing a page" % (len(pfr), flips, len(pfr) - flips))
-    expect(shown_ok and pfr[-1] in (b"\xFB", b"\xFE"),
-           "%d: every page put on screen is a whole frame of the clip, and a lone mark at the end shows the last" % baud)
+    last_ops = [k for k, _v, _i in a2hdr.walk_ops(pfr[-1])]
+    expect(shown_ok and last_ops == ["mark", "block"] and fast_decode(pfr[-1][4:], 0, np.zeros(0x4000, np.uint8)) == 0,
+           "%d: every page put on screen is a whole frame of the clip, and a last mark with an empty block shows the last" % baud)
+    blocks = [list(a2hdr.walk_ops(f))[1:2] for k, f in enumerate(pfr) if marks[k] != (marks[k - 1] if k else 0xFE)]
+    expect(all(b and b[0][0] == "block" and b[0][1] == a2hdr.block_bytes(baud) for b in blocks),
+           "%d: every page change brings a fast block of %d bytes, to cover the vertical-blank wait" % (baud, a2hdr.block_bytes(baud)))
     expect(np.array_equal(pref[0x2000 * (marks[-2] == 0xFB):][:0x2000], target),
            "%d: the clip ends on its last frame, whole" % baud)
     sched, total = host.plan_stream(pfr, pfps, baud)
@@ -497,6 +535,8 @@ for baud in (19200, FAST):
                                                        len(pfr), r["onscreen"], len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])))
     expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(pref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"],
            "%d, flipping: no overruns, both pages right, no stray access" % baud)
+    print("   while it waits for the vertical blank, the player polls the line at most %d cycles apart" % r["poll_gap"])
+    expect(r["poll_gap"] < 0.8 * a2hdr.CPU_HZ * 10 / FAST, "%d: the block wait never leaves the line unread for close to a byte's time at 115200" % baud)
     exit_flip = marks[-2] == 0xFB       # ending on page 2: the player switches page 1 back on as it returns
     expect(r["onscreen"] == 0 and r["flips"] == flips - 1 + exit_flip,
            "%d: nothing is drawn on the page being shown, and every page change after the first flips" % baud)
@@ -520,7 +560,7 @@ stress = PRE + b"".join(pfr[:8]) + END
 lo, hi = 20.0, cpb
 while hi - lo > 1:
     mid = (lo + hi) / 2
-    over = run_6502(arrivals(stress, mid))["over"]
+    over = run_6502(arrivals(stress, mid, block_spacing=cpb))["over"]
     lo, hi = (mid, hi) if over else (lo, mid)
 print("flipping: the player keeps up with bytes as close as %.0f cycles apart (115200 delivers one every %.1f)" % (hi, cpb))
 expect(hi < 0.85 * cpb, "flipping: the player has at least 15%% headroom at 115200")
@@ -554,8 +594,108 @@ case("$FB right after a lone $80 (not an end of stream)",
      b"\xFE\x80\xFB" + lit(0x78) + b"\xFE" + END, lambda r: r["page2"][0] == 0x78)
 case("a skip of 122 ($FA) is still a skip",
      b"\xFB\xFA" + lit(0x79) + b"\xFE" + END, lambda r: r["page2"][122] == 0x79 and not r["lost"])
+# fast blocks: a page change brings one; preloaded ones are drawn from memory
+BLK = a2hdr.block_bytes(115200)
+def blk_target(runs):
+    t = videoconv.blank()
+    for s_, e_ in runs: t[s_:e_] = (np.arange(s_, e_) % 0x7F + 1) | 0x80 * ((np.arange(s_, e_) >> 4) & 1)
+    return t
+truns = [(0x10, 0x14), (0x200, 0x203), (0x1FF0, 0x2000)]
+tgt = blk_target(truns)
+head, blk, left, pos = videoconv.flip_head(truns, tgt, 0xFB, BLK)
+good_blk = head + b"\x00"
+want2 = lambda r: all(r["page2"][s_:e_] == bytes(tgt[s_:e_]) for s_, e_ in truns)
+case("a fast block after a page change draws page 2, palette bits included",
+     good_blk + b"\xFE" + END, lambda r: want2(r) and not r["lost"] and r["page"] == 1)
+case("a block that lost a byte isn't drawn; the next mark resyncs",
+     good_blk[:20] + good_blk[21:] + b"\xFE" + lit(0x5A) + END,
+     lambda r: r["page2"] == bytes(videoconv.blank()) and r["screen"][0] == 0x5A and r["lost"])
+case("a block that doesn't end in $A5 isn't drawn",
+     good_blk[:4 + BLK - 1] + b"\x00\x00\xFE" + lit(0x5B) + END,
+     lambda r: r["page2"] == bytes(videoconv.blank()) and r["screen"][0] == 0x5B and r["lost"])
+edge = bytes([255, 2] * 32) + bytes([0x1FFE - 32 * 255, 18]) + bytes(range(1, 17)) + b"\x00\x00"    # 16 bytes from $5FFE: 14 too many
+blk_e = bytes([0xFB, 0x7F, BLK // 2, (BLK // 2) ^ a2hdr.OP_BLOCK]) + edge + bytes(BLK - 1 - len(edge)) + bytes([a2hdr.BLOCK_END])
+case("a fast block entry that would end past $5FFF is refused",
+     blk_e + b"\x00\xFE" + lit(0x5C) + END, lambda r: r["page2"][0x1FFE:] == bytes([videoconv.MARK] * 2) and r["screen"][0] == 0x5C and r["lost"])
+fit = bytes([255, 2] * 32) + bytes([0x1FF0 - 32 * 255, 18]) + bytes(range(1, 17)) + b"\x00\x00"     # 16 bytes ending at $5FFF
+blk_f = bytes([0xFB, 0x7F, BLK // 2, (BLK // 2) ^ a2hdr.OP_BLOCK]) + fit + bytes(BLK - 1 - len(fit)) + bytes([a2hdr.BLOCK_END])
+case("a fast block entry that ends exactly at $5FFF is allowed",
+     blk_f + b"\x00\xFE" + END, lambda r: r["page2"][0x1FF0:] == bytes(range(1, 17)) and not r["lost"])
+pre_blk, _, _ = videoconv.fast_block(truns, tgt, 0)
+case("a preloaded block draws from memory, then the line carries on",
+     b"\xFE" + a2hdr.preload_op(0x7004) + END,
+     lambda r: all(r["screen"][s_:e_] == bytes(tgt[s_:e_]) for s_, e_ in truns[:2]) and r["screen"][0x2000 - 16:] == bytes(tgt[0x1FF0:])
+     and not r["lost"], pre={0x7004: pre_blk})
+case("a preload op with a bad check byte is refused",
+     b"\xFE\x7F\x01\x00\x00\xFE" + lit(0x5E) + END, lambda r: r["screen"][0] == 0x5E and r["screen"][0x10] == 0 and r["lost"], pre={0x6004: pre_blk})
+case("a preload op pointing at $C000 or above is refused",
+     b"\xFE" + bytes([0x7F, 0, a2hdr.OP_PRELOAD, 48]) + b"\xFE" + lit(0x5F) + END,
+     lambda r: r["screen"][0] == 0x5F and r["lost"] and a2hdr.preload_addr(0, 48) == 0xC000)
+
+# the cycle model the host and encoder use (a2hdr.fast_cycles) against the real code
+def run_fast(blk, addr, ptr, top, blim):
+    mem = ObservableMemory(); mpu = MPU(memory=mem)
+    for i, b in enumerate(open(os.path.join(ROOT, "video.bin"), "rb").read()): mem[0x0E00 + i] = b
+    for i, b in enumerate(blk): mem[addr + i] = b
+    mem[0x06], mem[0x07], mem[0x1A], mem[0x1E], mem[0x1F], mem[0x17] = ptr & 0xFF, ptr >> 8, top, addr & 0xFF, addr >> 8, blim
+    for i, b in enumerate([0x20, LABELS["fast"] & 0xFF, LABELS["fast"] >> 8]): mem[0x0300 + i] = b
+    mpu.pc, mpu.sp, c0 = 0x0300, 0xFF, mpu.processorCycles
+    while mpu.pc != 0x0303: mpu.step()
+    return mpu.processorCycles - c0, mem[0x06] | mem[0x07] << 8
+checked = exact = 0
+for f in pfr:                           # every block of the 115200 flipped stream
+    ops = list(a2hdr.walk_ops(f))
+    if len(ops) > 1 and ops[1][0] == "block":
+        page = ops[0][1]; b_ = f[4:ops[1][2]]
+        checked += 1
+        exact += a2hdr.fast_cycles(a2hdr.FastMem(b_), a2hdr.FBUF, 0x2000 * page, 0x20 + 0x20 * page) == run_fast(b_, a2hdr.FBUF, 0x2000 * page, 0x20 + 0x20 * page, (a2hdr.FBUF >> 8) + 1)
+rng2 = np.random.default_rng(5)
+tg = videoconv.with_holes(rng2.integers(0, 256, 0x2000).astype(np.uint8))
+rr = [(s_, s_ + int(rng2.integers(1, 60))) for s_ in range(0x1D00, 0x1FA0, 71)] + [(0x1FE0, 0x2000)]
+big, _, _ = videoconv.fast_block(rr, tg, 0x1800)
+for addr in (0x6000, 0x60F4, 0x7FFC):   # preloaded, crossing pages, ending on the screen's last page
+    checked += 1
+    exact += a2hdr.fast_cycles(a2hdr.FastMem(big, addr), addr, 0x3800, 0x40) == run_fast(big, addr, 0x3800, 0x40, 0xC0)
+print("fast block cycle model: %d of %d blocks exact (cycles and where the line carries on)" % (exact, checked))
+expect(exact == checked and checked > 20, "the host's cycle model of a fast block matches the player exactly")
+
 FTRIALS = 12                    # fewer than above: every flip in them waits out a screen refresh, which is slow to simulate
 good, worst, lost_hits = fault_trials(pfr[:12], 0x4000, 12, FTRIALS)
 expect(good == FTRIALS, "flipping: every random fault recovers by the next frame with no stray access")
 print("fault injection, flipping: %d/%d recovered; worst residual damage %d of 16384 bytes; %d took the discard path" % (good, FTRIALS, worst, lost_hits))
+
+print("--- 6. preload (--flip --preload) ---")
+PB = 1200                       # a budget the test clip can't keep up with on the line alone
+_, nfr, _ = convert(["--flip", "--baud", str(FAST), "--budget", str(PB)])
+lfps, lfr, _ = convert(["--flip", "--preload", "--baud", str(FAST), "--budget", str(PB)])
+pl = a2hdr.parse_preload(open(os.path.join(tmp, "clip.a2v"), "rb").read())
+lmem = a2hdr.preload_mem(pl)
+changes = lambda fr: sum(f[0] != (fr[k - 1][0] if k else 0xFE) for k, f in enumerate(fr))
+used = sum(any(k == "preload" for k, _v, _i in a2hdr.walk_ops(f)) for f in lfr)
+print("preload %d bytes at $%04X for %d frames; pictures shown: %d with preload, %d without" % (len(pl[1]), pl[0], used, changes(lfr) - 1, changes(nfr) - 1))
+expect(pl[0] == a2hdr.PRELOAD_START and used > 0 and changes(lfr) > changes(nfr), "preload is used, and more pictures are shown with it")
+lref = np.concatenate([videoconv.blank()] * 2)
+for f in lfr: ref_decode(f, lref, mem=lmem)
+sched, total = host.plan_stream(lfr, lfps, FAST, mem=lmem)
+r = run_6502(from_plan(sched, FAST), pre={pl[0]: pl[1]})
+fl = r["flip_lines"][:len(r["flip_lines"]) - (lfr[-1][0] == 0xFE)]
+print("6502 player, host schedule (%.1f s): overruns %d, both pages == decoder: %s, flips in the vertical blank: %s, stray %d" % (
+    total, r["over"], r["screen"] + r["page2"] == bytes(lref), all(192 <= y < LINES for y in fl), len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])))
+expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(lref) and not r["lost"] and all(192 <= y < LINES for y in fl)
+       and r["onscreen"] == 0 and not r["stray"] and not r["io_bad"] and not r["bad_reads"],
+       "preloaded frames play with the host's schedule: no overruns, right pages, flips in the vertical blank, nothing drawn on screen")
+# the host running late: a piece after a quiet gap keeps the whole gap after the piece before it actually went
+bt = 10 / FAST
+kept, drift = True, 0.0
+for late_k in range(1, 12):
+    clock, line_end = 0.0, 0.0
+    for k, (_when, data, at) in enumerate(host.send_times(sched[:60], FAST)):
+        t = max(at(0.0), clock) + (0.004 if k == late_k else 0)     # this one goes 4 ms late
+        start = max(t, line_end)
+        if k and sched[k][2] == "rest":
+            kept &= start - line_end >= sched[k][0] - (sched[k - 1][0] + len(sched[k - 1][1]) * bt) - 1e-9
+        at.sent(t); clock, line_end = t, start + len(data) * bt
+    drift = max(drift, start - sched[59][0])
+print("host running 4 ms late on one piece: quiet gaps kept whole: %s; the last of 60 pieces goes %.1f ms late" % (kept, drift * 1000))
+expect(kept and drift < 0.004, "stream: a late piece never shortens the quiet gap after it, and the lateness doesn't pile up")
 finish("test_video")

@@ -280,14 +280,23 @@ Colour streams play only with the player from this version of a2kit, which `--in
 ./a2kit stream out/hello_apple.a2v --port /dev/ttyUSB0 --install
 ```
 
-Normally the player changes the picture while it's on screen, so in busy moments the screen shows part of the old frame and part of the new one, a tear. With `--flip` the player draws each frame on the hidden hi-res page and switches to it only when the frame is complete, so you only ever see whole frames of the clip. When a picture needs more bytes than one frame's time carries, the encoder gives it the time of the next frames too and skips the frames in between: busy moments play at a lower frame rate instead of showing a mix. It plans this ahead: it picks the picture that will be due at the moment it can go on screen, so every picture appears on time and motion keeps its speed. The player also waits for the screen's vertical blank, the moment between one screen refresh and the next, before it switches, so a switch never lands halfway down the screen. The costs:
+Normally the player changes the picture while it's on screen, so in busy moments the screen shows part of the old frame and part of the new one, a tear. With `--flip` the player draws each frame on the hidden hi-res page and switches to it only when the frame is complete, so you only ever see whole frames of the clip. When a picture needs more bytes than one frame's time carries, the encoder gives it the time of the next frames too and skips the frames in between: busy moments play at a lower frame rate instead of showing a mix. It plans this ahead: it picks the picture that will be due at the moment it can go on screen, so every picture appears on time and motion keeps its speed. The player also waits for the screen's vertical blank, the moment between one screen refresh and the next, before it switches, so a switch never lands halfway down the screen. The wait can take up to one screen refresh (17 ms), so the computer sends the start of the next frame meanwhile, as a *fast block* that the player keeps in memory and draws, about four times faster than the line, right after the switch. The costs:
 
-- **Skipped frames in busy moments.** Each page catches up from two frames back, so a busy scene needs up to twice the bytes. On top of that, the wait for the vertical blank can take up to one screen refresh (17 ms), and nothing can be sent while the player waits, so the computer leaves 20 ms quiet in each frame that switches pages: at 10 frames a second and 115200 baud, 875 bytes instead of 1,094. A frame that only finishes a page keeps the full 1,094. In `hello_apple.gif` at 10 frames a second, 80 of the 319 frames are skipped: the walker scene plays in full, while the apple splitting in two and the full-screen wipes play at 3–5 frames a second. The summary line says how many frames were skipped; use a lower `--fps` or simpler scenes if that's too many. `--flip` works up to 49 frames a second.
+- **Skipped frames in busy moments.** Each page catches up from two frames back, so a busy scene needs up to twice the bytes. In `hello_apple.gif` at 10 frames a second, 71 of the 319 frames are skipped: the walker scene plays in full, while the apple splitting in two and the full-screen wipes play at 3–5 frames a second. The summary line says how many frames were skipped. `--preload` (below) shows more of them; otherwise use a lower `--fps` or simpler scenes if that's too many. `--flip` works up to 45 frames a second at 115200 baud, 32 at 19200.
 - **A little longer.** If the last page isn't finished when the clip ends, a few frames are added to finish it, so the clip always ends on its last frame (3 frames, 0.3 s, for `hello_apple.gif`).
 - **One frame later.** What you see is always the frame before the one being drawn, and the stream ends with one extra frame mark to show the last one.
 - **A real Apple II.** The wait reads the *floating bus*, the byte the video circuit last read, which is there on the II, II+ and IIe (tested on a II+). Where it's missing or the CPU is accelerated, the wait gives up in time and the switch is simply untimed.
 
 Flipped streams play only with the player from this version of a2kit, which `--install` uploads.
+
+**Preloading the busiest moments**
+
+```bash
+./a2kit video examples/hello_apple.gif -o out/hello_apple.a2v --fps 10 --flip --preload
+./a2kit stream out/hello_apple.a2v --port /dev/ttyUSB0 --install
+```
+
+The serial line is the limit in busy moments, but the Apple II's memory isn't full. With `--preload`, when a picture can't be finished in its own frame, the encoder puts the smallest part of its work that lets it be on time into a fast block, which `stream --install` uploads into free memory before playing. The player then draws that part from memory, while the line carries the rest. Preloaded blocks go after the sound, up to `$BFFF` (24 KB for a clip without sound), and are used for the busy moments in order until the memory is full. In `hello_apple.gif` that's 35 frames: 275 of the 319 frames are shown instead of 248, and the apple splitting in two plays at the full 10 frames a second. The upload takes about 3 seconds more. The summary line says how much is preloaded and for how many frames.
 
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
@@ -303,6 +312,7 @@ Flipped streams play only with the player from this version of a2kit, which `--i
 | `--crop` | Fill the screen instead of letterboxing. |
 | `--max-seconds N` | Use only the first N seconds. |
 | `--flip` | Draw each frame on the hidden page and flip to it in the vertical blank once it's complete, so you only ever see whole frames (see *Without tearing* above). Needs up to twice the bytes; frames are skipped while a page catches up. |
+| `--preload` | Only with `--flip`. Upload part of the busiest frames' work into free memory before playing, so fewer frames are skipped (see *Preloading the busiest moments* above). Stream the clip with `--install`. Can't be used with `--scrub`. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
 | `--language-card` | Only with `--audio`. Allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe). Stream the clip with `--language-card` too. |
@@ -748,7 +758,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | 4 | 2 | Payload length |
 | 6 | 2 | Cycle budget per frame (audio blocks: 128, the speaker player's cycles per sample) |
 
-**Video stream** (`.a2v`): an 8-byte header whose length field holds the *frame count*, one byte of fps, then for each frame a 2-byte length and the frame bytes. Optionally `AU`, a 2-byte length and the sound, which `stream` uploads before starting.
+**Video stream** (`.a2v`): an 8-byte header whose length field holds the *frame count*, one byte of fps, then for each frame a 2-byte length and the frame bytes. Optionally `AU`, a 2-byte length and the sound, then optionally `PL`, a 2-byte address, a 2-byte length and the preloaded fast blocks (`video --preload`); `stream` uploads both before starting.
 
 **Frame commands** (what the Apple II player understands). Every data byte is below `$80` and every control byte is `$80` or above, which is how the player notices damage. A screen byte's top bit, its palette bit in colour, is therefore not sent with it: `$FC` and `$FD` set it for the literal bytes that follow, and each frame starts with it off.
 
@@ -761,15 +771,19 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$FC` / `$FD` | Palette bit off / on for the literal bytes that follow (colour only) |
 | `$FF lo hi` | Long skip of lo + 128×hi bytes |
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
+| `$7F n c` + 2n bytes | With c = n xor `$2A`, right after a frame mark that changes page: a fast block of 2n bytes, the last one `$A5` |
+| `$7F l c h` | With c = l xor `$3C`: draw the fast block preloaded at `$6000` + 4×(l + 128×h) |
 | `$80 $80` | End of video |
 
-A frame mark that changes page first shows the page the frame before it was drawn on; a mark for the same page leaves the screen as it is. A stream that only uses `$FE` therefore draws on the page being shown, as older players did. A `video --flip` stream always draws on the hidden page: it changes page once a page is complete, and repeats a page's mark while it's still finishing it. When a mark changes page, the player first waits for the vertical blank, which takes up to 17 ms, and the host sends nothing for 20 ms after such a mark. To find the blank it keeps `$9B` in the screen holes of both pages (`$xx78–$xx7F` and `$xxF8–$xxFF`, never shown), which the video circuit reads only during the top third of the screen and the blank. It waits until about six lines go by without seeing `$9B` on the floating bus, then flips at the next one. No shown byte of a stream is `$9B`: the encoder changes one dot of any that would be. A run or skip that would go past the end of the frame's page is refused.
+**Fast blocks** are drawn from memory, about four times faster than the line brings bytes, and so have a format of their own: entries of *s*, *e*, then *e* − 2 screen bytes, palette bit included. Each entry moves on *s* bytes from where the last entry's bytes started (from the frame's current position, less 2, for the first) and writes its bytes there; *e* = 1 or 2 only moves on, and *e* = 0 ends the block, leaving the current position where it moved to, plus 2. Every entry is checked to stay on the frame's page. The computer stays quiet while a block is drawn, for a time it works out to the cycle from the block (`fast_cycles` in `tools/a2hdr.py`, checked against the player in the tests).
+
+A frame mark that changes page first shows the page the frame before it was drawn on; a mark for the same page leaves the screen as it is. A stream that only uses `$FE` therefore draws on the page being shown, as older players did. A `video --flip` stream always draws on the hidden page: it changes page once a page is complete, and repeats a page's mark while it's still finishing it. When a mark changes page, the player first waits for the vertical blank, which takes up to 17 ms. Meanwhile it stores the fast block that follows the mark, which is long enough (19 ms of the line) to outlast the wait; it then switches, checks that the block ends in `$A5` (if not, a byte was lost or gained, and it discards until the next mark), and draws it. Something always follows a block (`$00`, ignored, if nothing else), so a block that lost a byte never swallows the next frame's mark. If a page change comes without a block, the player waits first and the host sends nothing for 20 ms. To find the blank it keeps `$9B` in the screen holes of both pages (`$xx78–$xx7F` and `$xxF8–$xxFF`, never shown), which the video circuit reads only during the top third of the screen and the blank. It waits until about six lines go by without seeing `$9B` on the floating bus, then flips at the next one. No shown byte of a stream is `$9B`: the encoder changes one dot of any that would be. A run or skip that would go past the end of the frame's page is refused.
 
 ### 11.2 Memory map
 
 | Address | Used for |
 |---|---|
-| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$19–$1B`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
+| `$0000–$00FF` | Zero page: a2kit uses `$06–$0F`, `$17–$1F`, `$CE` and `$EB–$EF`; the Monitor uses much of the rest |
 | `$0100–$01FF` | 6502 stack |
 | `$0200–$02FF` | Monitor input buffer (only while you type at the `*` prompt) |
 | `$0300–$039A` | The unpacker for packed pictures (155 bytes), while one is unpacked and during a show with more than two pictures; the rest of page 3, to `$03CF`, is free |
@@ -781,12 +795,15 @@ A frame mark that changes page first shows the page the frame before it was draw
 | `$0B00–$0BFF` | Show scene table |
 | `$0C00–$0CBA` | Sequencer |
 | `$0D00–$0D7E` | Speaker routine used by the sequencer |
-| `$0E00–$0FF2` | Video player |
+| `$0E00–$0F72` | Video player |
 | `$1000–$107E` | Speaker routine used by the video player |
-| `$107F–$1FFF` | **Free** (about 4K; `lcprobe` uses `$1200–$148D`, `chargen capture` `$1200–$1230`) |
+| `$1080–$11C6` | Video player, continued: sound bursts, page changes and the fast block's wait |
+| `$1200–$12AA` | Video player: fast block drawing (alone on its page, so its timing never changes) and the vertical-blank wait |
+| `$1300–$13FF` | Video player: the fast block after a page change |
+| `$1400–$1FFF` | **Free** (3K; `lcprobe` uses `$1200–$148D` and `chargen capture` `$1200–$1230`, over the video player, which `--install` uploads again) |
 | `$2000–$3FFF` | Hi-res page 1 (the video player puts `$9B` in its screen holes) |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; video with `--flip`, and the video player clears it, with `$9B` in the screen holes, when it starts; `ping` scratch space) |
-| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked |
+| `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked. A video's preloaded fast blocks (`--preload`) go after its sound |
 | `$C000–$CFFF` | I/O and slot ROMs |
 | `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
 
