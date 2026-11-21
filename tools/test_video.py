@@ -461,16 +461,34 @@ for kind, frame, off, seed in (("drop", 3, 150, 1), ("corrupt", 8, 120, 2), ("in
         kind, frame, p_, SCRUB, h, len(healed["stray"]) + len(healed["io_bad"])))
     expect(h == 0 and p_ > 0 and not healed["stray"], "scrub heals a %s fault that would otherwise stay" % kind)
 print("--- 5. page flipping (--flip) ---")
+TARGET_LIST = []                        # every frame of the test clip, as the encoder sees it
+for i in range(N_MOVE + N_STILL):
+    g = np.asarray(imgconv.prepare(Image.open(os.path.join(FR, "f%03d.png" % i)), False, False), dtype=np.float64)
+    TARGET_LIST.append(bytes(videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(g, "ordered")))))
+TARGETS = set(TARGET_LIST)
 for baud in (19200, FAST):
     pfps, pfr, _ = convert(["--flip", "--baud", str(baud)])
     marks = [f[0] for f in pfr]
-    expect(marks == [0xFB if k % 2 == 0 else 0xFE for k in range(len(pfr))] and pfr[-1] in (b"\xFB", b"\xFE"),
-           "%d: frames alternate page 2 / page 1, ending with a lone mark that shows the last frame" % baud)
     pref = np.concatenate([videoconv.blank()] * 2)
-    for f in pfr: ref_decode(f, pref)
-    if baud == FAST:
-        expect(np.array_equal(pref[0x2000 * (marks[-2] == 0xFB):][:0x2000], target),
-               "%d: the last frame drawn converges on the last picture" % baud)
+    shown_ok, last, late = True, 1, []
+    for slot, f in enumerate(pfr):      # a mark that changes page shows the page drawn last: it must be whole
+        page = 2 if f[0] == 0xFB else 1
+        if page != last:
+            on = bytes(pref[0x2000 * (last - 1):][:0x2000])
+            shown_ok &= on == bytes(videoconv.blank()) or on in TARGETS
+            due = [j for j in range(min(slot, len(TARGET_LIST))) if TARGET_LIST[j] == on]      # frame j is due at slot j + 1
+            if due and slot <= len(TARGET_LIST):
+                late.append(slot - (due[-1] + 1))
+        last = page
+        ref_decode(f, pref)
+    print("   pictures appear late by (frames): %s" % np.bincount(late).tolist())
+    expect(max(late) <= 1, "%d: even pacing: every picture goes on screen within a frame of when it's due" % baud)
+    flips = sum(marks[k] != (marks[k - 1] if k else 0xFE) for k in range(len(marks)))
+    print("   %d frames, %d page changes, %d frames spent finishing a page" % (len(pfr), flips, len(pfr) - flips))
+    expect(shown_ok and pfr[-1] in (b"\xFB", b"\xFE"),
+           "%d: every page put on screen is a whole frame of the clip, and a lone mark at the end shows the last" % baud)
+    expect(np.array_equal(pref[0x2000 * (marks[-2] == 0xFB):][:0x2000], target),
+           "%d: the clip ends on its last frame, whole" % baud)
     sched, total = host.plan_stream(pfr, pfps, baud)
     r = run_6502(from_plan(sched, baud))
     shown = r["screen"] if r["page"] == 1 else r["page2"]
@@ -479,15 +497,16 @@ for baud in (19200, FAST):
                                                        len(pfr), r["onscreen"], len(r["stray"]) + len(r["io_bad"]) + len(r["bad_reads"])))
     expect(r["over"] == 0 and r["screen"] + r["page2"] == bytes(pref) and not r["stray"] and not r["io_bad"] and not r["bad_reads"],
            "%d, flipping: no overruns, both pages right, no stray access" % baud)
-    expect(r["onscreen"] == 0 and r["flips"] == len(pfr) - 1,
-           "%d: nothing is drawn on the page being shown, and every frame mark after the first flips" % baud)
+    exit_flip = marks[-2] == 0xFB       # ending on page 2: the player switches page 1 back on as it returns
+    expect(r["onscreen"] == 0 and r["flips"] == flips - 1 + exit_flip,
+           "%d: nothing is drawn on the page being shown, and every page change after the first flips" % baud)
     expect(r["page"] == 1, "%d: page 1 is switched back on when the player returns (text page 2 is the receiver)" % baud)
-    fl = r["flip_lines"]
+    fl = r["flip_lines"][:len(r["flip_lines"]) - exit_flip]
     print("   flips landed on scan lines %d-%d (the vertical blank is 192-261)" % (min(fl), max(fl)))
     expect(all(192 <= y < LINES for y in fl), "%d: every flip happens in the vertical blank" % baud)
     if baud == FAST:
         r0 = run_6502(from_plan(sched, baud), bus=False)
-        expect(r0["over"] == 0 and r0["screen"] + r0["page2"] == bytes(pref) and r0["flips"] == len(pfr) - 1,
+        expect(r0["over"] == 0 and r0["screen"] + r0["page2"] == bytes(pref) and r0["flips"] == flips - 1 + exit_flip,
                "%d: without a floating bus the wait gives up in time: no overruns, right pictures, every flip made" % baud)
 m = re.search(r"^MARK\s*=\s*\$([0-9A-F]+)", open(os.path.join(ROOT, "runtime", "video.s")).read(), re.M)
 expect(m and int(m.group(1), 16) == videoconv.MARK, "the player and the encoder agree on the screen-hole marker")
@@ -508,12 +527,14 @@ expect(hi < 0.85 * cpb, "flipping: the player has at least 15%% headroom at 1152
 
 # preview: each GIF frame is the page on screen while that frame is drawn
 fps_p, frames_p, _ = convert(["--flip", "--preview", gif])
-want, scr, last = [], np.concatenate([videoconv.blank()] * 2), 1
+want, scr, drawn, shown = [], np.concatenate([videoconv.blank()] * 2), 1, 1
 for f in frames_p:
-    on = scr[:0x2000] if last == 1 else scr[0x2000:]
+    page = 2 if f[0] == 0xFB else 1
+    if page != drawn:                   # a page change shows the page drawn before
+        shown, drawn = drawn, page
+    on = scr[:0x2000] if shown == 1 else scr[0x2000:]
     want.append(np.asarray(videoconv.screen_image(on.copy()).convert("L")))
     ref_decode(f, scr)
-    last = 2 if f[0] == 0xFB else 1
 got = [np.asarray(fr.convert("L")) for fr in ImageSequence.Iterator(Image.open(gif))]
 dedup = [w for k, w in enumerate(want) if k == 0 or not np.array_equal(w, want[k - 1])]
 expect(len(got) == len(dedup) and all(np.array_equal(a > 127, b > 127) for a, b in zip(got, dedup)),

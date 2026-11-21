@@ -1,4 +1,4 @@
-al 000F5F .ctl
-al 000F6B .lost
+al 000F5B .ctl
+al 000F67 .lost
 al 000E4E .vframe
-al 000F14 .vframe2
+al 000F12 .vframe2
