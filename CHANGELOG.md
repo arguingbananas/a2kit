@@ -15,7 +15,13 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   page is complete: when a frame doesn't fit, frames are skipped while the page
   catches up, so busy moments play at a lower frame rate instead of showing a
   mix of pictures. The skipping is planned so that every picture still appears
-  on time.
+  on time. While the player waits for the vertical blank it now receives the
+  start of the next frame (a *fast block*, drawn from memory about four times
+  faster than the line), so fewer frames are skipped.
+- `video --flip --preload` uploads part of the busiest frames into free memory
+  before playing (`stream --install`), so they keep up: "Hello, Apple" shows
+  275 of its 319 frames instead of 248, and the apple splitting in two plays at
+  the full 10 frames a second.
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.

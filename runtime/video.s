@@ -22,6 +22,14 @@
 ;   $01-$7E    literal run: n data bytes follow, written at the current address
 ;   $7F n c    audio burst: play n pages (n*64 ms) from RAM, then carry on;
 ;              c = n xor $55 (a stray $7F in damaged data rarely passes this)
+;   $7F n c    with c = n xor $2A, right after a frame start that changes page:
+;              a fast block (below) of 2n bytes follows, the last one $A5. The
+;              player stores it while it waits for the vertical blank, shows the
+;              finished page, then draws the block, so the wait doesn't waste
+;              the line. A block that doesn't end in $A5 lost or gained a byte:
+;              it isn't drawn, and the player discards until the next mark
+;   $7F l c h  with c = l xor $3C: draw the fast block preloaded at
+;              $6000 + 4 * (l + 128 * h), then carry on with the line
 ;   $81-$FA    skip (b & $7F) bytes, 1-122
 ;   $FC        palette bit off for the literal bytes that follow (the default
 ;              at each frame start, so a black and white stream never sends it)
@@ -31,6 +39,14 @@
 ;   $80 $80    end of stream: restore text mode and return (twice, so one
 ;              corrupted byte can't end the show)
 ; Any key also quits.
+;
+; Fast blocks are drawn from memory, about four times faster than the line
+; brings bytes, and use their own format: entries of s, e, then e-2 screen
+; bytes, palette bit included. Each entry moves on s bytes from where the last
+; entry's bytes started (from the frame's current address, less 2, for the
+; first) and writes its bytes there; e = 1 or 2 only moves on; e = 0 ends the
+; block, setting the current address to where it moved to plus 2. The host
+; keeps the line quiet while a block is drawn (tools/a2hdr.py fast_cycles).
 ;
 ; Recovery: a control byte inside a run, a run or skip that would go past the
 ; end of the page being drawn ($3FFF or $5FFF), or a bad audio burst makes the
@@ -54,6 +70,10 @@
         .include "config.inc"           ; SLOT
 AUDIO_BASE = $60                ; audio data starts at $6000
 MARK    = $9B                   ; in the screen holes, for vsync (never a shown byte)
+FBUF    = $1300                 ; where a fast block after a page change is stored
+PRELOAD = $60                   ; preloaded fast blocks start at $6000
+QN      = 11                    ; vertical-blank wait: 11 x 41 cycles with no MARK
+SENT    = $A5                   ; the last byte of a fast block after a page change
 
 ACIA_DATA = $C088
 ACIA_STAT = $C089
@@ -79,8 +99,12 @@ atmp2   = $0F
 pal     = $19                   ; $80 or $00: the palette bit for literal bytes
 top     = $1A                   ; $40 or $60: the end of the page being drawn
 sw      = $1B                   ; <LOWSCR or <HISCR: the switch that shows that page
+blim    = $17                   ; a fast block stops at this page
+want    = $18                   ; bytes in the fast block being received
+q       = $1C                   ; 2 bytes: fast block screen address, less 2
+bp      = $1E                   ; 2 bytes: fast block read pointer
 
-        .export lost, ctl, vframe, vframe2
+        .export lost, ctl, vframe, vframe2, fast, fblock, vsync
         .segment "CODE"
 
 start:
@@ -127,22 +151,8 @@ clr:    lda #0
         lda #AUDIO_BASE
         sta aptr+1
 
-vframe: lda sw                  ; $FE: draw on page 1. If the last frame was
-        cmp #<HISCR             ; drawn on page 2, that page is complete: show
-        bne @same               ; it, at the next vertical blank
-        jsr vsync
-        bit HISCR
-@same:  lda #<LOWSCR
-        sta sw
-        lda #$40
-        sta top
-        lda #$20
-frame:  sta ptr+1               ; start of the new frame's page
-        lda #0
-        sta ptr
-        sta pal                 ; each frame starts with the palette bit off
 vop:    jsr getb
-        beq vop                 ; $00: ignored
+vdisp:  beq vop                 ; $00: ignored
         bmi ctlop
         cmp #$7F
         bne @run
@@ -184,16 +194,36 @@ chk:    lda ptr+1               ; never let a bad stream walk off the page
 @ok:    jmp vop
 
 ctlop:  cmp #$FF
-        beq @long
+        beq clong
         cmp #$FE
         beq vframe
         cmp #$FB
         beq vframe2
         cmp #$80
-        bne @skip
+        bne cskip
         jmp endop               ; (out of branch range)
-@skip:  cmp #$FC
-        bcs @pal
+vframe: lda #$20                ; $FE: draw on page 1, from its top
+        sta ptr+1
+        lda #$40
+        sta top
+        lda #<LOWSCR
+        bne newpg               ; always
+vframe2:
+        lda #$40                ; $FB: draw on page 2
+        sta ptr+1
+        lda #$60
+        sta top
+        lda #<HISCR
+newpg:  ldy #0
+        sty ptr
+        sty pal                 ; each frame starts with the palette bit off
+        cmp sw                  ; the same page as the last frame: carry on
+        sta sw                  ; drawing it, unseen
+        bne @new
+        jmp vop                 ; (out of branch range)
+@new:   jmp flip                ; a new page: show the finished one first
+cskip:  cmp #$FC
+        bcs cpal
         and #$7F                ; skip 1-122
         clc
         adc ptr
@@ -201,12 +231,12 @@ ctlop:  cmp #$FF
         bcc chk
         inc ptr+1
         jmp chk
-@pal:   lsr a                   ; $FC -> carry 0, $FD -> carry 1
+cpal:   lsr a                   ; $FC -> carry 0, $FD -> carry 1
         lda #0
         ror a                   ; ... -> $00 or $80
         sta pal
         jmp vop
-@long:  jsr getb
+clong:  jsr getb
         bmi ctl
         sta tmp                 ; lo (7 bits)
         jsr getb
@@ -214,9 +244,9 @@ ctlop:  cmp #$FF
         lsr a                   ; hi (7 bits): 128*hi = (hi>>1) high byte + (hi&1) << 7
         sta tmp2
         lda tmp
-        bcc @n
+        bcc cn
         ora #$80
-@n:     clc
+cn:     clc
         adc ptr
         sta ptr
         lda ptr+1
@@ -224,41 +254,6 @@ ctlop:  cmp #$FF
         sta ptr+1
         jmp chk
 
-vframe2:
-        lda sw                  ; $FB: draw on page 2 (as vframe, the other way)
-        cmp #<LOWSCR
-        bne @same
-        jsr vsync
-        bit LOWSCR
-@same:  lda #<HISCR
-        sta sw
-        lda #$60
-        sta top
-        lda #$40
-        jmp frame               ; (out of branch range)
-
-burst:  jsr getb                ; page count
-        bmi ctl
-        sta apages
-        jsr getb                ; check byte: count xor $55
-        bmi ctl
-        eor #$55
-        cmp apages
-        bne lost                ; not a real burst
-        lda apages
-        bne @go
-        jmp vop                 ; 0 pages: nothing to do
-@go:    clc
-        adc aptr+1
-        bcs lost                ; wrapped past $FF00: certainly bad
-        ldy aptr+1
-        cpy #$C1
-        bcs @play               ; already in the card: the wrap check was enough
-        cmp #$F0                ; from main RAM: $C000 up to $EF00 means $D000 up to $FF00
-        bcs lost
-@play:  jsr splay
-        ldx #SLOTX              ; play uses X
-        jmp vop
 
 ; a control byte turned up where data was expected (A = that byte)
 ctl:    cmp #$FE
@@ -300,11 +295,252 @@ getb:   lda KBD
         rts
 @abort: pla                     ; drop getb's return address
         pla
-        bit KBDSTRB
+quit:   bit KBDSTRB
         bit TXTSET
         bit LOWSCR
         plp                     ; the php from start
         rts
+
+        .include "speaker.inc"
+
+; ---------------------------------------------------------------------------
+; The rest of the player, after the speaker routine ($1080 up)
+; ---------------------------------------------------------------------------
+        .segment "CODE2"
+
+; $7F: an audio burst (n, n xor $55) or a preloaded fast block (l, l xor $3C, h)
+burst:  jsr getb                ; page count, or the block's address (low part)
+        bmi ctl2
+        sta apages
+        jsr getb                ; check byte
+        bmi ctl2
+        eor apages
+        cmp #$3C
+        beq preop
+        cmp #$55
+        bne lost2               ; neither: not a real op
+        lda apages
+bplay:  sta apages              ; (Z set for A)
+        bne @go
+        jmp vop                 ; 0 pages: nothing to do
+@go:    clc
+        adc aptr+1
+        bcs lost2               ; wrapped past $FF00: certainly bad
+        ldy aptr+1
+        cpy #$C1
+        bcs @play               ; already in the card: the wrap check was enough
+        cmp #$F0                ; from main RAM: $C000 up to $EF00 means $D000 up to $FF00
+        bcs lost2
+@play:  jsr splay
+        ldx #SLOTX              ; play uses X
+        jmp vop
+
+ctl2:   jmp ctl                 ; (out of branch range from here)
+lost2:  jmp lost
+
+preop:  jsr getb                ; h: the block is at $6000 + 4 * (l + 128 * h)
+        bmi ctl2
+        sta tmp
+        lda apages
+        asl a
+        asl a                   ; carry = bit 6 of l
+        sta bp
+        lda tmp
+        rol a                   ; 2h + that bit; h < $80, so carry is now 0
+        adc #PRELOAD
+        sta bp+1
+        cmp #$C0                ; blocks are in main RAM, below $C000
+        bcs lost2
+        lda #$C0
+        sta blim
+        jsr fast
+        jmp chk
+
+; A frame start on a new page: the page drawn last (shown by sw xor 1) is
+; complete, so show it in the next vertical blank. Normally a fast block
+; follows, received while waiting; anything else gets the plain wait.
+flip:   jsr getb
+        cmp #$7F
+        bne @plain
+        jsr getb
+        bmi ctl2
+        sta tmp
+        jsr getb
+        bmi ctl2
+        eor tmp
+        cmp #$2A
+        bne @nob
+        lda tmp
+        bne fblock
+        beq lost2               ; (always) an empty block isn't sent
+@nob:   cmp #$55
+        bne lost2
+        lda tmp                 ; a burst: show the page, then play it
+        pha
+        jsr show
+        pla
+        jmp bplay
+@plain: pha
+        jsr show
+        pla
+        jmp vdisp
+
+show:   jsr vsync
+        lda sw
+        lsr a                   ; carry = 1 while drawing page 2 (HISCR is odd)
+        bcs @p1
+        bit HISCR
+        rts
+@p1:    bit LOWSCR
+        rts
+
+; Receive a 2n-byte fast block into FBUF while waiting for the vertical blank
+; as vsync does (below), flip, then draw it. Each pass polls the serial card,
+; then reads the floating bus three times 8 cycles apart: 41 cycles (51 with
+; a byte), and a restart goes straight back to the poll, so polls are never
+; more than 57 cycles apart (a byte comes every 88.6 at 115200). The host
+; sends the block's bytes straight after the op, for longer than the wait can
+; take (19 ms), then stays quiet while it's drawn.
+fblock: asl a
+        sta want
+        ldy #0                  ; bytes received
+        sty tmp2                ; restarts left: 256
+@quiet: lda #QN
+        sta tmp
+@q:     lda ACIA_STAT,x
+        and #$08
+        beq @n1
+        lda ACIA_DATA,x
+        sta FBUF,y
+        iny
+@n1:    lda HIRES
+        cmp #MARK
+        beq @again
+        lda HIRES
+        cmp #MARK
+        beq @again
+        lda HIRES
+        cmp #MARK
+        beq @again
+        dec tmp
+        bne @q
+@w:     lda ACIA_STAT,x         ; then the first MARK (256 passes at most)
+        and #$08
+        beq @n2
+        lda ACIA_DATA,x
+        sta FBUF,y
+        iny
+@n2:    lda HIRES
+        cmp #MARK
+        beq @vbl
+        lda HIRES
+        cmp #MARK
+        beq @vbl
+        lda HIRES
+        cmp #MARK
+        beq @vbl
+        dec tmp
+        bne @w
+        beq @vbl                ; (always) no MARK: flip anyway
+@again: dec tmp2                ; MARK too soon: start again (this takes the
+        bne @quiet              ; rest of the 8-cycle hole window, so once a line)
+@vbl:   lda sw
+        lsr a
+        bcs @s1
+        bit HISCR
+        bcc @fin                ; (always)
+@s1:    bit LOWSCR
+@fin:   cpy want                ; the rest of the block
+        beq @run
+        lda KBD
+        bmi @key
+        lda ACIA_STAT,x
+        and #$08
+        beq @fin
+        lda ACIA_DATA,x
+        sta FBUF,y
+        iny
+        bne @fin                ; (always: want <= 254)
+@key:   jmp quit
+@bad:   jmp lost
+@run:   lda FBUF-1,y            ; the block's last byte must be SENT
+        cmp #SENT
+        bne @bad
+        lda #<FBUF
+        sta bp
+        lda #>FBUF
+        sta bp+1
+        lda #>FBUF+1
+        sta blim
+        jsr fast
+        jmp chk
+
+        .segment "FAST"         ; its own page: no branch crosses a page, so the
+                                ; cycle count is the same wherever the code moves
+; Draw the fast block at bp (format at the top). It may read up to the page
+; before blim, and never writes outside the page being drawn. The cycles are
+; counted in tools/a2hdr.py fast_cycles: keep them in step. Uses A, Y, cnt, tmp2.
+fast:   sec                     ; q = ptr - 2
+        lda ptr
+        sbc #2
+        sta q
+        lda ptr+1
+        sbc #0
+        sta q+1
+        ldy top
+        dey
+        sty tmp2                ; the last page of the screen being drawn
+fent:   ldy #0
+        lda (bp),y              ; s
+        clc
+        adc q
+        sta q
+        bcc @1
+        inc q+1
+@1:     iny
+        lda (bp),y              ; e
+        cmp #3
+        bcc fspec
+        sta cnt
+        lda q+1
+        cmp tmp2
+        bcs fedge               ; on the screen's last page, or past it
+fcopy:  iny
+@l:     lda (bp),y
+        sta (q),y
+        iny
+        cpy cnt
+        bne @l
+fnext:  tya                     ; on to the next entry
+        clc
+        adc bp
+        sta bp
+        bcc fent
+        inc bp+1
+        lda bp+1
+        cmp blim
+        bcc fent
+        bcs fend                ; (always) ran out of block: stop
+fspec:  ldy #2                  ; e < 3
+        cmp #0
+        bne fnext               ; 1 or 2: just moved on
+fend:   clc                     ; 0: the end. ptr = q + 2
+        lda q
+        adc #2
+        sta ptr
+        lda q+1
+        adc #0
+        sta ptr+1
+        rts
+fedge:  bne fbad                ; past the screen's last page
+        lda q                   ; on it: the bytes must end by its last byte
+        clc
+        adc cnt                 ; q + e = 1 + the last address written, + 2
+        bcc fcopy
+        beq fcopy               ; exactly at the end
+fbad:   pla                     ; drop the return address
+        pla
+        jmp lost
 
 ; wait for the start of the vertical blank (II, II+ and IIe alike). Reading a
 ; soft switch returns the byte the video circuit last read (the floating bus).
@@ -314,7 +550,8 @@ getb:   lda KBD
 ; thirds), and the next MARK is the start of the blank. Takes up to one screen
 ; (17,030 cycles); the host stays quiet meanwhile. Gives up after 200 restarts
 ; or about 230 lines of waiting (no floating bus, an accelerator), so it never
-; hangs. Uses A, Y and tmp; X (the slot) is kept.
+; hangs. Uses A, Y and tmp; X (the slot) is kept. Only used when a page change
+; comes without a fast block (fblock does the same while receiving).
 vsync:  lda #200
         sta tmp
 @quiet: ldy #20                 ; 20 x 21 cycles with no MARK, 2 reads each
@@ -345,5 +582,3 @@ vsync:  lda #200
 @again: dec tmp
         bne @quiet
         rts
-
-        .include "speaker.inc"

@@ -102,7 +102,9 @@ def add_language_card_arg(ap):
 # frame count instead. File layout after the 8-byte header:
 #   u8 fps, then per frame: u16 little-endian size, then that many stream bytes,
 #   then optionally "AU", u16 length, and the audio payload (4-bit samples, see
-#   audioconv.py) that the player expects in RAM at $6000 before the stream starts.
+#   audioconv.py) that the player expects in RAM at $6000 before the stream starts,
+#   then optionally "PL", u16 address, u16 length, and the fast blocks the player
+#   expects there (video --preload; see parse_preload).
 def stream_header(block_type, nframes, cycles=0):
     return struct.pack(_FMT, MAGIC, FORMAT_VERSION, block_type, nframes, cycles)
 
@@ -127,23 +129,191 @@ def parse_stream(data):
     return fps, frames, audio
 
 
+def parse_preload(data):
+    """(address, bytes) of the fast blocks a TYPE_VIDEO file preloads, or None.
+    They follow the frames and any audio as "PL", u16 address, u16 length, data."""
+    _fps, frames, audio = parse_stream(data)
+    pos = HDR_SIZE + 1 + sum(2 + len(f) for f in frames) + (4 + len(audio) if audio else 0)
+    if data[pos:pos + 2] != b"PL":
+        return None
+    addr, n = struct.unpack_from("<HH", data, pos + 2)
+    return addr, data[pos + 6:pos + 6 + n]
+
+
+def preload_mem(pre):
+    """A 64K memory image holding the preloaded blocks (for timing and checks)."""
+    mem = bytearray(0x10000)
+    if pre:
+        mem[pre[0]:pre[0] + len(pre[1])] = pre[1]
+    return mem
+
+
 def frame_audio_pages(frame):
     """Pages of audio the player will play in this frame (walks the stream
     grammar: $FE frame start, $7F n c audio burst, $01-$7E n literal bytes,
     $FB frame start on page 2, $81-$FA skip, $FC/$FD palette bit off/on,
-    $FF lo hi long skip)."""
-    i, pages = 0, 0
+    $FF lo hi long skip, and the fast block ops below)."""
+    return sum(n for kind, n, _i in walk_ops(frame) if kind == "audio")
+
+
+# --- fast blocks (runtime/video.s) ---
+# $7F n c is an audio burst when c = n ^ OP_AUDIO. Right after a frame start
+# that changes page, c = n ^ OP_BLOCK sends a fast block of 2n bytes, which the
+# player stores while it waits for the vertical blank and draws after the flip.
+# $7F l c h with c = l ^ OP_PRELOAD draws the block preloaded at preload_addr(l, h).
+OP_AUDIO, OP_BLOCK, OP_PRELOAD = 0x55, 0x2A, 0x3C
+FBUF = 0x1300                   # where the player stores a fast block (video.s FBUF)
+BLOCK_END = 0xA5                # the last byte of a block after a page change (video.s SENT)
+PRELOAD_START = 0x6000          # preloaded blocks: main RAM after the sound, to $BFFF
+PRELOAD_END = 0xC000
+FLIP_WAIT = 0.019               # a fast block after a page change lasts at least this long on the line
+FAST_MARGIN = 0.001             # extra quiet time after a fast block is drawn, seconds
+FLIP_QUIET = 0.020              # quiet time after a page change without a fast block: one screen (16.7 ms) plus a little
+BLOCK_OVERHEAD = 120            # cycles: the last block byte read (up to one 51-cycle pass), into fast, and back to the line
+PRELOAD_OVERHEAD = 100          # cycles: the op's last byte to fast, and back to the line
+
+
+def block_bytes(baud):
+    """Bytes in the fast block after a page change: enough to outlast the
+    vertical-blank wait (always even, at most 254)."""
+    n = -(-int(FLIP_WAIT * baud / 10) // 2)
+    return min(254, 2 * n)
+
+
+def preload_addr(lo, hi):
+    return PRELOAD_START + 4 * (lo + 128 * hi)
+
+
+def preload_op(addr):
+    """The 4-byte op that draws the block preloaded at addr (a multiple of 4)."""
+    off = (addr - PRELOAD_START) // 4
+    lo, hi = off & 0x7F, off >> 7
+    return bytes([0x7F, lo, lo ^ OP_PRELOAD, hi])
+
+
+def walk_ops(frame):
+    """(kind, value, index after the op) for each op in a frame: "mark" (page),
+    "audio" (pages), "block" (bytes, which follow the op), "preload" (address),
+    "run" (bytes), "skip" (bytes), "pal"."""
+    i = 0
     while i < len(frame):
         b = frame[i]
         i += 1
-        if b == 0x7F:
-            pages += frame[i]
-            i += 2                      # page count, then its check byte
+        if b in (0xFE, 0xFB):
+            yield "mark", 1 if b == 0xFE else 2, i
+        elif b == 0x7F and i + 1 < len(frame):
+            n, c = frame[i], frame[i + 1]
+            if c == n ^ OP_BLOCK:
+                i += 2 + 2 * n
+                yield "block", 2 * n, i
+            elif c == n ^ OP_PRELOAD and i + 2 < len(frame):
+                i += 3
+                yield "preload", preload_addr(n, frame[i - 1]), i
+            else:
+                i += 2
+                yield "audio", n, i
         elif b == 0xFF:
+            if i + 2 > len(frame):
+                break
             i += 2
+            yield "skip", frame[i - 2] + 128 * frame[i - 1], i
         elif 0 < b < 0x7F:
             i += b
-    return pages
+            yield "run", b, i
+        elif 0x80 < b < 0xFB:
+            yield "skip", b & 0x7F, i
+        elif b in (0xFC, 0xFD):
+            yield "pal", b, i
+
+
+def fast_cycles(mem, addr, ptr, top):
+    """Cycles video.s takes to draw the fast block at `addr` of `mem` (anything
+    indexable by address) from screen address `ptr` on the page that ends at
+    `top` ($40 or $60), from jsr fast to its rts; and the address it leaves.
+    Counts every instruction of fast/fent/fnext/fend, page crossings included
+    (for an entry the player refuses, up to where it gives up)."""
+    c = 6 + 26
+    q, lim, bp = (ptr - 2) & 0xFFFF, top - 1, addr
+    blim = (addr >> 8) + 1 if addr == FBUF else PRELOAD_END >> 8
+    while True:
+        s, e = mem[bp], mem[bp + 1]
+        c += 2 + 5 + 2 + 3 + 3
+        c += 7 if (q & 0xFF) + s > 0xFF else 3
+        q = (q + s) & 0xFFFF
+        c += 2 + 5 + ((bp & 0xFF) + 1 > 0xFF) + 2
+        if e < 3:
+            c += 3 + 2 + 2
+            if e == 0:
+                c += 2
+                break
+            c += 3
+            y = 2
+        else:
+            c += 2 + 3 + 3 + 3
+            qh = q >> 8
+            if qh >= lim:
+                if qh != lim or (q & 0xFF) + e > 0x100:     # the player refuses it (fbad) and gives up the block
+                    return c + 3 + 3 + 6, (q + 2) & 0xFFFF
+                c += 3 + 2 + 3 + 2 + 3 + (3 if (q & 0xFF) + e < 0x100 else 5)
+            else:
+                c += 2
+            c += 2
+            for y in range(2, e):
+                c += 5 + ((bp & 0xFF) + y > 0xFF) + 6 + 2 + 3 + (3 if y + 1 < e else 2)
+            y = e
+        c += 2 + 2 + 3 + 3
+        if (bp & 0xFF) + y > 0xFF:
+            bp += y
+            c += 2 + 5 + 3 + 3
+            if (bp >> 8) >= blim:
+                c += 2 + 3
+                break
+            c += 3
+        else:
+            bp += y
+            c += 3
+    c += 2 + 3 + 2 + 3 + 3 + 2 + 3 + 6
+    return c, (q + 2) & 0xFFFF
+
+
+def frame_waits(frame, page, mem=None):
+    """Where the host must go quiet inside this frame because the player is
+    drawing a fast block, and for how long: ([(index, seconds)], page after).
+    `page` is the page drawn before the frame; `mem` holds the preloaded
+    blocks. A page change without a block (a stream from before blocks) gets
+    the plain vertical-blank wait after the mark and the byte it reads next."""
+    cuts, ptr, top = [], 0x2000, 0x40
+    ops = list(walk_ops(frame))
+    for k, (kind, v, end) in enumerate(ops):
+        if kind == "mark":
+            changed = v != page
+            page, ptr, top = v, 0x2000 * v, 0x20 + 0x20 * v
+            if changed:
+                nxt = ops[k + 1] if k + 1 < len(ops) else None
+                if nxt and nxt[0] == "block":
+                    blk = frame[end + 3:nxt[2]]
+                    cyc, ptr = fast_cycles(FastMem(blk), FBUF, ptr, top)
+                    cuts.append((nxt[2], (cyc + BLOCK_OVERHEAD) / CPU_HZ + FAST_MARGIN))
+                else:
+                    cuts.append((min(end + 1, len(frame)), FLIP_QUIET))
+        elif kind == "preload" and v < PRELOAD_END:         # (the player refuses the others)
+            cyc, ptr = fast_cycles(mem if mem is not None else preload_mem(None), v, ptr, top)
+            cuts.append((end, (cyc + PRELOAD_OVERHEAD) / CPU_HZ + FAST_MARGIN))
+        elif kind == "run":
+            ptr += v
+        elif kind == "skip":
+            ptr += v
+    return cuts, page
+
+
+class FastMem:
+    """A fast block as it sits in memory at `at` (the player's buffer at FBUF by default)."""
+    def __init__(self, blk, at=FBUF):
+        self.blk, self.at = blk, at
+
+    def __getitem__(self, a):
+        k = a - self.at
+        return self.blk[k] if 0 <= k < len(self.blk) else 0
 
 
 # Line speeds the receiver can be built for (runtime/config.inc). The Makefile

@@ -160,6 +160,13 @@ r = run("video", "frames", "-o", "lc.a2v", "--fps", "6", "--audio", "long.wav", 
 check("video --language-card takes 7 s of sound", r.returncode == 0, r.stderr[-200:])
 r = run("stream", "lc.a2v", "--port", "/dev/null", "--install")
 check("stream refuses a long clip without --language-card", r.returncode != 0 and "--language-card" in r.stderr, r.stderr[-200:])
+r = run("video", "frames", "-o", "pl.a2v", "--fps", "6", "--flip", "--preload", "--budget", "1200")
+pl = a2hdr.parse_preload(open(P("pl.a2v"), "rb").read()) if r.returncode == 0 else None
+check("video --flip --preload stores the preloaded blocks", r.returncode == 0 and pl and pl[0] == 0x6000 and len(pl[1]) > 0, r.stderr[-200:])
+r = run("stream", "pl.a2v", "--port", "/dev/null")
+check("stream refuses a preloaded clip without --install", r.returncode != 0 and "--install" in r.stderr, r.stderr[-200:])
+r = run("video", "frames", "-o", "pl2.a2v", "--fps", "6", "--preload")
+check("video --preload needs --flip", r.returncode != 0 and "--flip" in r.stderr, r.stderr[-200:])
 r = run("lcprobe")
 check("lcprobe without --port fails cleanly", r.returncode == 2 and "--port" in r.stderr)
 r = subprocess.run(CLI + ["show", "plan", "nope.toml"], capture_output=True, text=True, cwd=tmp, env={**os.environ, "A2KIT_DEBUG": "1"})
