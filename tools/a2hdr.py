@@ -169,8 +169,9 @@ PRELOAD_END = 0xC000
 FLIP_WAIT = 0.019               # a fast block after a page change lasts at least this long on the line
 FAST_MARGIN = 0.001             # extra quiet time after a fast block is drawn, seconds
 FLIP_QUIET = 0.020              # quiet time after a page change without a fast block: one screen (16.7 ms) plus a little
-BLOCK_OVERHEAD = 120            # cycles: the last block byte read (up to one 51-cycle pass), into fast, and back to the line
-PRELOAD_OVERHEAD = 100          # cycles: the op's last byte to fast, and back to the line
+BLOCK_OVERHEAD = 120            # cycles: the last block byte read (up to one 51-cycle pass), into frun, and back to the line
+FRUN_CYCLES = 74                # cycles frun adds to its two fast calls
+PRELOAD_OVERHEAD = 130          # cycles: the op's last byte to fast (keeping ptr for a copy), and back to the line
 
 
 def block_bytes(baud):
@@ -226,54 +227,184 @@ def walk_ops(frame):
             yield "pal", b, i
 
 
-def fast_cycles(mem, addr, ptr, top):
-    """Cycles video.s takes to draw the fast block at `addr` of `mem` (anything
-    indexable by address) from screen address `ptr` on the page that ends at
-    `top` ($40 or $60), from jsr fast to its rts; and the address it leaves.
-    Counts every instruction of fast/fent/fnext/fend, page crossings included
-    (for an entry the player refuses, up to where it gives up)."""
-    c = 6 + 26
-    q, lim, bp = (ptr - 2) & 0xFFFF, top - 1, addr
-    blim = (addr >> 8) + 1 if addr == FBUF else PRELOAD_END >> 8
+# Fast block format (runtime/video.s): the screen bytes, then the control part:
+# the bytes' address (2 bytes), then entries of s, j. Each entry moves on s
+# bytes; j = FAST_J(n) then writes the next n bytes (1-49), FAST_HOP moves on
+# only, FAST_END ends the block (the line carries on from there) and FAST_NEXT
+# follows the bytes onto their next page (after a page's last byte).
+FAST_MAX = 49
+FAST_HOP, FAST_END, FAST_NEXT = 250, 253, 0
+COPY_FIELD = 0xE000             # a control part whose address is this + an offset is a copy from there
+
+
+def FAST_J(n):
+    return 250 - 5 * n
+
+
+def block_cycles(blk, ptr, top):
+    """Cycles the player takes to run a block it received into FBUF (its copy
+    part, then its draw part from ptr), from frun's first instruction to its
+    jmp chk, and where the line carries on (None if a part is refused)."""
+    mem = FastMem(blk)
+    c1, p1 = fast_cycles(mem, FBUF + blk[-3], ptr, top)
+    if p1 is None:
+        return c1 + 60, None
+    c2, p2 = fast_cycles(mem, FBUF + blk[-2], ptr, top)
+    return c1 + c2 + FRUN_CYCLES, p2
+
+
+def fast_cycles(mem, addr, ptr, top, blim=None):
+    """Cycles video.s takes to draw (or copy) the fast block whose control part
+    is at `addr` of `mem` (anything indexable by address) from screen address
+    `ptr` on the page that ends at `top` ($40 or $60), from jsr fast to its rts,
+    and the address it leaves in ptr (None if the player refuses the block).
+    Counts every instruction, for the entries an encoder writes (for a
+    damaged block, about as long as the player takes)."""
+    if blim is None:
+        blim = (addr >> 8) + 1 if addr >> 8 == FBUF >> 8 else PRELOAD_END >> 8
+    FEND, FBAD = 26, 13
+    c = 6 + 2 + 5 + int((addr & 0xFF) == 0xFF) + 2
+    fh, fl = mem[addr + 1], mem[addr]
+    if fh >= COPY_FIELD >> 8:           # a copy, from the other page
+        copy = True
+        c += 2 + 3 + 2 + 2 + 3 + 2 + 2 + 3 + 3 + 2 + 5 + 3 + 3 + 2 + 4 + 2 + 4 + 3 + 2 + 3 + 3
+        start = ((top - 0x20 + (fh & 0x1F)) << 8) | fl
+        y, dh, dlim = fl, (start >> 8) ^ 0x60, 0xFF
+        ptr = start
+    else:
+        copy = False
+        c += 3 + 3
+        if fh >= blim:
+            return c + 3 + 3 + FBAD, None
+        c += 2 + 3 + 3 + 4 + 2 + 4 + 2 + 5 + 3
+        y, dh, dlim = fl, fh, blim
+    c += 3 + 2 + 2 + 2 + 2 + 3 + 2 + 6 * 4 + 3 + 3 + 2 + 3 + 2 + 3 + 3 + 3 + 3 + 2 + 3 + 3 + 2 + 3 + 3 + 2 + 2 + 3
+    hdr = (addr + 2) & 0xFFFE
+    x, hp = hdr & 0xFF, hdr >> 8
+    bp = dh << 8
+    q = (ptr - y) & 0xFFFF
+    lim = top - 1
+    if (q >> 8) == top - 0x20:
+        c += 3
+    else:
+        c += 2
+        if top - 0x20 > (q >> 8):
+            return c + 3 + 3 + FBAD, None
+        c += 2
+    c += 3 + 3                          # ldy cnt, jmp fsel
+
+    def fsel():                         # cycles, and whether careful
+        if (q >> 8) >= lim:
+            return 3 + 3 + 3 + 4 + 2 + 4 + (3 if copy else 2) + 2 + 4 + 2 + 3, True
+        return 3 + 3 + 2 + 4 + (3 if copy else 2) + 2 + 4 + 3, False
+
+    k, slow = fsel()
+    c += k
+
+    def fhwp():                         # X wrapped: (cycles, out of block?)
+        nonlocal hp
+        hp += 1
+        if hp >= blim:
+            return 6 + 36 + 4 + 3 + 3 + 4 + 4 + 3, True
+        return 6 + 36 + 4 + 3 + 2 + 6, False
+
     while True:
-        s, e = mem[bp], mem[bp + 1]
-        c += 2 + 5 + 2 + 3 + 3
-        c += 7 if (q & 0xFF) + s > 0xFF else 3
-        q = (q + s) & 0xFFFF
-        c += 2 + 5 + ((bp & 0xFF) + 1 > 0xFF) + 2
-        if e < 3:
-            c += 3 + 2 + 2
-            if e == 0:
-                c += 2
-                break
-            c += 3
-            y = 2
+        s, j = mem[(hp << 8) + x], mem[(hp << 8) + x + 1]
+        carry = ((y if copy else q & 0xFF) + s) > 0xFF
+        if copy:
+            y = (y + s) & 0xFF
+            if carry:
+                q += 0x100
+                bp += 0x100
         else:
-            c += 2 + 3 + 3 + 3
-            qh = q >> 8
-            if qh >= lim:
-                if qh != lim or (q & 0xFF) + e > 0x100:     # the player refuses it (fbad) and gives up the block
-                    return c + 3 + 3 + 6, (q + 2) & 0xFFFF
-                c += 3 + 2 + 3 + 2 + 3 + (3 if (q & 0xFF) + e < 0x100 else 5)
+            q += s
+        if slow:                        # fentS / fentCS
+            if copy:
+                c += 2 + 4 + 2 + (2 + 5 + 5 + 3 if carry else 3)
             else:
-                c += 2
-            c += 2
-            for y in range(2, e):
-                c += 5 + ((bp & 0xFF) + y > 0xFF) + 6 + 2 + 3 + (3 if y + 1 < e else 2)
-            y = e
-        c += 2 + 2 + 3 + 3
-        if (bp & 0xFF) + y > 0xFF:
-            bp += y
-            c += 2 + 5 + 3 + 3
-            if (bp >> 8) >= blim:
+                c += 4 + 3 + 3 + (2 + 5 if carry else 3)
+        else:                           # fent / fentC
+            c += (2 + 4 + 2) if copy else (4 + 3 + 3)
+            if carry:
+                if copy:                # bcc not taken, jmp fcarc
+                    c += 2 + 3 + 5 + 5 + 3 + 3
+                else:                   # bcs taken, jmp fcarx
+                    c += 3 + 3 + 5 + 3 + 3
+                if (q >> 8) >= lim:
+                    c += 3 + 2 + 4 + 2 + 4 + 3
+                    slow = True
+                else:
+                    c += 2 + (2 if copy else 0) + 3
+            else:
+                c += 3 if copy else 2
+            if not slow:                # fj
+                c += 4 + 4 + 2 + 2
+                x = (x + 2) & 0xFF
+                if x == 0:
+                    k, out = fhwp()
+                    c += 3 + k
+                    if out:
+                        return c + FEND, (q + y) & 0xFFFF
+                    c += 2 + 3
+                else:
+                    c += 2
+                c += 3                  # jmp fcode
+        if slow:                        # fjS
+            c += 4 + 4 + 4 + 2 + 2
+            x = (x + 2) & 0xFF
+            if x == 0:
+                k, out = fhwp()
+                c += 2 + k
+                if out:
+                    return c + FEND, (q + y) & 0xFFFF
+            else:
+                c += 3
+            n = 0 if j in (FAST_HOP, FAST_END, FAST_NEXT) else (
+                (250 - j) // 5 if 5 <= j <= 245 and j % 5 == 0 else None)
+            c += 4
+            if n is None:
+                return c + 2 + 3 + 3 + FBAD, None
+            if n == 0:
+                c += 3
+            else:
+                c += 2 + 2 + 3 + 3 + 3
+                if (q >> 8) != lim:
+                    return c + 3 + 3 + FBAD, None
+                c += 2 + 3 + 3 + 2 + 3
+                first = (q & 0xFF) + y
+                if first > 0xFF:
+                    return c + 3 + 3 + FBAD, None
                 c += 2 + 3
-                break
+                end = first + n
+                if end <= 0xFF:
+                    c += 3
+                elif end == 0x100:
+                    c += 2 + 2
+                else:
+                    return c + 2 + 3 + 3 + FBAD, None
+            c += 2 + 3                  # fjs: clc, jmp fcode
+        if j == FAST_END:
+            return c + 3 + FEND, (q + y) & 0xFFFF
+        if j == FAST_HOP:
             c += 3
-        else:
-            bp += y
-            c += 3
-    c += 2 + 3 + 2 + 3 + 3 + 2 + 3 + 6
-    return c, (q + 2) & 0xFFFF
+            continue
+        if j == FAST_NEXT:
+            c += 3 + 5 + 3 + 4
+            bp += 0x100
+            if bp >> 8 >= dlim:
+                return c + 3 + 3 + FEND, (q + y) & 0xFFFF
+            c += 2 + 5 + 4
+            q += 0x100
+            if slow:
+                c += 3 + 5
+            else:
+                c += 2 + 3
+                k, slow = fsel()
+                c += k
+            continue
+        n = -(-(250 - j) // 5) if j < 250 else 0     # (a j no encoder writes runs into the next copy: about that)
+        c += 13 * n + 3
+        y = (y + n) & 0xFF
 
 
 def frame_waits(frame, page, mem=None):
@@ -290,15 +421,21 @@ def frame_waits(frame, page, mem=None):
             page, ptr, top = v, 0x2000 * v, 0x20 + 0x20 * v
             if changed:
                 nxt = ops[k + 1] if k + 1 < len(ops) else None
-                if nxt and nxt[0] == "block":
-                    blk = frame[end + 3:nxt[2]]
-                    cyc, ptr = fast_cycles(FastMem(blk), FBUF, ptr, top)
-                    cuts.append((nxt[2], (cyc + BLOCK_OVERHEAD) / CPU_HZ + FAST_MARGIN))
-                else:
+                if not (nxt and nxt[0] == "block"):
                     cuts.append((min(end + 1, len(frame)), FLIP_QUIET))
+        elif kind == "block":           # after a page change or mid-frame: received, then run
+            blk = frame[end - v:end]
+            cyc, ptr = block_cycles(blk, ptr, top)
+            cuts.append((end, (cyc + BLOCK_OVERHEAD) / CPU_HZ + FAST_MARGIN))
+            if ptr is None:             # refused: the player discards up to the next mark, which sets ptr again
+                ptr = 0x2000 * page
         elif kind == "preload" and v < PRELOAD_END:         # (the player refuses the others)
-            cyc, ptr = fast_cycles(mem if mem is not None else preload_mem(None), v, ptr, top)
+            m_ = mem if mem is not None else preload_mem(None)
+            cyc, p_ = fast_cycles(m_, v, ptr, top)
+            ptr = ptr if p_ is not None and m_[v + 1] >= COPY_FIELD >> 8 else p_    # a copy leaves the line where it was
             cuts.append((end, (cyc + PRELOAD_OVERHEAD) / CPU_HZ + FAST_MARGIN))
+            if ptr is None:
+                ptr = 0x2000 * page
         elif kind == "run":
             ptr += v
         elif kind == "skip":

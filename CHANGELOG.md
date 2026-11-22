@@ -19,9 +19,17 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   start of the next frame (a *fast block*, drawn from memory about four times
   faster than the line), so fewer frames are skipped.
 - `video --flip --preload` uploads part of the busiest frames into free memory
-  before playing (`stream --install`), so they keep up: "Hello, Apple" shows
-  275 of its 319 frames instead of 248, and the apple splitting in two plays at
-  the full 10 frames a second.
+  before playing (`stream --install`), so they keep up. `--preload-share`
+  chooses how the memory is shared out: `benefit` (the default) gives it to the
+  busy stretches it smooths the most per byte, and `first` to the busy frames in
+  order. "Hello, Apple" shows 277 of its 319 frames with `benefit` (the middle
+  and cloud wipes at the full 10 frames a second) and 288 with `first` (the
+  early wipes smooth, the later ones not), against 259 without preload.
+- Faster fast blocks, to cut the stutter in busy scenes of flipped video: the
+  player draws them about 1.5 times faster than before, and a page that is two
+  pictures behind copies the bytes the page on screen already has right,
+  instead of receiving them all over the line. `video.bin` is rebuilt (the
+  fast block format changed; `stream --install` uploads the new player).
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
   that turn into leaves) with full-screen wipes, at 10 frames a second.
