@@ -244,77 +244,220 @@ def _ops(runs, target, pos):
     return bytes(out)
 
 
-def fast_block(runs, target, pos, size=None):
-    """A fast block (see runtime/video.s) of `size` bytes holding as many of
-    these runs as fit (all of them, and no padding, without a size), drawn from
-    screen offset `pos`. Returns (block, the runs left over, the offset the
-    player carries on from)."""
-    out, q = bytearray(), pos - 2
-    room = size if size else 1 << 30
+def fast_entries(runs, target, pos, data_at, room=None):
+    """Encode runs as a fast block (format in a2hdr): the screen bytes, stored
+    from address `data_at`, and the entries, drawn from screen offset `pos`.
+    With `room`, only as many runs as fit in that many bytes of bytes, entries
+    and the 2-byte address (an end entry included). Returns (bytes, entries,
+    the runs left over, the offset the line carries on from)."""
+    data, ent = bytearray(), bytearray()
+    at, y = pos, data_at & 0xFF
     for k, (s, e) in enumerate(runs):
         c = s
         while c < e:
-            gap = c - 2 - q
+            gap = c - at
             hops = max(0, -(-(gap - 255) // 255))
-            n = min(e - c, 253, room - len(out) - 2 * hops - 4)     # room for this entry and the end
+            n = min(e - c, a2hdr.FAST_MAX, 0x100 - y)
+            if room is not None:
+                left = room - len(data) - len(ent) - 2 - 2 * hops - 2 - 2     # this entry and the end
+                while n > 0 and n + (2 if y + n == 0x100 else 0) > left:
+                    n -= 1
             if n < 1:
-                return _end(out, q, size), [(c, e)] + list(runs[k + 1:]), q + 2
+                ent += bytes([0, a2hdr.FAST_END])
+                return bytes(data), bytes(ent), [(c, e)] + list(runs[k + 1:]), at
             for _ in range(hops):
-                out += bytes([255, 2])
-                q += 255
+                ent += bytes([255, a2hdr.FAST_HOP])
+                at += 255
                 gap -= 255
-            out += bytes([gap, n + 2]) + bytes(target[c:c + n])
-            q, c = c - 2, c + n
-        if k + 1 == len(runs):              # the line carries on after the last byte
-            out += bytes([c - 2 - q, 0])
-            return bytes(out) + bytes((size or len(out)) - len(out)), [], c
-    return _end(out, q, size), [], q + 2
+            ent += bytes([gap, a2hdr.FAST_J(n)])
+            data += bytes(target[c:c + n])
+            at, c, y = c + n, c + n, y + n
+            if y == 0x100:                  # the bytes go on to the next page
+                y = 0
+                ent += bytes([0, a2hdr.FAST_NEXT])
+    ent += bytes([0, a2hdr.FAST_END])
+    return bytes(data), bytes(ent), [], at
 
 
-def _end(out, q, size):
-    out = bytes(out) + bytes([0, 0])
-    return out + bytes((size or len(out)) - len(out))
+COPY_GAP = 12                   # copy over up to this many bytes the other page also has right, rather than start a new entry
 
 
-def flip_head(runs, target, mark, size):
-    """The start of a frame that changes page: the mark and a fast block of
-    `size` bytes with the first runs, ending in a2hdr.BLOCK_END so the player
-    can tell it arrived whole. Returns (bytes, block, runs left, offset after)."""
-    blk, left, pos = fast_block(runs, target, 0, size - 1)
-    blk += bytes([a2hdr.BLOCK_END])
+def copy_runs(shown, other, target, gap=COPY_GAP):
+    """The runs a page showing `shown` can copy from the other page (`other`)
+    to get closer to `target`: the bytes it lacks that the other page has
+    right, merged over short gaps of bytes the other page has right too, so
+    every byte a copy writes ends up right."""
+    good = other == target
+    want = np.nonzero((shown != target) & good)[0]
+    if not len(want):
+        return []
+    runs, s_, e_ = [], int(want[0]), int(want[0]) + 1
+    for a_ in want[1:]:
+        a_ = int(a_)
+        if a_ - e_ <= gap and good[e_:a_].all():
+            e_ = a_ + 1
+        else:
+            runs.append((s_, e_))
+            s_, e_ = a_, a_ + 1
+    runs.append((s_, e_))
+    return runs
+
+
+def copy_entries(runs, room=None):
+    """The control part of a copy of these runs from the other page (format in
+    a2hdr): its address field (a2hdr.COPY_FIELD + where it starts) and its
+    entries. With `room`, only as many as fit in that many bytes. Returns
+    (bytes, the runs left over)."""
+    start = runs[0][0] if runs else 0
+    ent = bytearray()
+    at = start
+    for k, (s, e) in enumerate(runs):
+        c = s
+        while c < e:
+            gap = c - at
+            hops = max(0, -(-(gap - 255) // 255))
+            n = min(e - c, a2hdr.FAST_MAX, 0x100 - (c & 0xFF))     # (a copy's Y is the screen offset's low byte)
+            if room is not None and 2 + len(ent) + 2 * hops + 2 + (2 if (c + n) & 0xFF == 0 else 0) + 2 > room:
+                ent += bytes([0, a2hdr.FAST_END])
+                return (a2hdr.COPY_FIELD + start).to_bytes(2, "little") + bytes(ent), [(c, e)] + list(runs[k + 1:])
+            for _ in range(hops):
+                ent += bytes([255, a2hdr.FAST_HOP])
+                at += 255
+                gap -= 255
+            ent += bytes([gap, a2hdr.FAST_J(n)])
+            at = c = c + n
+            if c & 0xFF == 0:
+                ent += bytes([0, a2hdr.FAST_NEXT])
+    ent += bytes([0, a2hdr.FAST_END])
+    return (a2hdr.COPY_FIELD + start).to_bytes(2, "little") + bytes(ent), []
+
+
+def fbuf_block(cruns, runs, target, pos, size):
+    """A block as the player stores it at a2hdr.FBUF (`size` bytes): a copy
+    part with as many of the copy runs as fit, a draw part with as many of the
+    runs as fit after it, drawn from offset `pos`, then the offsets of the two
+    parts and a2hdr.BLOCK_END. Returns (block, copy runs left, runs left,
+    the offset the line carries on from)."""
+    room = size - 3
+    cpart, cleft = copy_entries(cruns, room - 4 - 1)
+    data, ent, left, pos = fast_entries(runs, target, pos, a2hdr.FBUF, room - len(cpart) - 1)
+    pad = len(data) & 1
+    dctl = len(data) + pad
+    blk = data + bytes(pad) + a2hdr.FBUF.to_bytes(2, "little") + ent
+    cctl = len(blk)
+    blk += cpart
+    blk += bytes(size - 3 - len(blk)) + bytes([cctl, dctl, a2hdr.BLOCK_END])
+    return blk, cleft, left, pos
+
+
+def line_copy_blocks(cruns, size=254):
+    """Blocks of up to `size` bytes that copy these runs, sent mid-frame with
+    their op. Returns [(op and block bytes, block)]."""
+    out = []
+    while cruns:
+        blk, cruns, _, _ = fbuf_block(cruns, [], None, 0, size)
+        n = len(blk) // 2
+        out.append((bytes([0x7F, n, n ^ a2hdr.OP_BLOCK]) + blk, blk))
+    return out
+
+
+def flip_head(runs, target, mark, size, cruns=()):
+    """The start of a frame that changes page: the mark and a block (see
+    fbuf_block) of `size` bytes, which the player receives while it waits for
+    the vertical blank, so it can tell it arrived whole. Returns (bytes, block,
+    runs left, offset after, copy runs left)."""
+    blk, cleft, left, pos = fbuf_block(list(cruns), runs, target, 0, size)
     n = size // 2
-    return bytes([mark, 0x7F, n, n ^ a2hdr.OP_BLOCK]) + blk, blk, left, pos
+    return bytes([mark, 0x7F, n, n ^ a2hdr.OP_BLOCK]) + blk, blk, left, pos, cleft
 
 
-def block_frame(runs, target, mark, size):
+def block_frame(runs, target, mark, size, cruns=()):
     """A frame that changes page: flip_head, then ops for the rest. Something
     always follows the block ($00, ignored, if nothing else), so a block that
     lost a byte takes that, not the next frame's mark. Returns (bytes, block)."""
-    head, blk, left, pos = flip_head(runs, target, mark, size)
+    head, blk, left, pos, _ = flip_head(runs, target, mark, size, cruns)
     return head + (_ops(left, target, pos) or b"\x00"), blk
 
 
-def preload_frame(shown, target, budget, mark, block, rate, addr, room):
+def preload_block(runs, target, pos, at):
+    """A fast block to preload at address `at` (a multiple of 4) holding all
+    these runs, from screen offset `pos`. The screen bytes start where the
+    player can index them without starting before the page (their address's
+    low byte at most `pos`), so they may start on the next page boundary,
+    with the control part before them if it fits there. Returns (the bytes
+    from `at`, the control part's address, for the op; a multiple of 4)."""
+    def a4(v):
+        return v + (-v % 4)
+    if at & 0xFF <= pos:
+        data, ent, _, _ = fast_entries(runs, target, pos, at)
+        ctl = a4(at + len(data))
+        return data + bytes(ctl - at - len(data)) + at.to_bytes(2, "little") + ent, ctl
+    nxt = (at | 0xFF) + 1
+    data, ent, _, _ = fast_entries(runs, target, pos, nxt)
+    if 2 + len(ent) <= nxt - at:
+        head = nxt.to_bytes(2, "little") + ent
+        return head + bytes(nxt - at - len(head)) + data, at
+    ctl = a4(nxt + len(data))
+    return bytes(nxt - at) + data + bytes(ctl - nxt - len(data)) + nxt.to_bytes(2, "little") + ent, ctl
+
+
+def copied(cruns, rest):
+    """The part of the copy runs done, when `rest` (a tail of them, its first
+    perhaps cut short) is left over."""
+    if not rest:
+        return list(cruns)
+    c0 = rest[0][0]
+    k = next(i for i, (s_, e_) in enumerate(cruns) if s_ <= c0 < e_)
+    return list(cruns[:k]) + ([(cruns[k][0], c0)] if c0 > cruns[k][0] else [])
+
+
+def apply_copy(page, other, cruns):
+    """The page after copying these runs from the other page."""
+    new = page.copy()
+    for s_, e_ in cruns:
+        new[s_:e_] = other[s_:e_]
+    return new
+
+
+def preload_frame(shown, target, budget, mark, block, rate, addr, room, other=None, copies_in_memory=True):
     """A frame that changes page and completes it, with part of its work drawn
     from a fast block preloaded at `addr` (at most `room` bytes): the block
-    after the mark takes the first runs, the preloaded one the fewest runs
-    after those that let the rest fit the budget on the line. Returns (frame
-    bytes, preloaded block), or None if it can't be done in one frame."""
-    diff = np.nonzero(shown != target)[0]
+    after the mark takes the copies and the first runs, the copies left over
+    go in memory too (or, with copies_in_memory=False, in mid-frame blocks on
+    the line, which saves memory but costs line time), and the preloaded block
+    takes the fewest runs after those that let the rest fit the budget on the
+    line. Returns (frame bytes, preloaded bytes from addr), or None if it
+    can't be done in one frame."""
+    cruns = copy_runs(shown, other, target) if other is not None else []
+    base = apply_copy(shown, other, cruns) if cruns else shown
+    diff = np.nonzero(base != target)[0]
     if not len(diff):
         return None
     page = 2 if mark == 0xFB else 1
-    head, blk, left, pos = flip_head(_runs(diff, 2), target, mark, block)
+    head, blk, left, pos, cleft = flip_head(_runs(diff, 2), target, mark, block, cruns)
     if not left:
         return None
     fixed = len(head) + block_quiet(blk, page, rate)
+    cpre, ccyc = b"", 0                 # the copies left over: preloaded too, at 2 bytes a run
+    if cleft and not copies_in_memory:
+        cbs = line_copy_blocks(cleft)
+        head += b"".join(d for d, _ in cbs)
+        fixed = len(head) + block_quiet(blk, page, rate) + sum(block_quiet(b_, page, rate) for _, b_ in cbs)
+    elif cleft:
+        cpre, _ = copy_entries(cleft)
+        cpre += bytes(-len(cpre) % 4)
+        ccyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(cpre, addr), addr, 0x2000 * page + pos, 0x20 + 0x20 * page)
+        head += a2hdr.preload_op(addr)
+        fixed += 4 + int(np.ceil(((ccyc + a2hdr.PRELOAD_OVERHEAD) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
+    at = addr + len(cpre)
 
     def build(m):
-        pre, _, end = fast_block(left[:m], target, pos)
-        cyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(pre, addr), addr, 0x2000 * page + pos, 0x20 + 0x20 * page)
-        tail = a2hdr.preload_op(addr) + _ops(left[m:], target, end)
+        pre, ctl = preload_block(left[:m], target, pos, at)
+        end = left[m - 1][1]
+        cyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(pre, at), ctl, 0x2000 * page + pos, 0x20 + 0x20 * page)
+        tail = a2hdr.preload_op(ctl) + _ops(left[m:], target, end)
         quiet = int(np.ceil(((cyc + a2hdr.PRELOAD_OVERHEAD) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
-        return head + tail, pre, fixed + len(tail) + quiet
+        return head + tail, cpre + pre, fixed + len(tail) + quiet
 
     lo, hi = 1, len(left)
     if build(hi)[2] > budget:
@@ -329,40 +472,69 @@ def preload_frame(shown, target, budget, mark, block, rate, addr, room):
     return (data, pre) if len(pre) <= room else None
 
 
-def block_quiet(blk, page, rate):
-    """Bytes' worth of line time the host stays quiet while the player draws blk."""
-    cyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(blk), a2hdr.FBUF, 0x2000 * page, 0x20 + 0x20 * page)
+def block_quiet(blk, page, rate, ptr=0):
+    """Bytes' worth of line time the host stays quiet while the player runs
+    the block blk (stored at FBUF) from screen offset ptr."""
+    cyc, _ = a2hdr.block_cycles(blk, 0x2000 * page + ptr, 0x20 + 0x20 * page)
     return int(np.ceil(((cyc + a2hdr.BLOCK_OVERHEAD) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
 
 
-def encode_frame(shown, target, budget, merge_gap=2, forced=None, mark=0xFE, block=0, rate=0):
+def encode_frame(shown, target, budget, merge_gap=2, forced=None, mark=0xFE, block=0, rate=0, other=None):
     """Return (frame bytes, new `shown` state), the frame within budget. `shown`
     is what the page the frame draws on holds, and `mark` names that page ($FE
     or $FB). With `block` (bytes; a frame that changes page), the frame starts
     with a fast block, and the time the player takes to draw it counts against
-    the budget too, as bytes at `rate` bytes a second.
+    the budget too, as bytes at `rate` bytes a second. With `other` (what the
+    other page holds, while it's on screen), the bytes it already has right
+    are copied from it rather than sent: in the block, then in mid-frame
+    blocks, as many as the budget allows.
 
     `forced` is an optional sorted array of screen addresses that are always
     sent (the scrub window); the changed bytes then fill whatever budget is
     left, most-changed first."""
     forced = np.zeros(0, dtype=np.int64) if forced is None else np.asarray(forced, dtype=np.int64)
-    diff = np.nonzero(shown != target)[0]
     page = 2 if mark == 0xFB else 1
-    if len(diff) == 0 and len(forced) == 0 and not block:
+    cruns = copy_runs(shown, other, target) if other is not None and rate else []
+    # the copies: first in the block (if any), then in mid-frame blocks, as many as fit with nothing else
+    after = (copy_entries(cruns, block - 3 - 4 - 1)[1] if block else cruns) if cruns else []
+    cbs = line_copy_blocks(after)
+
+    def head_cost(ncb):
+        if block:
+            head, blk, _, _, _ = flip_head([], target, mark, block, cruns)
+            c_ = len(head) + block_quiet(blk, page, rate)
+        else:
+            c_ = 1
+        return c_ + sum(len(d) + block_quiet(b_, page, rate) for d, b_ in cbs[:ncb])
+
+    ncb = len(cbs)
+    while ncb and head_cost(ncb) > budget:
+        ncb -= 1
+    rest = list(after)
+    for _ in cbs[:ncb]:
+        _, rest, _, _ = fbuf_block(rest, [], None, 0, 254)
+    done = copied(cruns, rest)
+    base = apply_copy(shown, other, done) if done else shown
+    diff = np.nonzero(base != target)[0]
+    if len(diff) == 0 and len(forced) == 0 and not block and not done:
         return bytes([mark]), shown
-    score = POP[shown[diff] ^ target[diff]]
+    score = POP[base[diff] ^ target[diff]]
     cand = diff[np.lexsort((diff, -score.astype(np.int16)))]    # most changed first
 
     def build(k):
         addrs = np.unique(np.concatenate([forced, cand[:k]]))
         runs = _runs(addrs, merge_gap) if len(addrs) else []
         if block:
-            data, blk = block_frame(runs, target, mark, block)
-            return data, runs, len(data) + block_quiet(blk, page, rate)
-        if not runs:
-            return bytes([mark]), [], 1
-        data = _emit(runs, target, mark)
-        return data, runs, len(data)
+            head, blk, left, pos, _ = flip_head(runs, target, mark, block, cruns)
+            quiet = block_quiet(blk, page, rate)
+        else:
+            head, left, pos, quiet = bytes([mark]), runs, 0, 0
+        quiet += sum(block_quiet(b_, page, rate) for _, b_ in cbs[:ncb])
+        ops = _ops(left, target, pos)
+        data = head + b"".join(d for d, _ in cbs[:ncb]) + ops
+        if (block or ncb) and not ops:
+            data += b"\x00"            # (something always follows a block, so a damaged one can't take the next mark)
+        return data, runs, len(data) + quiet
 
     if build(0)[2] > budget:
         raise ValueError("scrub window doesn't fit in the %d-byte frame budget; lower --scrub or raise --budget" % budget)
@@ -374,7 +546,7 @@ def encode_frame(shown, target, budget, merge_gap=2, forced=None, mark=0xFE, blo
         else:
             hi = mid - 1
     data, runs, _ = build(lo)
-    new = shown.copy()
+    new = apply_copy(shown, other, done) if done else shown.copy()
     for s_, e_ in runs:
         new[s_:e_] = target[s_:e_]
     return data, new
@@ -397,6 +569,9 @@ def main():
     ap.add_argument("--preload", action="store_true",
                     help="with --flip: put part of the busiest frames' work in the Apple II's free memory before playing, "
                          "so they keep up (stream it with --install)")
+    ap.add_argument("--preload-share", choices=["benefit", "first"], default="benefit",
+                    help="with --preload: how the memory is shared out. benefit (default): to the busy stretches "
+                         "it smooths the most per byte (slower to convert); first: to the busy frames in order, until it's full")
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
@@ -447,19 +622,19 @@ def main():
     if a.preload and a.scrub:
         sys.exit("--preload and --scrub can't be used together")
     pl_start = a2hdr.PRELOAD_START + -(-len(audio) // 256) * 256       # free memory after the sound
-    pl_addr, preload = pl_start, bytearray()
+    preload = bytearray()
     pages = [blank(), blank()]          # what pages 1 and 2 hold
     frames, pending, screens = [], [], []
     cursors = [0, 0]
     p = 0                               # the page drawn last (page 1, black, when the player starts)
-    goal, done, held = None, True, 0    # with --flip: the frame page p is heading for, and whether it's there
 
     def draw(target, bud, n, flips=False):
         nonlocal p
         window = (cursors[p] + np.arange(a.scrub)) % 0x2000
         cursors[p] = (cursors[p] + a.scrub) % 0x2000
         data, pages[p] = encode_frame(pages[p], target, bud - (3 if n else 0), forced=np.sort(window),
-                                      mark=0xFB if p else 0xFE, block=block if flips else 0, rate=rate)
+                                      mark=0xFB if p else 0xFE, block=block if flips else 0, rate=rate,
+                                      other=pages[1 - p] if a.flip else None)
         if n:
             data += bytes([0x7F, n, n ^ 0x55])
         frames.append(data)
@@ -477,77 +652,144 @@ def main():
             pending.append(int(np.count_nonzero(pages[p] != target)))
             screens.append(pages[p].copy())
     else:
-        # Even pacing: at each flip, pick the next picture so that it's due exactly
-        # when it will go on screen. Finishing a page that is k frames' time away
-        # can use the budget of k frames, so take the first frame ahead whose cost
-        # (every byte it still needs, sent at once) fits the budget up to its own
-        # turn. Then every picture appears at its right time, and motion keeps its
-        # speed through busy moments. A page finished early waits for its turn.
-        # The frame that changes page starts with a fast block (sent while the
-        # player waits for the vertical blank), so it has the same budget.
         targets = [screen_of(img) for img in imgs]
-        N = len(targets)
-        flip_at, shown = 0, 0               # when the page being drawn may go on screen
 
-        def cost(page, target):             # a lower bound: every byte it still needs, sent at once
-            diff = np.nonzero(page != target)[0]
-            return 1 + (len(_emit(_runs(diff, 2), target)) if len(diff) else 0)
+        def plan(caps):
+            """The whole --flip stream. caps: None = preload while memory lasts,
+            first come first served; else [(first frame, end, bytes)]: preload
+            only in those windows, up to that many bytes each. Returns (frames,
+            screens, pending, preload, when each picture went up, bytes used per window)."""
+            nonlocal p
+            p = 0
+            pages[:] = [blank(), blank()]
+            cursors[:] = [0, 0]
+            frames.clear(); screens.clear(); pending.clear()     # (draw appends to frames)
+            preload, pl_addr = bytearray(), pl_start
+            goal, done, held = None, True, 0
+            used = [0] * len(caps or [])
+            ups = []
+            # Even pacing: at each flip, pick the next picture so that it's due exactly
+            # when it will go on screen. Finishing a page that is k frames' time away
+            # can use the budget of k frames, so take the first frame ahead whose cost
+            # (every byte it still needs, sent at once) fits the budget up to its own
+            # turn. Then every picture appears at its right time, and motion keeps its
+            # speed through busy moments. A page finished early waits for its turn.
+            # The frame that changes page starts with a fast block (sent while the
+            # player waits for the vertical blank), so it has the same budget.
+            N = len(targets)
+            flip_at, shown = 0, 0               # when the page being drawn may go on screen
 
-        def finishes(page, target, k, mark):    # exactly: does drawing it for k frames complete it?
-            for s_ in range(k):
-                _, page = encode_frame(page, target, budget - a.scrub - 3, mark=mark,
-                                       block=block if s_ == 0 else 0, rate=rate)
-                if np.array_equal(page, target):
-                    return True
-            return False
+            def cost(page, target, other):      # a lower bound: what it still needs, sent at once (copies at 2 bytes a run)
+                cr = copy_runs(page, other, target)
+                diff = np.nonzero((apply_copy(page, other, cr) if cr else page) != target)[0]
+                return 1 + 2 * len(cr) + (len(_emit(_runs(diff, 2), target)) if len(diff) else 0)
 
-        for i in range(N):
-            n = bursts.get(i, 0)
-            if done and i >= flip_at:       # the page is complete and due: show it, plan the next
-                p = 1 - p
-                pre = None
-                for k in range(1, N - i + 1):
-                    room = k * budget - 4 - (a.scrub + 3) * k     # (the block carries bytes too)
-                    if (cost(pages[p], targets[i + k - 1]) <= room
-                            and finishes(pages[p], targets[i + k - 1], k, 0xFB if p else 0xFE)):
-                        break
-                    if k == 1 and a.preload:    # on time with help from memory, while there's room
-                        pre = preload_frame(pages[p], targets[i], budget - (3 if n else 0), 0xFB if p else 0xFE,
-                                            block, rate, pl_addr, a2hdr.PRELOAD_END - pl_addr)
-                        if pre:
+            def finishes(page, target, k, mark, other):     # exactly: does drawing it for k frames complete it?
+                for s_ in range(k):
+                    _, page = encode_frame(page, target, budget - a.scrub - 3, mark=mark,
+                                           block=block if s_ == 0 else 0, rate=rate, other=other)
+                    if np.array_equal(page, target):
+                        return True
+                return False
+
+            for i in range(N):
+                n = bursts.get(i, 0)
+                if done and i >= flip_at:       # the page is complete and due: show it, plan the next
+                    p = 1 - p
+                    pre = None
+                    for k in range(1, N - i + 1):
+                        room = k * budget - 4 - (a.scrub + 3) * k     # (the block carries bytes too)
+                        if (cost(pages[p], targets[i + k - 1], pages[1 - p]) <= room
+                                and finishes(pages[p], targets[i + k - 1], k, 0xFB if p else 0xFE, pages[1 - p])):
                             break
-                goal, flip_at = targets[i + k - 1], i + k
-                shown += 1
-                screens.append(pages[1 - p].copy())
-                if pre:
-                    data, blob = pre
-                    preload += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
-                    pl_addr = pl_start + len(preload)
-                    pages[p] = goal.copy()
-                    frames.append(data + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
+                        if k == 1 and a.preload:    # on time with help from memory, while there's room
+                            w = next((j for j, (c0, c1, _) in enumerate(caps) if c0 <= i < c1), -1) if caps is not None else -1
+                            limit = a2hdr.PRELOAD_END - pl_addr
+                            if caps is not None:
+                                limit = min(limit, caps[w][2] - used[w]) if w >= 0 else 0
+                            if limit > 0:
+                                pre = preload_frame(pages[p], targets[i], budget - (3 if n else 0), 0xFB if p else 0xFE,
+                                                    block, rate, pl_addr, limit, other=pages[1 - p],
+                                                    copies_in_memory=caps is not None)
+                            if pre:
+                                if w >= 0:
+                                    used[w] += len(pre[1]) + (-len(pre[1]) % 4)
+                                break
+                    goal, flip_at = targets[i + k - 1], i + k
+                    shown += 1
+                    ups.append(i)
+                    screens.append(pages[1 - p].copy())
+                    if pre:
+                        data, blob = pre
+                        preload += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
+                        pl_addr = pl_start + len(preload)
+                        pages[p] = goal.copy()
+                        frames.append(data + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
+                    else:
+                        draw(goal, budget, n, flips=True)
                 else:
-                    draw(goal, budget, n, flips=True)
-            else:
-                held += 1                   # finishing the page, or waiting for its turn:
-                screens.append(pages[1 - p].copy())     # this frame isn't shown
+                    held += 1                   # finishing the page, or waiting for its turn:
+                    screens.append(pages[1 - p].copy())     # this frame isn't shown
+                    if done:
+                        frames.append(bytes([0xFB if p else 0xFE] + ([0x7F, n, n ^ 0x55] if n else [])))
+                    else:
+                        draw(goal, budget, n)
+                done = np.array_equal(pages[p], goal)
+                pending.append(int(np.count_nonzero(pages[p] != targets[i])))
+            target = targets[-1]
+            while not (done and np.array_equal(goal, target)):    # finish the last page, and then the last frame,
+                flips = done                        # before a last mark shows it
                 if done:
-                    frames.append(bytes([0xFB if p else 0xFE] + ([0x7F, n, n ^ 0x55] if n else [])))
-                else:
-                    draw(goal, budget, n)
-            done = np.array_equal(pages[p], goal)
-            pending.append(int(np.count_nonzero(pages[p] != targets[i])))
-        target = targets[-1]
-        while not (done and np.array_equal(goal, target)):    # finish the last page, and then the last frame,
-            flips = done                        # before a last mark shows it
-            if done:
-                p, goal = 1 - p, target
-            screens.append(pages[1 - p].copy())
-            draw(goal, budget, 0, flips=flips)
-            done = np.array_equal(pages[p], goal)
-        frames.append(block_frame([], target, 0xFE if p else 0xFB, block)[0])     # the last mark shows the last page
-        screens.append(pages[p].copy())
-        pending.append(int(np.count_nonzero(pages[p] != target)))
+                    p, goal = 1 - p, target
+                screens.append(pages[1 - p].copy())
+                draw(goal, budget, 0, flips=flips)
+                done = np.array_equal(pages[p], goal)
+            frames.append(block_frame([], target, 0xFE if p else 0xFB, block)[0])     # the last mark shows the last page
+            screens.append(pages[p].copy())
+            pending.append(int(np.count_nonzero(pages[p] != target)))
 
+
+            return list(frames), list(screens), list(pending), preload, ups, used
+
+        def penalty(ups, c0, c1):           # how much the holds in [c0, c1) stutter: (hold - 1)^2 summed
+            t = [u for u in ups if c0 <= u < c1]
+            prev = max([0] + [u for u in ups if u < c0])
+            nxt = [u for u in ups if u >= c1][:1]
+            h = np.diff([prev] + t + nxt)
+            return int(((h - 1) ** 2).sum())
+
+        if not a.preload:
+            frames, screens, pending, preload, ups, _ = plan([])
+        elif a.preload_share == "first":
+            frames, screens, pending, preload, ups, _ = plan(None)
+        else:
+            # Share the memory by benefit: find the stretches where pictures are
+            # held (planning without preload), see how much memory each uses and
+            # how much smoother it gets with all of it, then give it out to the
+            # stretches that gain the most per byte.
+            _, _, _, _, ups0, _ = plan([])
+            spans = []
+            for t0, t1 in zip([0] + ups0, ups0):
+                if t1 - t0 > 1:
+                    c0, c1 = max(0, t0 - 2), t1 + 2
+                    if spans and c0 <= spans[-1][1] + 4:
+                        spans[-1][1] = c1
+                    else:
+                        spans.append([c0, c1])
+            mem = a2hdr.PRELOAD_END - pl_start
+            offers = []
+            for c0, c1 in spans:
+                _, _, _, _, ups_w, used_w = plan([(c0, c1, mem)])
+                gain = penalty(ups0, c0, c1) - penalty(ups_w, c0, c1)
+                if gain > 0 and used_w[0]:
+                    offers.append((gain / used_w[0], c0, c1, used_w[0]))
+            chosen, left = [], mem
+            for _, c0, c1, u in sorted(offers, reverse=True):
+                if left > 512:                  # (the last one may get only part of what it would use)
+                    chosen.append((c0, c1, min(u + 256, left)))
+                    left -= chosen[-1][2]
+            frames, screens, pending, preload, ups, _ = plan(sorted(chosen))
+        shown = len(ups) + 1
     blob = bytearray(a2hdr.stream_header(a2hdr.TYPE_VIDEO, len(frames)))
     blob.append(a.fps)
     for f in frames:

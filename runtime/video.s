@@ -101,16 +101,18 @@ top     = $1A                   ; $40 or $60: the end of the page being drawn
 sw      = $1B                   ; <LOWSCR or <HISCR: the switch that shows that page
 blim    = $17                   ; a fast block stops at this page
 want    = $18                   ; bytes in the fast block being received
-q       = $1C                   ; 2 bytes: fast block screen address, less 2
-bp      = $1E                   ; 2 bytes: fast block read pointer
+q       = $B8                   ; 2 bytes: fast block screen address less Y (saved and restored:
+bp      = $D8                   ; 2 bytes: fast block pointer   Applesoft's; CLV and CLD as opcodes, see fcode)
+zsave   = $1C                   ; 4 bytes: what $B8-$B9 and $D8-$D9 held
 
-        .export lost, ctl, vframe, vframe2, fast, fblock, vsync
+        .export lost, ctl, vframe, vframe2, fast, fblock, vsync, frun, chk
         .segment "CODE"
 
 start:
         php                     ; keep the caller's interrupt state
         sei                     ; audio bursts are cycle-timed
         cld                     ; binary arithmetic (plp restores the caller's mode)
+        jsr zsv
         lda #0                  ; clear both HGR pages so the encoder knows
         sta ptr                 ; the starting state is black
         lda #$20
@@ -279,6 +281,7 @@ endop:  jsr getb                ; a real end of stream is $80 $80
         bne lost                ; always
 vdone:  bit TXTSET
         bit LOWSCR              ; page 2 of text is the receiver's memory
+        jsr zrs
         plp
         rts
 resync: jmp vframe              ; (vframe is out of branch range from here)
@@ -298,6 +301,7 @@ getb:   lda KBD
 quit:   bit KBDSTRB
         bit TXTSET
         bit LOWSCR
+        jsr zrs
         plp                     ; the php from start
         rts
 
@@ -317,6 +321,8 @@ burst:  jsr getb                ; page count, or the block's address (low part)
         eor apages
         cmp #$3C
         beq preop
+        cmp #$2A
+        beq lblock
         cmp #$55
         bne lost2               ; neither: not a real op
         lda apages
@@ -338,6 +344,12 @@ bplay:  sta apages              ; (Z set for A)
 ctl2:   jmp ctl                 ; (out of branch range from here)
 lost2:  jmp lost
 
+lblock: lda apages              ; a block mid-frame: receive it, then run it
+        asl a
+        sta want
+        ldy #0
+        jmp frecv
+
 preop:  jsr getb                ; h: the block is at $6000 + 4 * (l + 128 * h)
         bmi ctl2
         sta tmp
@@ -353,8 +365,18 @@ preop:  jsr getb                ; h: the block is at $6000 + 4 * (l + 128 * h)
         bcs lost2
         lda #$C0
         sta blim
+        lda ptr                 ; (a copy leaves the line's address as it was)
+        sta psave
+        lda ptr+1
+        sta psave+1
         jsr fast
-        jmp chk
+        bit fmode
+        bpl @drew
+        lda psave
+        sta ptr
+        lda psave+1
+        sta ptr+1
+@drew:  jmp chk
 
 ; A frame start on a new page: the page drawn last (shown by sw xor 1) is
 ; complete, so show it in the next vertical blank. Normally a fast block
@@ -448,99 +470,103 @@ fblock: asl a
         lsr a
         bcs @s1
         bit HISCR
-        bcc @fin                ; (always)
+        bcc frecv                ; (always)
 @s1:    bit LOWSCR
-@fin:   cpy want                ; the rest of the block
-        beq @run
+frecv:  cpy want                ; the rest of the block
+        beq fgot
         lda KBD
-        bmi @key
+        bmi fkey
         lda ACIA_STAT,x
         and #$08
-        beq @fin
+        beq frecv
         lda ACIA_DATA,x
         sta FBUF,y
         iny
-        bne @fin                ; (always: want <= 254)
-@key:   jmp quit
-@bad:   jmp lost
-@run:   lda FBUF-1,y            ; the block's last byte must be SENT
+        bne frecv                ; (always: want <= 254)
+fkey:   jmp quit
+fblost:   jmp lost
+fgot:   lda FBUF-1,y            ; the block's last byte must be SENT
         cmp #SENT
-        bne @bad
-        lda #<FBUF
-        sta bp
-        lda #>FBUF
-        sta bp+1
-        lda #>FBUF+1
-        sta blim
-        jsr fast
-        jmp chk
+        bne fblost
+        jmp frun
 
-        .segment "FAST"         ; its own page: no branch crosses a page, so the
-                                ; cycle count is the same wherever the code moves
-; Draw the fast block at bp (format at the top). It may read up to the page
-; before blim, and never writes outside the page being drawn. The cycles are
-; counted in tools/a2hdr.py fast_cycles: keep them in step. Uses A, Y, cnt, tmp2.
-fast:   sec                     ; q = ptr - 2
+        .segment "FAST"
+; Draw the fast block whose control part is at bp (format at the top). It
+; reads only below the page blim, never writes outside the page being drawn,
+; and always stops, whatever the block holds. The cycles are counted in
+; tools/a2hdr.py fast_cycles: keep them in step. Uses A, X, Y, cnt, tmp,
+; tmp2; X is the slot again when it returns.
+fast:   ldy #1
+        lda (bp),y              ; where the screen bytes are (high)
+        cmp #$E0
+        bcc fdraw
+        jmp fastc               ; $E0 and up: a copy
+fdraw:  cmp blim
+        bcs fbadp                ; past the block's memory: refuse
+        sta tmp
+        lda blim                ; the bytes may run on up to blim
+        sta dlim
+        lda #0
+        sta fmode
+        dey
+        lda (bp),y              ; (low)
+        sta cnt
+fhdr:   lda bp                  ; the entries follow, read with X from their
+        clc                     ; page: X even, so it wraps to 0 at the page end
+        adc #2
+        and #$FE
+        tax
+        lda bp+1
+        adc #0
+        sta fh1+2
+        sta fh2+2
+        sta fh1s+2
+        sta fh2s+2
+        sta fh1c+2
+        sta fh1cs+2
+        lda tmp                 ; the bytes are read with Y from their page
+        sta bp+1
+        lda #0
+        sta bp
+        sec                     ; q = ptr - Y, so (q),y is the screen address
         lda ptr
-        sbc #2
+        sbc cnt
         sta q
         lda ptr+1
         sbc #0
         sta q+1
         ldy top
         dey
-        sty tmp2                ; the last page of the screen being drawn
-fent:   ldy #0
-        lda (bp),y              ; s
-        clc
-        adc q
-        sta q
-        bcc @1
-        inc q+1
-@1:     iny
-        lda (bp),y              ; e
-        cmp #3
-        bcc fspec
-        sta cnt
+        sty tmp2                ; the page's last page
+        lda top                 ; q must be on the page, so that even a wrapped
+        sec                     ; Y writes nowhere before it
+        sbc #$20
+        cmp q+1
+        beq fon
+        bcs fbadp
+fon:    ldy cnt
+        jmp fsel
+fbadp:   jmp fbad
+
+; the fast block pointers use $B8-$B9 and $D8-$D9 (see fcode): keep what they held
+zsv:    lda q
+        sta zsave
         lda q+1
-        cmp tmp2
-        bcs fedge               ; on the screen's last page, or past it
-fcopy:  iny
-@l:     lda (bp),y
-        sta (q),y
-        iny
-        cpy cnt
-        bne @l
-fnext:  tya                     ; on to the next entry
-        clc
-        adc bp
-        sta bp
-        bcc fent
-        inc bp+1
+        sta zsave+1
+        lda bp
+        sta zsave+2
         lda bp+1
-        cmp blim
-        bcc fent
-        bcs fend                ; (always) ran out of block: stop
-fspec:  ldy #2                  ; e < 3
-        cmp #0
-        bne fnext               ; 1 or 2: just moved on
-fend:   clc                     ; 0: the end. ptr = q + 2
-        lda q
-        adc #2
-        sta ptr
-        lda q+1
-        adc #0
-        sta ptr+1
+        sta zsave+3
         rts
-fedge:  bne fbad                ; past the screen's last page
-        lda q                   ; on it: the bytes must end by its last byte
-        clc
-        adc cnt                 ; q + e = 1 + the last address written, + 2
-        bcc fcopy
-        beq fcopy               ; exactly at the end
-fbad:   pla                     ; drop the return address
-        pla
-        jmp lost
+zrs:    lda zsave
+        sta q
+        lda zsave+1
+        sta q+1
+        lda zsave+2
+        sta bp
+        lda zsave+3
+        sta bp+1
+        rts
 
 ; wait for the start of the vertical blank (II, II+ and IIe alike). Reading a
 ; soft switch returns the byte the video circuit last read (the floating bus).
@@ -582,3 +608,267 @@ vsync:  lda #200
 @again: dec tmp
         bne @quiet
         rts
+
+; ---------------------------------------------------------------------------
+; Drawing fast blocks: three fixed pages. The cycles never depend on where
+; the code is (no branch that's taken crosses a page), and the layout is fixed
+; because the entries jump into FCODE at the offset they hold.
+; ---------------------------------------------------------------------------
+; ftab: what the entry jumping to fcode+j writes (bytes), for the careful
+; mode on the page's last page: 0 for next, hop and end, $FF for no entry.
+        .segment "FTAB"
+        .org $1600
+ftab:
+        .repeat 256, J
+        .if J = 0 || J = 250 || J = 253
+        .byte 0
+        .elseif J >= 5 && J <= 245 && (J .mod 5) = 0
+        .byte (250 - J) / 5
+        .else
+        .byte $FF
+        .endif
+        .endrepeat
+        .reloc
+
+; fcode: an entry with j jumps to fcode+j: j = 250 - 5n copies n bytes
+; (1-49), 250 moves on without writing (a hop), 253 ends the block, 0 goes
+; on to the data's next page. ANY j is safe: q = $B8 and bp = $D8 are CLV and
+; CLD as opcodes, page $18 is CLC, and the labels the jumps name sit at
+; addresses whose low bytes are harmless one-byte opcodes too, so a jump
+; into the middle of an instruction runs only a few harmless ones and
+; carries on with a copy (writing within [q, q+255]), an end or fbad.
+        .segment "FCODE"
+        .org $1700
+fcode:  jmp fnext               ; j = 0
+        .byte $18, $18          ; (CLC CLC: runs into the copies)
+        .repeat 49
+        lda (bp),y
+        sta (q),y
+        iny
+        .endrepeat
+ftail:  jmp fent                ; j = 250; fentS on the page's last page
+        jmp fend                ; j = 253
+        .assert * = $1800, error, "fcode must fill its page"
+        .reloc
+
+; The entries: s (move on s bytes: q += s), then j. A copy writes its n
+; bytes at (q),y and Y moves on with it, so the screen address only grows.
+; Fast mode, while q is at least a page from the end (writes stay within
+; [q, q+255]): 32 cycles an entry + 13 a byte. Careful mode, on the last page:
+; each entry's bytes are checked against the end first.
+        .segment "FDISP"
+        .org $1800
+        jmp fbad                ; (runs on from an entry at fcode+254 or +255)
+fstop:  jmp fend                ; (out of branch range)
+        .res $1818 - *
+        .assert * = $1818, error, "fnext's low byte must be CLC"
+fnext:  inc bp+1                ; j = 0: Y has wrapped, the bytes and q go on a page
+        lda bp+1
+        cmp dlim
+        bcs fstop               ; out of block: stop
+        inc q+1
+        bit fmode
+        bvs @stay
+        jmp fsel
+@stay:  jmp (ftail+1)           ; careful mode stays careful
+        .res $1838 - *
+        .assert * = $1838, error, "fentCS's low byte must be SEC"
+fentCS: tya                     ; a copy, carefully: s moves Y on
+fh1cs:  adc $1300,x
+        tay
+        bcc fjS
+        inc q+1
+        inc bp+1
+        jmp fjS
+        .res $186A - *
+        .assert * = $186A, error, "fentS's low byte must be ROR A"
+fentS:
+fh1s:   lda $1300,x             ; s
+        adc q
+        sta q
+        bcc fjS
+        inc q+1                 ; (past the page now: only entries writing nothing pass)
+fjS:
+fh2s:   lda $1301,x             ; j
+        sta fjsj+1
+        sta flk+1
+        inx
+        inx
+        bne flk
+        jsr fhwp                ; the entries' next page
+flk:    lda ftab                ; n
+        beq fjs                 ; writes nothing
+        bmi fno                 ; no such entry
+        sta cnt
+        lda q+1
+        cmp tmp2
+        bne fno                 ; on the page after (or wrapped)
+        sty tmp
+        lda q
+        clc
+        adc tmp                 ; q + Y: the first byte
+        bcs fno                 ; on the page after
+        adc cnt                 ; one past the last
+        bcc fjs
+        bne fno                 ; past the end
+fjs:    clc                     ; (exactly at the end is fine)
+fjsj:   jmp fcode
+fno:    jmp fbad                ; (out of branch range)
+        .res $18B8 - *
+        .assert * = $18B8, error, "fent's low byte must be CLV"
+fent:
+fh1:    lda $1300,x             ; s
+        adc q                   ; (carry is always clear here)
+        sta q
+        bcs fcar
+fj:
+fh2:    lda $1301,x             ; j
+        sta fjmp+1
+        inx
+        inx
+        beq fhw
+fjmp:   jmp fcode
+fhw:    jsr fhwp
+        clc
+        jmp fjmp
+fcar:   jmp fcarx               ; (out of branch range)
+        .res $18D8 - *
+        .assert * = $18D8, error, "fend's low byte must be CLD"
+fend:   tya                     ; the line carries on from q + Y
+        clc
+        adc q
+        sta ptr
+        lda q+1
+        adc #0
+        sta ptr+1
+        ldx #SLOTX
+        rts
+        .res $18EA - *
+        .assert * = $18EA, error, "fentC's low byte must be NOP"
+fentC:  tya                     ; a copy: s moves Y on (q and bp stay page-aligned)
+fh1c:   adc $1300,x
+        tay
+        bcc fj
+        jmp fcarc
+        .assert * <= $1900, error, "FDISP overflows its page"
+        .reloc
+
+; The rest of the fast block code: not entry points, so anywhere.
+        .segment "FAST2"
+fmode:  .byte 0                 ; $80: a copy; $40: careful mode
+dlim:   .byte 0                 ; the bytes' (or copy's) pages stop here
+psave:  .word 0                 ; the line's address while a block's copy runs
+
+; A copy: the address field is $E000 + the offset it starts at. Its bytes are
+; read from the other page at the same place, so bp = q xor $6000.
+fastc:  and #$1F
+        clc
+        adc top
+        sec
+        sbc #$20
+        sta tmp                 ; (where fhdr expects the bytes' page)
+        sta ptr+1               ; ptr = where the copy starts (the caller keeps the line's)
+        dey
+        lda (bp),y
+        sta ptr
+        sta cnt                 ; Y starts at its low byte, so q is page-aligned
+        lda #$FF                ; (the other page bounds the reads: see fsel)
+        sta dlim
+        lda #$80
+        sta fmode
+        lda tmp
+        eor #$60                ; the other page
+        sta tmp
+        jmp fhdr                ; (q = ptr - Y: page-aligned, like the bytes' page)
+
+fsel:   lda q+1                 ; fast or careful, from q
+        cmp tmp2
+        bcs @s
+        bit fmode
+        bmi @c
+        lda #<fent
+        sta ftail+1
+        jmp fent                ; (carry is clear)
+@c:     lda #<fentC
+        sta ftail+1
+        jmp fentC
+@s:     lda fmode
+        ora #$40
+        sta fmode
+        bmi @cs
+        lda #<fentS
+        sta ftail+1
+        clc
+        jmp fentS
+@cs:    lda #<fentCS
+        sta ftail+1
+        clc
+        jmp fentCS
+
+fcarx:  inc q+1                 ; s carried: the next page
+        lda q+1
+        cmp tmp2
+        bcs @s
+        jmp fj                  ; (carry is clear)
+@s:     lda #<fentS             ; the page's last page: carry on carefully
+        sta ftail+1
+        lda #$40
+        sta fmode
+        jmp fjS
+fcarc:  inc q+1                 ; a copy's skip carried
+        inc bp+1
+        lda q+1
+        cmp tmp2
+        bcs @s
+        clc
+        jmp fj
+@s:     lda #<fentCS
+        sta ftail+1
+        lda #$C0
+        sta fmode
+        jmp fjS
+
+; Run a block received into FBUF (Y = its length): the two bytes before SENT
+; say where its copy part and its draw part are. The copy runs first and
+; leaves the line's address as it was; the draw carries on from there.
+frun:   lda FBUF-3,y
+        sta bp
+        lda FBUF-2,y
+        sta frd+1
+        lda #>FBUF
+        sta bp+1
+        lda #>FBUF+1
+        sta blim
+        lda ptr
+        sta psave
+        lda ptr+1
+        sta psave+1
+        jsr fast
+        lda psave
+        sta ptr
+        lda psave+1
+        sta ptr+1
+frd:    lda #0                  ; (the draw part's offset)
+        sta bp
+        lda #>FBUF
+        sta bp+1
+        jsr fast
+        jmp chk
+
+fhwp:   inc fh1+2               ; X wrapped: the entries go on a page
+        inc fh2+2
+        inc fh1s+2
+        inc fh2s+2
+        inc fh1c+2
+        inc fh1cs+2
+        lda fh1+2
+        cmp blim
+        bcs @out
+        rts
+@out:   pla                     ; out of block: stop
+        pla
+        jmp fend
+fbad:   pla                     ; refused: drop the return address
+        pla
+        ldx #SLOTX
+        jmp lost

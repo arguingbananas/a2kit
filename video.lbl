@@ -1,7 +1,9 @@
-al 000F1C .ctl
+al 000E94 .chk
+al 000F1F .ctl
 al 001200 .fast
-al 001123 .fblock
-al 000F28 .lost
-al 000EB6 .vframe
-al 000EC2 .vframe2
-al 00126E .vsync
+al 00114A .fblock
+al 001494 .frun
+al 000F2B .lost
+al 000EB9 .vframe
+al 000EC5 .vframe2
+al 00128D .vsync
