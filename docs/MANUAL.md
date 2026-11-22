@@ -296,12 +296,22 @@ Flipped streams play only with the player from this version of a2kit, which `--i
 ./a2kit stream out/hello_apple.a2v --port /dev/ttyUSB0 --install
 ```
 
-The serial line is the limit in busy moments, but the Apple II's memory isn't full. With `--preload`, when a picture can't be finished in its own frame, the encoder puts the smallest part of its work that lets it be on time into a fast block, which `stream --install` uploads into free memory before playing. The player then draws that part from memory, while the line carries the rest. Preloaded blocks go after the sound, up to `$BFFF` (24 KB for a clip without sound). There isn't enough for every busy moment, so `--preload-share` chooses how it's shared out:
+The serial line is the limit in busy moments, but the Apple II's memory isn't full. With `--preload`, when a picture can't be finished on time, the encoder puts the smallest part of its work that lets it be on time into fast blocks, which `stream --install` uploads into free memory before playing. The player then draws that part from memory, while the line carries the rest. A picture so busy that even drawing it from memory takes longer than a frame is spread over a few frames, with a block from memory in each. Preloaded blocks go after the sound, up to `$BFFF` (24 KB for a clip without sound), and with `--language-card` on into a [language card](#a2kit-lcprobe)'s `$D000–$FEFF` (12 KB more). There isn't enough for every busy moment, so `--preload-share` chooses how it's shared out:
 
-- **`benefit`** (the default): the encoder first plans the clip without preload to find the stretches where a picture stays on screen too long, then works out how much smoother each one gets with memory, and gives the memory to those that gain the most per byte. The leftover copies of a frame go in memory too. Converting takes longer (about 40 seconds for `hello_apple.gif`, against 8). In `hello_apple.gif`, 277 of the 319 frames are shown, 22 KB for 18 frames: the middle and cloud wipes play at the full 10 frames a second, while the iris wipe and the last one still hold a picture for up to 0.7 s.
-- **`first`**: the memory goes to the busy frames in order until it's full, and leftover copies go on the line. More frames are shown in all (288 of 319 for `hello_apple.gif`, 24 KB for 33 frames), but they're mostly early in the clip: the first wipes are smooth, while the later ones still hold a picture for up to 0.8 s.
+- **`benefit`** (the default): the encoder first plans the clip without preload to find the stretches where a picture stays on screen too long, then works out how much smoother each one gets with memory, and gives the memory to those that gain the most per byte. The leftover copies of a frame go in memory too. Converting takes longer (about 75 seconds for `hello_apple.gif`, against 8).
+- **`first`**: the memory goes to the busy frames in order until it's full, and leftover copies go on the line. More frames are shown in all, but mostly early in the clip, so the later wipes stay jerky.
 
-The upload takes about 3 seconds more. The summary line says how much is preloaded and for how many frames.
+For `hello_apple.gif` at 10 frames a second (the longest any picture stays on screen in each wipe: the apple splitting, the iris, the middle, the cloud and the last one):
+
+| | Frames shown | Longest holds |
+|---|---|---|
+| No preload | 259 of 319 | 0.4, 0.7, 0.5, 0.8, 0.8 s |
+| `--preload` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.8, 0.5 s |
+| `--preload-share first` | 286 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
+| `--preload --language-card` (`benefit`) | 286 | 0.4, 0.5, 0.1, 0.5, 0.3 s |
+| `--preload-share first --language-card` | 294 | 0.4, 0.2, 0.1, 0.6, 0.8 s |
+
+The upload takes about 3 seconds more (4.5 with the card). The summary line says how much is preloaded and for how many frames.
 
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
@@ -321,7 +331,7 @@ The upload takes about 3 seconds more. The summary line says how much is preload
 | `--preload-share benefit` / `first` | With `--preload`: share the memory out where it smooths playback the most per byte (`benefit`, the default; slower to convert), or to the busy frames in order (`first`). See *Preloading the busiest moments* above. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
-| `--language-card` | Only with `--audio`. Allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe). Stream the clip with `--language-card` too. |
+| `--language-card` | With `--audio`, allow up to about 9 seconds of sound, the last 3 in a [language card](#a2kit-lcprobe); with `--preload`, preload into the card too (12 KB more). Stream the clip with `--language-card` too. |
 | `--burst-pages N` | Length of each sound burst in 64 ms units (default 1). The encoder raises it if there would be more bursts than frames. |
 | `--gain N` | Only with `--audio`. Volume multiplier, as in [`a2kit audio`](#4-a2kit-audio) (default 1.0). Values above 1 clip. |
 | `--even-out` | Only with `--audio`. Even out the sound's volume, as in [`a2kit audio`](#4-a2kit-audio); use it for narration, not for effects or music. |
@@ -462,7 +472,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--baud N` | Line speed: must match the receiver, 115200 (default) or 19200 with `a2kit-boot-19200.dsk`. `A2KIT_BAUD` sets the default. |
 | `--install` | Upload the video player (and any sound) first. Use it every time unless the player is already running. **Required** for clips with sound. |
 | `--rtscts` | Hardware flow control on your port. |
-| `--language-card` | Needed for a clip made with `video --language-card`: uploads the part of the sound past 6.2 s to a [language card](#a2kit-lcprobe). |
+| `--language-card` | Needed for a clip made with `video --language-card`: uploads the part of the sound past 6.2 s, and preloaded blocks past `$BFFF`, to a [language card](#a2kit-lcprobe). |
 
 **Things to know**
 
@@ -637,6 +647,7 @@ Press a key on the Apple II afterwards to go back to the receiver. The test over
 - Only use it after `lcprobe` has reported `16K GOOD`. On a machine without a card, the sound past 6.2 s would play from ROM as noise.
 - The receiver always lets uploads for `$D000` and up go to the card's RAM while ROM stays readable. Without a card that changes nothing. The players switch the card's RAM in only around the sound that's in it, and switch ROM back before they return.
 - `send --language-card` also accepts `--addr` anywhere in `$D000–$FEFF`.
+- **Preloaded video.** `video --flip --preload --language-card` carries the preloaded blocks on into the card after main RAM (or after the sound, if that's already in the card), 12 KB more; see *Preloading the busiest moments*. The player reads the card only while it draws a block that's in it.
 - A IIe has the same 16K built in, but a2kit hasn't been tried on one.
 
 **Tested:** `lcprobe` reported `16K GOOD` on a real Microsoft RAMCard. Long sound in a show and in a video has so far only played in MAME's emulated Apple II+ with its Language Card, where recordings of the sound matched the source WAV, including the part played from the card.
@@ -764,7 +775,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | 4 | 2 | Payload length |
 | 6 | 2 | Cycle budget per frame (audio blocks: 128, the speaker player's cycles per sample) |
 
-**Video stream** (`.a2v`): an 8-byte header whose length field holds the *frame count*, one byte of fps, then for each frame a 2-byte length and the frame bytes. Optionally `AU`, a 2-byte length and the sound, then optionally `PL`, a 2-byte address, a 2-byte length and the preloaded fast blocks (`video --preload`); `stream` uploads both before starting.
+**Video stream** (`.a2v`): an 8-byte header whose length field holds the *frame count*, one byte of fps, then for each frame a 2-byte length and the frame bytes. Optionally `AU`, a 2-byte length and the sound, then optionally `PL`, a 2-byte address, a 2-byte length and the preloaded fast blocks (`video --preload`), laid out like the sound: past `$BFFF` they carry on at `$D000`, in a language card. `stream` uploads both before starting.
 
 **Frame commands** (what the Apple II player understands). Every data byte is below `$80` and every control byte is `$80` or above, which is how the player notices damage. A screen byte's top bit, its palette bit in colour, is therefore not sent with it: `$FC` and `$FD` set it for the literal bytes that follow, and each frame starts with it off.
 
@@ -778,10 +789,10 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$FF lo hi` | Long skip of lo + 128×hi bytes |
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
 | `$7F n c` + 2n bytes | With c = n xor `$2A`: a fast block of 2n bytes, the last one `$A5`. Right after a frame mark that changes page it can copy and draw; elsewhere in a frame it only copies |
-| `$7F l c h` | With c = l xor `$3C`: draw the fast block preloaded at `$6000` + 4×(l + 128×h) |
+| `$7F l c h` | With c = l xor `$3C`: draw the fast block preloaded at `$6000` + 4×(l + 128×h), in main RAM up to `$BFFF` or in a language card's `$D000–$FEFF` (read only while it's drawn; its bytes must be there too) |
 | `$80 $80` | End of video |
 
-**Fast blocks** are drawn from memory, about six times faster than the line brings bytes, and so have a format of their own. A block has one or two *parts*, each a run of screen bytes followed by its *control part*: a 2-byte address, then entries of two bytes, *s* and *j*. The address is where the part's screen bytes start, or, if it's `$E000` or above, says the part is a *copy*: it has no screen bytes and copies from the page on screen to the same place on the page being drawn, starting at offset address − `$E000`. Each entry moves on *s* bytes, then *j* says what to do: *j* = 250 − 5*n* (*n* = 1–49) writes the next *n* bytes, 250 only moves on, 253 ends the part (a draw part leaves the frame's position there), and 0 goes on to the next page of screen bytes after a page's last one. Every entry is checked to stay on the frame's page. A block received over the line ends with three bytes: where its copy part's and its draw part's control parts start, and `$A5`. A copy only covers bytes the page on screen already has right, so a copied stretch is always right, whatever order the parts run in. The computer stays quiet while a block is drawn, for a time it works out to the cycle from the block (`fast_cycles` and `block_cycles` in `tools/a2hdr.py`, checked against the player in the tests).
+**Fast blocks** are drawn from memory, about six times faster than the line brings bytes, and so have a format of their own. A block has one or two *parts*, each a run of screen bytes followed by its *control part*: a 2-byte address, then entries of two bytes, *s* and *j*. The address is where the part's screen bytes start, or, if it's `$2000–$3FFF` (screen memory, never where a block's bytes are kept), says the part is a *copy*: it has no screen bytes and copies from the page on screen to the same place on the page being drawn, starting at offset address − `$2000`. Each entry moves on *s* bytes, then *j* says what to do: *j* = 250 − 5*n* (*n* = 1–49) writes the next *n* bytes, 250 only moves on, 253 ends the part (a draw part leaves the frame's position there), and 0 goes on to the next page of screen bytes after a page's last one. Every entry is checked to stay on the frame's page. A block received over the line ends with three bytes: where its copy part's and its draw part's control parts start, and `$A5`. A copy only covers bytes the page on screen already has right, so a copied stretch is always right, whatever order the parts run in. The computer stays quiet while a block is drawn, for a time it works out to the cycle from the block (`fast_cycles` and `block_cycles` in `tools/a2hdr.py`, checked against the player in the tests).
 
 A frame mark that changes page first shows the page the frame before it was drawn on; a mark for the same page leaves the screen as it is. A stream that only uses `$FE` therefore draws on the page being shown, as older players did. A `video --flip` stream always draws on the hidden page: it changes page once a page is complete, and repeats a page's mark while it's still finishing it. When a mark changes page, the player first waits for the vertical blank, which takes up to 17 ms. Meanwhile it stores the fast block that follows the mark, which is long enough (19 ms of the line) to outlast the wait; it then switches, checks that the block ends in `$A5` (if not, a byte was lost or gained, and it discards until the next mark), and draws it. Something always follows a block (`$00`, ignored, if nothing else), so a block that lost a byte never swallows the next frame's mark. If a page change comes without a block, the player waits first and the host sends nothing for 20 ms. To find the blank it keeps `$9B` in the screen holes of both pages (`$xx78–$xx7F` and `$xxF8–$xxFF`, never shown), which the video circuit reads only during the top third of the screen and the blank. It waits until about six lines go by without seeing `$9B` on the floating bus, then flips at the next one. No shown byte of a stream is `$9B`: the encoder changes one dot of any that would be. A run or skip that would go past the end of the frame's page is refused.
 
@@ -806,14 +817,14 @@ A frame mark that changes page first shows the page the frame before it was draw
 | `$1080–$11DE` | Video player, continued: sound bursts, page changes and the fast block's wait |
 | `$1200–$12C9` | Video player: the start of fast block drawing and the vertical-blank wait |
 | `$1300–$13FF` | Video player: the fast block after a page change |
-| `$1400–$14F1` | Video player: fast blocks, continued (copies, preloaded blocks) |
+| `$1400–$155D` | Video player: fast blocks, continued (copies, preloaded blocks, the language card) |
 | `$1600–$18F3` | Video player: fast block drawing, its tables and its code (each on a page of its own, so the timing never changes) |
 | `$1900–$1FFF` | **Free** (1.75K; `lcprobe` uses `$1200–$148D` and `chargen capture` `$1200–$1230`, over the video player, which `--install` uploads again) |
 | `$2000–$3FFF` | Hi-res page 1 (the video player puts `$9B` in its screen holes) |
 | `$4000–$5FFF` | Hi-res page 2 (second show image; video with `--flip`, and the video player clears it, with `$9B` in the screen holes, when it starts; `ping` scratch space) |
 | `$6000–$BFFF` | Sound data (96 pages of 256 bytes, about 6.2 s), and a show's third and later pictures, packed. Before the sound is sent, packed pictures go here to be unpacked. A video's preloaded fast blocks (`--preload`) go after its sound |
 | `$C000–$CFFF` | I/O and slot ROMs |
-| `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound also goes to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s) |
+| `$D000–$FFFF` | Applesoft and Monitor ROM. With a language card and `--language-card`, sound and a video's preloaded blocks also go to the card's RAM at `$D000–$FEFF` (bank 2; 47 pages, about 3.0 s of sound) |
 
 Text page 2 (`$0800–$0BFF`) is the same memory as the receiver, buffer and scene table, so a2kit never displays it.
 

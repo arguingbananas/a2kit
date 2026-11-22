@@ -54,7 +54,7 @@ def fast_decode(get, ctl, pos, screen, written=None):
     screen: 8K for page 1, 16K for both); returns where the line carries on.
     A copy reads the other page at the same place, so it needs 16K."""
     field = get[ctl] | get[ctl + 1] << 8
-    copy = field >= a2hdr.COPY_FIELD
+    copy = a2hdr.is_copy(field >> 8)
     if copy:
         pos = (pos & 0x2000) + (field & 0x1FFF)
     d, k = field, ctl + 2
@@ -102,7 +102,7 @@ def ref_decode(stream, screen, written=None, mem=None):
                 pos = block_decode(stream[i + 2:i + 2 + 2 * n], pos, screen, written); i += 2 + 2 * n
             elif c == n ^ a2hdr.OP_PRELOAD:
                 a_ = a2hdr.preload_addr(n, stream[i + 2]); p_ = fast_decode(mem, a_, pos, screen, written); i += 3
-                pos = pos if mem[a_ + 1] >= a2hdr.COPY_FIELD >> 8 else p_     # (a copy leaves the line where it was)
+                pos = pos if a2hdr.is_copy(mem[a_ + 1]) else p_     # (a copy leaves the line where it was)
             else: i += 2
         elif b == 0xFF: pos += stream[i] + 128 * stream[i + 1]; i += 2
         elif b in (0xFC, 0xFD): pal = 0x80 if b == 0xFD else 0
@@ -242,9 +242,9 @@ def run_6502(items, audio=b"", pokes=None, i_flag_before=False, d_flag_before=Fa
         assert n < 30_000_000, "runaway"
     after = list(mem._subject)
     # only the screen, zero page, the stack and the test stub may change
-    # (the player's own variables and the code it patches: $1400-$14FF, $1700-$18FF)
+    # (the player's own variables and the code it patches: $1400-$15FF, $1700-$18FF)
     ok_zones = [(0x2000, 0x5FFF), (0x0000, 0x00FF), (0x0100, 0x01FF), (0x0300, 0x0303), (a2hdr.FBUF, a2hdr.FBUF + 0xFF),
-                (0x1400, 0x14FF), (0x1700, 0x18FF)]
+                (0x1400, 0x15FF), (0x1700, 0x18FF)]
     stray = [a for a in range(0x10000) if before[a] != after[a] and not any(lo <= a <= hi for lo, hi in ok_zones) and not (0xC000 <= a < 0xD000)]
     stray += [a for a in (0xB8, 0xB9, 0xD8, 0xD9) if before[a] != after[a]]     # Applesoft's, borrowed and given back
     acia = {0xC0A9, 0xC0AA, 0xC0AB}
@@ -742,7 +742,7 @@ for j in range(256):
             ent = hop + bytes([1, j]) + bytes([0, a2hdr.FAST_END] * 3)
             b_ = make_fbuf(bytes(range(0x40, 0x80)), [0, a2hdr.FAST_END], ent) if copy else make_fbuf(bytes(range(0x40, 0x80)), ent)
             cyc, ptr_, wr, x_ = run_block(b_, 0x2000, 0x40, other=tg)
-            bad_w = [a_ for a_ in wr if not (0x2000 <= a_ < 0x4000 or a_ < 0x200 or 0x1400 <= a_ < 0x1500 or 0x1700 <= a_ < 0x1900)]
+            bad_w = [a_ for a_ in wr if not (0x2000 <= a_ < 0x4000 or a_ < 0x200 or 0x1400 <= a_ < 0x1600 or 0x1700 <= a_ < 0x1900)]
             if bad_w or x_ != 0x20:
                 jbad.append((j, careful, copy, bad_w[:3], x_))
 print("entries jumping to each of the 256 offsets, fast and careful, draw and copy: %d unsafe" % len(jbad), jbad[:4])

@@ -360,23 +360,15 @@ preop:  jsr getb                ; h: the block is at $6000 + 4 * (l + 128 * h)
         lda tmp
         rol a                   ; 2h + that bit; h < $80, so carry is now 0
         adc #PRELOAD
+        bcs lost2               ; past $FFFF
         sta bp+1
-        cmp #$C0                ; blocks are in main RAM, below $C000
-        bcs lost2
+        cmp #$C0                ; in main RAM, below $C000, or in a language card
+        bcs pcardj
         lda #$C0
         sta blim
-        lda ptr                 ; (a copy leaves the line's address as it was)
-        sta psave
-        lda ptr+1
-        sta psave+1
-        jsr fast
-        bit fmode
-        bpl @drew
-        lda psave
-        sta ptr
-        lda psave+1
-        sta ptr+1
-@drew:  jmp chk
+        jsr pdo
+        jmp chk
+pcardj: jmp pcard
 
 ; A frame start on a new page: the page drawn last (shown by sw xor 1) is
 ; complete, so show it in the next vertical blank. Normally a fast block
@@ -498,9 +490,11 @@ fgot:   lda FBUF-1,y            ; the block's last byte must be SENT
 ; tmp2; X is the slot again when it returns.
 fast:   ldy #1
         lda (bp),y              ; where the screen bytes are (high)
-        cmp #$E0
+        cmp #$40
+        bcs fdraw
+        cmp #$20
         bcc fdraw
-        jmp fastc               ; $E0 and up: a copy
+        jmp fastc               ; $2000-$3FFF (never where bytes are kept): a copy
 fdraw:  cmp blim
         bcs fbadp                ; past the block's memory: refuse
         sta tmp
@@ -759,7 +753,7 @@ fmode:  .byte 0                 ; $80: a copy; $40: careful mode
 dlim:   .byte 0                 ; the bytes' (or copy's) pages stop here
 psave:  .word 0                 ; the line's address while a block's copy runs
 
-; A copy: the address field is $E000 + the offset it starts at. Its bytes are
+; A copy: the address field is $2000 + the offset it starts at. Its bytes are
 ; read from the other page at the same place, so bp = q xor $6000.
 fastc:  and #$1F
         clc
@@ -870,5 +864,57 @@ fhwp:   inc fh1+2               ; X wrapped: the entries go on a page
         jmp fend
 fbad:   pla                     ; refused: drop the return address
         pla
-        ldx #SLOTX
+        bit lcon                ; drawing from the card: ROM back first
+        bpl @n
+        bit LC_ROM
+        lda #0
+        sta lcon
+@n:     ldx #SLOTX
         jmp lost
+
+; Draw the preloaded block at bp, keeping the line's address if it's a copy.
+pdo:    lda ptr
+        sta psave
+        lda ptr+1
+        sta psave+1
+        jsr fast
+        bit fmode
+        bpl @drew
+        lda psave
+        sta ptr
+        lda psave+1
+        sta ptr+1
+@drew:  rts
+
+; A preloaded block in a language card ($D000-$FEFF, bank 2): read the card
+; while it's drawn, then ROM again. Its bytes must be in the card too.
+pcard:  cmp #$D0
+        bcc @bad                ; $C000-$CFFF is I/O
+        cmp #$FF
+        bcs @bad                ; the top page holds the 6502's vectors
+        bit LC_RAM
+        lda #$80
+        sta lcon
+        ldy #1
+        lda (bp),y              ; where its bytes are
+        cmp #$20
+        bcc @no
+        cmp #$40
+        bcc @ok                 ; a copy: from the screen
+        cmp #$D0
+        bcc @no
+        cmp #$FF
+        bcs @no
+@ok:    lda #$FF
+        sta blim
+        jsr pdo
+        bit LC_ROM
+        lda #0
+        sta lcon
+        jmp chk
+@no:    bit LC_ROM
+        lda #0
+        sta lcon
+@bad:   jmp lost
+
+lcon:   .byte 0                 ; $80 while the card is read

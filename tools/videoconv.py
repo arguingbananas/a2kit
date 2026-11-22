@@ -279,6 +279,8 @@ def fast_entries(runs, target, pos, data_at, room=None):
     return bytes(data), bytes(ent), [], at
 
 
+SPAN_MAX = 6                    # with --preload, spread a busy picture over at most this many frames
+SHARE_PIECE = 16                # --preload-share benefit: weighs stretches of at most this many frames
 COPY_GAP = 12                   # copy over up to this many bytes the other page also has right, rather than start a new entry
 
 
@@ -385,20 +387,21 @@ def preload_block(runs, target, pos, at):
     player can index them without starting before the page (their address's
     low byte at most `pos`), so they may start on the next page boundary,
     with the control part before them if it fits there. Returns (the bytes
-    from `at`, the control part's address, for the op; a multiple of 4)."""
+    from `at`, the control part's address, for the op; a multiple of 4). (A
+    block that would run past $FFFF is garbage, but too long for any room.)"""
     def a4(v):
         return v + (-v % 4)
     if at & 0xFF <= pos:
         data, ent, _, _ = fast_entries(runs, target, pos, at)
         ctl = a4(at + len(data))
-        return data + bytes(ctl - at - len(data)) + at.to_bytes(2, "little") + ent, ctl
+        return data + bytes(ctl - at - len(data)) + (at & 0xFFFF).to_bytes(2, "little") + ent, ctl
     nxt = (at | 0xFF) + 1
     data, ent, _, _ = fast_entries(runs, target, pos, nxt)
     if 2 + len(ent) <= nxt - at:
-        head = nxt.to_bytes(2, "little") + ent
+        head = (nxt & 0xFFFF).to_bytes(2, "little") + ent
         return head + bytes(nxt - at - len(head)) + data, at
     ctl = a4(nxt + len(data))
-    return bytes(nxt - at) + data + bytes(ctl - nxt - len(data)) + nxt.to_bytes(2, "little") + ent, ctl
+    return bytes(nxt - at) + data + bytes(ctl - nxt - len(data)) + (nxt & 0xFFFF).to_bytes(2, "little") + ent, ctl
 
 
 def copied(cruns, rest):
@@ -448,7 +451,7 @@ def preload_frame(shown, target, budget, mark, block, rate, addr, room, other=No
         cpre += bytes(-len(cpre) % 4)
         ccyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(cpre, addr), addr, 0x2000 * page + pos, 0x20 + 0x20 * page)
         head += a2hdr.preload_op(addr)
-        fixed += 4 + int(np.ceil(((ccyc + a2hdr.PRELOAD_OVERHEAD) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
+        fixed += 4 + int(np.ceil(((ccyc + a2hdr.preload_overhead(addr)) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
     at = addr + len(cpre)
 
     def build(m):
@@ -456,7 +459,7 @@ def preload_frame(shown, target, budget, mark, block, rate, addr, room, other=No
         end = left[m - 1][1]
         cyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(pre, at), ctl, 0x2000 * page + pos, 0x20 + 0x20 * page)
         tail = a2hdr.preload_op(ctl) + _ops(left[m:], target, end)
-        quiet = int(np.ceil(((cyc + a2hdr.PRELOAD_OVERHEAD) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
+        quiet = int(np.ceil(((cyc + a2hdr.preload_overhead(at)) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
         return head + tail, cpre + pre, fixed + len(tail) + quiet
 
     lo, hi = 1, len(left)
@@ -470,6 +473,108 @@ def preload_frame(shown, target, budget, mark, block, rate, addr, room, other=No
             lo = mid + 1
     data, pre, _ = build(lo)
     return (data, pre) if len(pre) <= room else None
+
+
+def preload_span(shown, target, budgets, mark, block, rate, addr, room, other=None, copies_in_memory=True):
+    """A picture too busy for one frame even with help from memory, spread over
+    len(budgets) frames: the first changes page (mark and block, as in
+    preload_frame); each frame draws a share of the runs from a block preloaded
+    at `addr` on (at most `room` bytes in all), then as many of the next runs
+    as fit on the line. Every frame gets the same share of memory: the
+    smallest that completes the picture in time. Returns ([frame bytes, ...],
+    preloaded bytes from addr), or None if it can't be done in that many frames."""
+    cruns = copy_runs(shown, other, target) if other is not None else []
+    base = apply_copy(shown, other, cruns) if cruns else shown
+    diff = np.nonzero(base != target)[0]
+    if not len(diff):
+        return None
+    page = 2 if mark == 0xFB else 1
+    head, blk, left, pos, cleft = flip_head(_runs(diff, 2), target, mark, block, cruns)
+    if not left:
+        return None
+    scr, top = 0x2000 * page, 0x20 + 0x20 * page
+    fixed = len(head) + block_quiet(blk, page, rate)
+    cpre = b""
+    if cleft and not copies_in_memory:
+        cbs = line_copy_blocks(cleft)
+        head += b"".join(d for d, _ in cbs)
+        fixed = len(head) + block_quiet(blk, page, rate) + sum(block_quiet(b_, page, rate) for _, b_ in cbs)
+    elif cleft:
+        cpre, _ = copy_entries(cleft)
+        cpre += bytes(-len(cpre) % 4)
+        ccyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(cpre, addr), addr, scr + pos, top)
+        head += a2hdr.preload_op(addr)
+        fixed += 4 + int(np.ceil(((ccyc + a2hdr.preload_overhead(addr)) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
+
+    def quiet(cyc, at):
+        return int(np.ceil(((cyc + a2hdr.preload_overhead(at)) / a2hdr.CPU_HZ + a2hdr.FAST_MARGIN) * rate))
+
+    def take(rest, q):                  # the first q bytes' worth of runs (the last one split), and the rest
+        chunk, n, rest = [], 0, list(rest)
+        while rest and n < q:
+            s_, e_ = rest[0]
+            if n + e_ - s_ > q:
+                chunk.append((s_, s_ + q - n)); rest[0] = (s_ + q - n, e_); n = q
+            else:
+                chunk.append(rest.pop(0)); n += e_ - s_
+        return chunk, rest
+
+    def plan(q):                        # frames and preloaded bytes with up to q bytes from memory a frame, or None
+        rest, frames_, blob = list(left), [], bytearray(cpre)
+        for f, bud in enumerate(budgets):
+            data, used, at0 = (head, fixed, pos) if f == 0 else (bytes([mark]), 1, 0)
+            if used + 4 > bud:
+                return None
+            at, at0_line = addr + len(blob), at0
+
+            def drawn(qq, rest=rest, at0=at0, at=at):   # this frame's block of qq bytes from memory, and its line time
+                chunk, rest_ = take(rest, qq)
+                if not chunk:
+                    return None, None, rest_, 0
+                pre, ctl = preload_block(chunk, target, at0, at)
+                cyc, _ = a2hdr.fast_cycles(a2hdr.FastMem(pre, at), ctl, scr + at0, top)
+                return (pre, ctl, chunk), cyc, rest_, 4 + quiet(cyc, at)
+            got = drawn(q)
+            if got[0] and used + got[3] > bud:      # more than the frame has time to draw: as much as it has
+                lo_, hi_ = 0, q
+                while lo_ < hi_:
+                    mid = (lo_ + hi_ + 1) // 2
+                    if used + drawn(mid)[3] <= bud:
+                        lo_ = mid
+                    else:
+                        hi_ = mid - 1
+                got = drawn(lo_)
+            if got[0]:
+                (pre, ctl, chunk), _, rest, cost_ = got
+                data += a2hdr.preload_op(ctl)
+                used += cost_
+                blob += pre + bytes(-len(pre) % 4)
+                at0_line = chunk[-1][1]
+            lo, hi = 0, len(rest)       # then as many whole runs as fit on the line
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if used + len(_ops(rest[:mid], target, at0_line)) <= bud:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            data += _ops(rest[:lo], target, at0_line) or b""
+            del rest[:lo]
+            frames_.append(data)
+            if not rest:
+                frames_ += [bytes([mark])] * (len(budgets) - f - 1)     # (done early: the rest just wait)
+                break
+        return (frames_, bytes(blob)) if not rest and len(blob) <= room else None
+
+    lo, hi = 1, 0x2000
+    if plan(hi) is None:
+        return None
+    while lo < hi:                      # the smallest share of memory a frame that's enough
+        mid = (lo + hi) // 2
+        if plan(mid) is not None:
+            hi = mid
+        else:
+            lo = mid + 1
+    return plan(lo)
 
 
 def block_quiet(blk, page, rate, ptr=0):
@@ -621,7 +726,14 @@ def main():
         sys.exit("--preload works with --flip")
     if a.preload and a.scrub:
         sys.exit("--preload and --scrub can't be used together")
-    pl_start = a2hdr.PRELOAD_START + -(-len(audio) // 256) * 256       # free memory after the sound
+    # free memory after the sound: main RAM to $BFFF, then with --language-card the card's
+    # $D000-$FEFF. The preload is laid out like sound (hopping $C000-$CFFF), no block across the hop.
+    pl_start = a2hdr.audio_addr(-(-len(audio) // 256) * 256)
+    # [start, end, bytes] for each stretch the preload may use: what's left of main RAM, then the card
+    pl_regions = [(pl_start, a2hdr.PRELOAD_END)] if pl_start < a2hdr.PRELOAD_END else []
+    if a.language_card:
+        pl_regions.append((max(pl_start, a2hdr.CARD_START), a2hdr.CARD_END))
+    pl_total = sum(e - s_ for s_, e in pl_regions)
     preload = bytearray()
     pages = [blank(), blank()]          # what pages 1 and 2 hold
     frames, pending, screens = [], [], []
@@ -664,7 +776,8 @@ def main():
             pages[:] = [blank(), blank()]
             cursors[:] = [0, 0]
             frames.clear(); screens.clear(); pending.clear()     # (draw appends to frames)
-            preload, pl_addr = bytearray(), pl_start
+            regions = [[s_, e, bytearray()] for s_, e in pl_regions]
+            queue = []                      # frames of a picture spread over several, still to send
             goal, done, held = None, True, 0
             used = [0] * len(caps or [])
             ups = []
@@ -702,15 +815,23 @@ def main():
                         if (cost(pages[p], targets[i + k - 1], pages[1 - p]) <= room
                                 and finishes(pages[p], targets[i + k - 1], k, 0xFB if p else 0xFE, pages[1 - p])):
                             break
-                        if k == 1 and a.preload:    # on time with help from memory, while there's room
+                        if a.preload and k <= SPAN_MAX:     # in k frames with help from memory, while there's room
                             w = next((j for j, (c0, c1, _) in enumerate(caps) if c0 <= i < c1), -1) if caps is not None else -1
-                            limit = a2hdr.PRELOAD_END - pl_addr
-                            if caps is not None:
-                                limit = min(limit, caps[w][2] - used[w]) if w >= 0 else 0
-                            if limit > 0:
-                                pre = preload_frame(pages[p], targets[i], budget - (3 if n else 0), 0xFB if p else 0xFE,
-                                                    block, rate, pl_addr, limit, other=pages[1 - p],
-                                                    copies_in_memory=caps is not None)
+                            share = (caps[w][2] - used[w] if w >= 0 else 0) if caps is not None else 1 << 20
+                            tgt, mark_ = targets[i + k - 1], 0xFB if p else 0xFE
+                            for reg in regions:     # main RAM first; the card when what's left there is too small
+                                at_ = reg[0] + len(reg[2])
+                                limit = min(reg[1] - at_, share)
+                                if limit > 0 and k == 1:
+                                    r_ = preload_frame(pages[p], tgt, budget - (3 if n else 0), mark_, block, rate, at_, limit,
+                                                       other=pages[1 - p], copies_in_memory=caps is not None)
+                                    pre = ([r_[0]], r_[1]) if r_ else None
+                                elif limit > 0:     # a picture too busy for one frame, even from memory
+                                    pre = preload_span(pages[p], tgt, [budget - (3 if bursts.get(i + f, 0) else 0) for f in range(k)],
+                                                       mark_, block, rate, at_, limit, other=pages[1 - p],
+                                                       copies_in_memory=caps is not None)
+                                if pre:
+                                    break
                             if pre:
                                 if w >= 0:
                                     used[w] += len(pre[1]) + (-len(pre[1]) % 4)
@@ -720,17 +841,22 @@ def main():
                     ups.append(i)
                     screens.append(pages[1 - p].copy())
                     if pre:
-                        data, blob = pre
-                        preload += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
-                        pl_addr = pl_start + len(preload)
-                        pages[p] = goal.copy()
-                        frames.append(data + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
+                        fl, blob = pre
+                        reg[2] += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
+                        frames.append(fl[0] + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
+                        queue[:] = fl[1:]           # the frames that finish it
+                        if not queue:
+                            pages[p] = goal.copy()
                     else:
                         draw(goal, budget, n, flips=True)
                 else:
                     held += 1                   # finishing the page, or waiting for its turn:
                     screens.append(pages[1 - p].copy())     # this frame isn't shown
-                    if done:
+                    if queue:
+                        frames.append(queue.pop(0) + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
+                        if not queue:
+                            pages[p] = goal.copy()
+                    elif done:
                         frames.append(bytes([0xFB if p else 0xFE] + ([0x7F, n, n ^ 0x55] if n else [])))
                     else:
                         draw(goal, budget, n)
@@ -749,6 +875,10 @@ def main():
             pending.append(int(np.count_nonzero(pages[p] != target)))
 
 
+            preload = bytearray()           # laid out like sound: main RAM up to $BFFF, then the card from $D000
+            for k_, (s_, e, b_) in enumerate(regions):
+                later = any(r[2] for r in regions[k_ + 1:])
+                preload += b_ + (bytes(e - s_ - len(b_)) if later else b"")
             return list(frames), list(screens), list(pending), preload, ups, used
 
         def penalty(ups, c0, c1):           # how much the holds in [c0, c1) stutter: (hold - 1)^2 summed
@@ -772,11 +902,17 @@ def main():
             for t0, t1 in zip([0] + ups0, ups0):
                 if t1 - t0 > 1:
                     c0, c1 = max(0, t0 - 2), t1 + 2
-                    if spans and c0 <= spans[-1][1] + 4:
+                    if spans and c0 <= spans[-1][1]:
                         spans[-1][1] = c1
                     else:
                         spans.append([c0, c1])
-            mem = a2hdr.PRELOAD_END - pl_start
+            pieces = []                     # long stretches in pieces, so each part competes for memory on its own
+            for c0, c1 in spans:
+                n_ = -(-(c1 - c0) // SHARE_PIECE)
+                cuts = [c0 + (c1 - c0) * j // n_ for j in range(n_ + 1)]
+                pieces += [[x0, x1] for x0, x1 in zip(cuts, cuts[1:])]
+            spans = pieces
+            mem = pl_total
             offers = []
             for c0, c1 in spans:
                 _, _, _, _, ups_w, used_w = plan([(c0, c1, mem)])
@@ -807,7 +943,7 @@ def main():
                   shown, len(imgs), len(imgs) - shown, len(frames) - len(imgs)), file=sys.stderr)
     if a.preload:
         print("preload: %d bytes at $%04X-$%04X for %d frames (about %.1f s to upload)" % (
-            len(preload), pl_start, pl_start + max(len(preload), 1) - 1,
+            len(preload), pl_start, a2hdr.audio_addr(a2hdr.area_offset(pl_start) + max(len(preload), 1) - 1),
             sum(1 for f in frames if any(k == "preload" for k, _v, _i in a2hdr.walk_ops(f))), len(preload) / 8200), file=sys.stderr)
     if a.scrub:
         print("scrub: %d bytes/frame, a full sweep every %d frames (%.0f s)" % (

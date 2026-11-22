@@ -143,8 +143,8 @@ def parse_preload(data):
 def preload_mem(pre):
     """A 64K memory image holding the preloaded blocks (for timing and checks)."""
     mem = bytearray(0x10000)
-    if pre:
-        mem[pre[0]:pre[0] + len(pre[1])] = pre[1]
+    for a, piece in (preload_pieces(pre) if pre else ()):
+        mem[a:a + len(piece)] = piece
     return mem
 
 
@@ -164,14 +164,37 @@ def frame_audio_pages(frame):
 OP_AUDIO, OP_BLOCK, OP_PRELOAD = 0x55, 0x2A, 0x3C
 FBUF = 0x1300                   # where the player stores a fast block (video.s FBUF)
 BLOCK_END = 0xA5                # the last byte of a block after a page change (video.s SENT)
-PRELOAD_START = 0x6000          # preloaded blocks: main RAM after the sound, to $BFFF
-PRELOAD_END = 0xC000
+PRELOAD_START = 0x6000          # preloaded blocks: main RAM after the sound, to $BFFF,
+PRELOAD_END = 0xC000            # then (with --language-card) the card's $D000-$FEFF, as sound does
 FLIP_WAIT = 0.019               # a fast block after a page change lasts at least this long on the line
 FAST_MARGIN = 0.001             # extra quiet time after a fast block is drawn, seconds
 FLIP_QUIET = 0.020              # quiet time after a page change without a fast block: one screen (16.7 ms) plus a little
 BLOCK_OVERHEAD = 120            # cycles: the last block byte read (up to one 51-cycle pass), into frun, and back to the line
 FRUN_CYCLES = 74                # cycles frun adds to its two fast calls
-PRELOAD_OVERHEAD = 130          # cycles: the op's last byte to fast (keeping ptr for a copy), and back to the line
+PRELOAD_OVERHEAD = 145          # cycles: the op's last byte to fast (keeping ptr for a copy), and back to the line
+PRELOAD_OVERHEAD_CARD = 215     # the same for a block in the language card (checks, and the switches either side)
+
+
+def preload_ok(addr):
+    """Whether the player draws a block preloaded at addr: main RAM from $6000
+    to $BFFF, or the language card's $D000-$FEFF."""
+    return PRELOAD_START <= addr < PRELOAD_END or CARD_START <= addr < CARD_END
+
+
+def preload_overhead(addr):
+    return PRELOAD_OVERHEAD_CARD if addr >= CARD_START else PRELOAD_OVERHEAD
+
+
+def preload_pieces(pre):
+    """The (address, bytes) pieces to upload for a preload (address, bytes):
+    it's laid out like sound, so it hops from $BFFF to $D000."""
+    addr, data = pre
+    return audio_pieces(area_offset(addr), data)
+
+
+def area_offset(addr):
+    """How far into the sound area (main RAM, then the card) an address is."""
+    return addr - AUDIO_START if addr < AUDIO_MAIN_END else AUDIO_MAIN_END - AUDIO_START + addr - CARD_START
 
 
 def block_bytes(baud):
@@ -234,7 +257,13 @@ def walk_ops(frame):
 # follows the bytes onto their next page (after a page's last byte).
 FAST_MAX = 49
 FAST_HOP, FAST_END, FAST_NEXT = 250, 253, 0
-COPY_FIELD = 0xE000             # a control part whose address is this + an offset is a copy from there
+COPY_FIELD = 0x2000             # a control part whose address is this + an offset is a copy from there:
+                                # $2000-$3FFF, the screen, is never where a block's bytes are kept
+
+
+def is_copy(hi):
+    """Whether a control part whose address has this high byte is a copy."""
+    return 0x20 <= hi < 0x40
 
 
 def FAST_J(n):
@@ -261,19 +290,19 @@ def fast_cycles(mem, addr, ptr, top, blim=None):
     Counts every instruction, for the entries an encoder writes (for a
     damaged block, about as long as the player takes)."""
     if blim is None:
-        blim = (addr >> 8) + 1 if addr >> 8 == FBUF >> 8 else PRELOAD_END >> 8
+        blim = (addr >> 8) + 1 if addr >> 8 == FBUF >> 8 else (0xFF if addr >= CARD_START else PRELOAD_END >> 8)
     FEND, FBAD = 26, 13
     c = 6 + 2 + 5 + int((addr & 0xFF) == 0xFF) + 2
     fh, fl = mem[addr + 1], mem[addr]
-    if fh >= COPY_FIELD >> 8:           # a copy, from the other page
+    if is_copy(fh):                     # a copy, from the other page
         copy = True
-        c += 2 + 3 + 2 + 2 + 3 + 2 + 2 + 3 + 3 + 2 + 5 + 3 + 3 + 2 + 4 + 2 + 4 + 3 + 2 + 3 + 3
+        c += 2 + 2 + 2 + 3 + 2 + 2 + 3 + 2 + 2 + 3 + 3 + 2 + 5 + 3 + 3 + 2 + 4 + 2 + 4 + 3 + 2 + 3 + 3
         start = ((top - 0x20 + (fh & 0x1F)) << 8) | fl
         y, dh, dlim = fl, (start >> 8) ^ 0x60, 0xFF
         ptr = start
     else:
         copy = False
-        c += 3 + 3
+        c += (3 if fh >= 0x40 else 2 + 2 + 3) + 3
         if fh >= blim:
             return c + 3 + 3 + FBAD, None
         c += 2 + 3 + 3 + 4 + 2 + 4 + 2 + 5 + 3
@@ -429,11 +458,11 @@ def frame_waits(frame, page, mem=None):
             cuts.append((end, (cyc + BLOCK_OVERHEAD) / CPU_HZ + FAST_MARGIN))
             if ptr is None:             # refused: the player discards up to the next mark, which sets ptr again
                 ptr = 0x2000 * page
-        elif kind == "preload" and v < PRELOAD_END:         # (the player refuses the others)
+        elif kind == "preload" and preload_ok(v):           # (the player refuses the others)
             m_ = mem if mem is not None else preload_mem(None)
             cyc, p_ = fast_cycles(m_, v, ptr, top)
-            ptr = ptr if p_ is not None and m_[v + 1] >= COPY_FIELD >> 8 else p_    # a copy leaves the line where it was
-            cuts.append((end, (cyc + PRELOAD_OVERHEAD) / CPU_HZ + FAST_MARGIN))
+            ptr = ptr if p_ is not None and is_copy(m_[v + 1]) else p_    # a copy leaves the line where it was
+            cuts.append((end, (cyc + preload_overhead(v)) / CPU_HZ + FAST_MARGIN))
             if ptr is None:
                 ptr = 0x2000 * page
         elif kind == "run":
