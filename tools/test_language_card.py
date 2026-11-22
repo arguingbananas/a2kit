@@ -9,6 +9,10 @@
    A show that stays in main RAM never touches the switches.
 4. The real video player does the same in bursts, including one that stops
    exactly at the hop, and refuses a burst past the card's last page.
+5. The video player draws fast blocks preloaded into the card, with the card
+   read only around each one, refuses blocks in I/O, on the vectors' page or
+   reading outside the card, and plays a whole clip preloaded into main RAM and
+   the card.
 """
 import os, sys, tempfile, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -285,6 +289,153 @@ expect(m.mem[0x2000] == 0x33, "video: the stream recovers after a refused burst"
 # staying in main RAM never touches the card
 m, edges = play_video(FRAME + burst(5) + FRAME + END, long_audio[:5 * 256])
 expect(m.switches == [], "video: sound in main RAM never touches the card's switches")
+
+# ---------------------------------------------------------------- 5. preloaded fast blocks in the card
+import videoconv                                            # noqa: E402
+
+
+def card_put(m, addr, data):
+    """Put bytes in the card's RAM (bank 2) at addr, as the receiver's upload would."""
+    for i, b in enumerate(data):
+        arr, j = m._where(addr + i)
+        arr[j] = b
+
+
+def play_pre(stream, pieces=(), main=()):
+    m = Machine()
+    for addr, blob in pieces:
+        card_put(m, addr, blob)
+    for addr, blob in main:
+        m.load(addr, blob)
+    st = {"q": list(stream), "t": 0}                       # a byte at most every 87 cycles, as at 115200 baud
+
+    def take(a):
+        st["t"] = m.mpu.processorCycles
+        return st["q"].pop(0) if st["q"] else 0
+    m.mem.subscribe_to_read([ACIA_S], lambda a: 0x10 | (0x08 if st["q"] and m.mpu.processorCycles - st["t"] >= 87 else 0))
+    m.mem.subscribe_to_read([ACIA_D], take)
+    for sw_ in (0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057):
+        m.mem.subscribe_to_read([sw_], lambda a: 0)
+    m.load(0x0E00, binary("video.bin"))
+    m.run(0x0E00)
+    return m
+
+
+tg = rng.integers(0, 0x7F, 0x2000, dtype=np.uint8)
+runs = [(0, 40), (300, 330), (2000, 2100), (0x1F80, 0x2000)]
+want = {0x2000 + a: int(tg[a]) for s_, e_ in runs for a in range(s_, e_)}
+for at, rr in ((0xD000, runs), (0xDFF4, runs), (0xFE00, runs[:2])):     # bank 2, across into $E000, the last page
+    want = {0x2000 + a: int(tg[a]) for s_, e_ in rr for a in range(s_, e_)}
+    blob, ctl = videoconv.preload_block(rr, tg, 0, at)
+    m = play_pre(b"\xFE" + a2hdr.preload_op(ctl) + END, pieces=[(at, blob)])
+    expect(all(m.mem[a] == v for a, v in want.items()), "card preload at $%04X: draws its bytes from the card" % at)
+    expect(m.switches == [0xC080, 0xC082] and not m.read_ram, "card preload at $%04X: the card is read only while it's drawn" % at)
+want = {0x2000 + a: int(tg[a]) for s_, e_ in runs for a in range(s_, e_)}
+blob, ctl = videoconv.preload_block(runs, tg, 0, 0x7000)
+m = play_pre(b"\xFE" + a2hdr.preload_op(ctl) + END, main=[(0x7000, blob)])
+expect(all(m.mem[a] == v for a, v in want.items()) and m.switches == [], "a preload in main RAM never touches the card's switches")
+# a copy kept in the card: page 2 gets 40 bytes from the line, then a copy puts them on page 1
+cpart, _ = videoconv.copy_entries([(100, 140)])
+p2 = bytes(rng.integers(1, 0x7F, 40, dtype=np.uint8).tolist())
+m2 = play_pre(b"\xFB" + bytes([0x80 | 100, 40]) + p2 + b"\xFE\x00" + a2hdr.preload_op(0xE000) + b"\x01\x11" + END,
+              pieces=[(0xE000, cpart)])
+expect(bytes(m2.mem[0x2000 + a] for a in range(100, 140)) == p2 and m2.mem[0x2000] == 0x11,
+       "a copy kept in the card copies from the other page, and the line carries on where it was")
+expect(m2.switches == [0xC080, 0xC082], "a copy kept in the card: ROM back afterwards")
+# refused: in I/O, on the vectors' page, bytes outside the card, and a damaged block
+FR = b"\xFE\x01\x33"
+for name, op, pieces, sw in (
+        ("an op pointing into $C000-$CFFF", a2hdr.preload_op(0xC800), [], []),
+        ("an op pointing at the top page", a2hdr.preload_op(0xFF00), [], []),
+        ("a card block whose bytes are in main RAM", a2hdr.preload_op(0xD000), [(0xD000, b"\x00\x70\x00\xF5\x00\xFD")], [0xC080, 0xC082]),
+        ("a card block whose bytes are on the top page", a2hdr.preload_op(0xD000), [(0xD000, b"\x00\xFF\x00\xF5\x00\xFD")], [0xC080, 0xC082]),
+        ("a card block whose entries run onto the top page", a2hdr.preload_op(0xFEF8), [(0xFEF8, b"\x00\xFE" + b"\x00\xFA" * 3)], [0xC080, 0xC082])):
+    m = play_pre(b"\xFE" + op + FR + END, pieces=pieces)
+    expect(m.mem[0x2000] == 0x33 and m.switches == sw and not m.read_ram,
+           "card preload: %s is refused, ROM comes back, and the stream recovers" % name)
+# a picture too busy for one frame even from memory, spread over three with a block from the card in each
+busy = videoconv.blank().copy()
+busy[0x0400:0x1C00] = rng.integers(0, 0x7F, 0x1800, dtype=np.uint8)
+busy = videoconv.with_holes(busy)
+span = videoconv.preload_span(videoconv.blank(), busy, [1094] * 3, 0xFB, a2hdr.block_bytes(115200), 11520, 0xD000, 12032,
+                              other=videoconv.blank())
+one = videoconv.preload_frame(videoconv.blank(), busy, 1094, 0xFB, a2hdr.block_bytes(115200), 11520, 0xD000, 12032,
+                              other=videoconv.blank())
+expect(one is None and span is not None and len(span[0]) == 3
+       and sum(1 for f in span[0] for k, _v, _i in a2hdr.walk_ops(f) if k == "preload") == 3,
+       "a picture too busy for one frame is spread over three, drawing from memory in each")
+m = play_pre(b"".join(span[0]) + END, pieces=[(0xD000, span[1])])
+expect(bytes(m.mem[0x4000 + i] for i in range(0x2000)) == bytes(busy) and m.switches == [0xC080, 0xC082] * 3,
+       "the spread picture comes out exactly, the card read only around each frame's block")
+# a whole clip: main RAM is nearly full, so the encoder carries on into the card
+gif = os.path.join(tmp, "busy.gif")
+from PIL import Image, ImageDraw                            # noqa: E402
+frames_ = []
+for k in range(12):                                         # a wipe: too busy for the line alone
+    im = Image.new("RGB", (280, 192), "black")
+    ImageDraw.Draw(im).rectangle([0, 0, int(279 * k / 11), 191], fill="white")
+    frames_.append(im)
+frames_[0].save(gif, save_all=True, append_images=frames_[1:], duration=100, loop=0)
+a2v = os.path.join(tmp, "busy.a2v")
+saved = sys.argv, a2hdr.PRELOAD_END, a2hdr.AUDIO_MAIN_END
+sys.argv = ["videoconv.py", gif, "-o", a2v, "--fps", "10", "--flip", "--preload", "--preload-share", "first",
+            "--language-card", "--budget", "700"]
+a2hdr.PRELOAD_END = a2hdr.AUDIO_MAIN_END = 0x6100           # (main RAM as if it ended at $60FF: more goes in the card)
+import contextlib, io                                       # noqa: E401,E402
+with contextlib.redirect_stderr(io.StringIO()):
+    videoconv.main()
+raw = open(a2v, "rb").read()
+_fps, vfr, _ = a2hdr.parse_stream(raw)
+pre = a2hdr.parse_preload(raw)
+pcs = a2hdr.preload_pieces(pre)
+sys.argv, a2hdr.PRELOAD_END, a2hdr.AUDIO_MAIN_END = saved
+ops = [v for f in vfr for k, v, _i in a2hdr.walk_ops(f) if k == "preload"]
+in_card = [v for v in ops if v >= a2hdr.CARD_START]
+print("clip into the card: %d preloaded blocks, %d of them in the card; pieces %s" % (
+    len(ops), len(in_card), ", ".join("$%04X+%d" % (a, len(d)) for a, d in pcs)))
+expect(in_card and [a for a, _ in pcs] == [0x6000, a2hdr.CARD_START],
+       "the encoder fills main RAM, then carries the preload on into the card, as sound does")
+m = Machine()
+for addr, blob in pcs:
+    if addr >= a2hdr.CARD_START:
+        card_put(m, addr, blob)
+    else:
+        m.load(addr, blob)
+# the bytes arrive when the host sends them (stream.plan_stream: quiet while each block is drawn),
+# one every 10/115200 s; one that arrives while the last is still unread is an overrun (lost)
+import stream as host                                       # noqa: E402
+sched, _total = host.plan_stream(vfr, _fps, 115200, mem=a2hdr.preload_mem(pre))
+START = 400_000                                             # (the player clears both pages first)
+arr = [(b, START + int((t + (k + 1) * 10 / 115200) * a2hdr.CPU_HZ)) for t, data, _kind in sched for k, b in enumerate(data)]
+arr += [(b, arr[-1][1] + 100 * (j + 1)) for j, b in enumerate(END)]
+st = {"i": 0, "over": 0}
+
+
+def ready(a):
+    now, i = m.mpu.processorCycles, st["i"]
+    return 0x10 | (0x08 if i < len(arr) and arr[i][1] <= now else 0)
+
+
+def take(a):
+    now, i = m.mpu.processorCycles, st["i"]
+    while i + 1 < len(arr) and arr[i + 1][1] <= now:          # a newer byte overwrote this one
+        st["over"] += 1
+        i += 1
+    st["i"] = i + 1
+    return arr[i][0] if i < len(arr) else 0
+m.mem.subscribe_to_read([ACIA_S], ready)
+m.mem.subscribe_to_read([ACIA_D], take)
+for io_ in (0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057):
+    m.mem.subscribe_to_read([io_], lambda a: 0)
+m.load(0x0E00, binary("video.bin"))
+m.run(0x0E00, limit=200_000_000)
+last = videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(
+    np.asarray(__import__("imgconv").prepare(frames_[-1], False, False), dtype=np.float64), "ordered")))
+pg = [bytes(m.mem[base + i] for i in range(0x2000)) for base in (0x2000, 0x4000)]     # (it shows page 1 again as it quits)
+print("clip into the card, on the host's schedule: %d overruns" % st["over"])
+expect(st["over"] == 0 and bytes(last) in pg,
+       "a clip preloaded into main RAM and the card plays on the host's schedule with no overruns, to its last frame exactly")
+expect(m.switches == [0xC080, 0xC082] * len(in_card) and not m.read_ram, "the card is switched in only around each block in it")
 
 # ---------------------------------------------------------------- the host's bookkeeping
 pieces = a2hdr.audio_pieces(0, bytes(a2hdr.AUDIO_PAGES_CARD * 256))

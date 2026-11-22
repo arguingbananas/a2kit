@@ -156,6 +156,8 @@ def main():
         sys.exit("this clip preloads part of its frames, which is uploaded through the receiver: use --install")
     if len(audio) // 256 > a2hdr.AUDIO_PAGES and not a.language_card:
         sys.exit("this clip has more sound than main RAM holds: it needs --language-card")
+    if pre and any(addr >= a2hdr.CARD_START for addr, _ in a2hdr.preload_pieces(pre)) and not a.language_card:
+        sys.exit("this clip preloads part of its frames into a language card: it needs --language-card")
     sched, total = plan_stream(frames, fps, a.baud, mem=a2hdr.preload_mem(pre))
     late = lateness(sched, fps)
     if late > LATE_WARN:
@@ -171,9 +173,9 @@ def main():
         for addr, piece in (a2hdr.audio_pieces(0, audio) if audio else ()):     # audio must be in RAM before the stream starts
             print("uploading %d bytes of audio to $%04X" % (len(piece), addr), file=sys.stderr)
             s.send_blob(piece, addr)
-        if pre:
-            print("uploading %d bytes of preloaded frames to $%04X" % (len(pre[1]), pre[0]), file=sys.stderr)
-            s.send_blob(pre[1], pre[0])
+        for addr, piece in (a2hdr.preload_pieces(pre) if pre else ()):
+            print("uploading %d bytes of preloaded frames to $%04X" % (len(piece), addr), file=sys.stderr)
+            s.send_blob(piece, addr)
         here = os.path.dirname(os.path.abspath(__file__))
         player = open(os.path.join(here, "..", "video.bin"), "rb").read()
         s.send_blob(player, PLAYER_ADDR)

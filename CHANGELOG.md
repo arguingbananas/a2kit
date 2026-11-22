@@ -22,9 +22,18 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   before playing (`stream --install`), so they keep up. `--preload-share`
   chooses how the memory is shared out: `benefit` (the default) gives it to the
   busy stretches it smooths the most per byte, and `first` to the busy frames in
-  order. "Hello, Apple" shows 277 of its 319 frames with `benefit` (the middle
-  and cloud wipes at the full 10 frames a second) and 288 with `first` (the
-  early wipes smooth, the later ones not), against 259 without preload.
+  order. A picture too busy for one frame even from memory is spread over a
+  few, with a block from memory in each. "Hello, Apple" shows 280 of its 319
+  frames with `benefit` and 286 with `first` (the early wipes smooth, the later
+  ones not), against 259 without preload.
+- `video --flip --preload --language-card` preloads into a language card's
+  `$D000–$FEFF` too, after main RAM: 12 KB more. "Hello, Apple" then shows 286
+  frames with `benefit`, and no picture in a wipe stays on screen longer than
+  0.5 s (0.8 s without the card). `stream --language-card` uploads them, and
+  the player reads the card only while it draws a block that's in it.
+  `video.bin` is rebuilt: copies are now marked `$2000–$3FFF`, which can't
+  clash with the card's addresses, so streams made since the last change need
+  converting again.
 - Faster fast blocks, to cut the stutter in busy scenes of flipped video: the
   player draws them about 1.5 times faster than before, and a page that is two
   pictures behind copies the bytes the page on screen already has right,
