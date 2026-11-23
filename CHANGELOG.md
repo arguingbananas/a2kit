@@ -27,13 +27,13 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   chooses how the memory is shared out: `benefit` (the default) gives it to the
   busy stretches it smooths the most per byte, and `first` to the busy frames in
   order. A picture too busy for one frame even from memory is spread over a
-  few, with a block from memory in each. "Hello, Apple" shows 280 of its 319
-  frames with `benefit` and 286 with `first` (the early wipes smooth, the later
-  ones not), against 259 without preload.
+  few, with a block from memory in each. "Hello, Apple" shows 273 of its 319
+  frames with `benefit` and 269 with `first` (the early wipes smooth, the later
+  ones not), against 242 without preload.
 - `video --flip --preload --language-card` preloads into a language card's
-  `$D000–$FEFF` too, after main RAM: 12 KB more. "Hello, Apple" then shows 286
+  `$D000–$FEFF` too, after main RAM: 12 KB more. "Hello, Apple" then shows 280
   frames with `benefit`, and no picture in a wipe stays on screen longer than
-  0.5 s (0.8 s without the card). `stream --language-card` uploads them, and
+  0.6 s (0.8 s without the card). `stream --language-card` uploads them, and
   the player reads the card only while it draws a block that's in it.
   `video.bin` is rebuilt: copies are now marked `$2000–$3FFF`, which can't
   clash with the card's addresses, so streams made since the last change need
@@ -45,7 +45,7 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   fast block format changed; `stream --install` uploads the new player).
 - New example: `examples/hello_apple.gif`, "Hello, Apple", a 32-second black
   and white shadow-play animation (an apple, a walker on a hill at sunset, birds
-  that turn into leaves) with full-screen wipes, at 10 frames a second.
+  that turn into maple leaves) with full-screen wipes, at 10 frames a second.
 - Colour video: `video --colour` converts an animation in the six hi-res colours.
   New example: `examples/balloon.gif`, a balloon drifting across the colour
   landscape. `video.bin` is rebuilt (`stream --install` uploads it); older

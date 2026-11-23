@@ -155,12 +155,18 @@ def draw_apple(d, cx, cy, s, fill):
     d.polygon(leaf, fill=fill)
 
 
+# A maple leaf, pointing up, about 2 units tall: three big lobes, two small
+# ones near the stem, and the stem (half of it; leaf_shape mirrors it).
+MAPLE = [(0, -1), (0.14, -0.62), (0.34, -0.74), (0.20, -0.22), (0.66, -0.50), (1.0, -0.42),
+         (0.78, -0.12), (0.92, 0.02), (0.36, 0.10), (0.58, 0.44), (0.18, 0.26), (0.06, 0.36),
+         (0.06, 0.98)]
+
+
 def leaf_shape(cx, cy, size, angle):
-    pts = []
-    for a in np.linspace(0, 2 * math.pi, 12, endpoint=False):
-        x, y = size * math.cos(a), 0.45 * size * math.sin(a)
-        pts.append((cx + x * math.cos(angle) - y * math.sin(angle), cy + x * math.sin(angle) + y * math.cos(angle)))
-    return pts
+    """A maple leaf of the given size (half its height) at (cx, cy), turned by angle."""
+    pts = MAPLE + [(-x, y) for x, y in reversed(MAPLE[1:])]
+    c, s = math.cos(angle), math.sin(angle)
+    return [(cx + size * (x * c - y * s), cy + size * (x * s + y * c)) for x, y in pts]
 
 
 def hill_y(x):
@@ -257,10 +263,10 @@ def silhouette_frame(f):
                 d.line(((x - 13, y - flap), (x, y), (x + 13, y - flap)), fill=255, width=2)
             else:
                 u = t - 45
-                fy = min(y + 2.2 * u + 0.03 * u * u, H - 6 - (i % 3) * 3)
+                fy = min(y + 2.2 * u + 0.03 * u * u, H - 12 - (i % 3) * 3)
                 fx = x + 12 * math.sin(0.25 * u + phase[i])
-                angle = 0.6 * math.sin(0.3 * u + phase[i]) if fy < H - 10 else 0.2 * i
-                d.polygon(leaf_shape(fx, fy, 6 + i % 3, angle), fill=255)
+                angle = 0.6 * math.sin(0.3 * u + phase[i]) if fy < H - 16 else 0.2 * i
+                d.polygon(leaf_shape(fx, fy, 7 + i % 3, angle), fill=255)
         return im
     # an iris opens to white (26.2-27.2 s)
     if f < 272:
