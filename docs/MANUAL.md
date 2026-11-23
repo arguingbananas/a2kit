@@ -299,17 +299,17 @@ Flipped streams play only with the player from this version of a2kit, which `--i
 The serial line is the limit in busy moments, but the Apple II's memory isn't full. With `--preload`, when a picture can't be finished on time, the encoder puts the smallest part of its work that lets it be on time into fast blocks, which `stream --install` uploads into free memory before playing. The player then draws that part from memory, while the line carries the rest. A picture so busy that even drawing it from memory takes longer than a frame is spread over a few frames, with a block from memory in each. Preloaded blocks go after the sound, up to `$BFFF` (24 KB for a clip without sound), and with `--language-card` on into a [language card](#a2kit-lcprobe)'s `$D000–$FEFF` (12 KB more). There isn't enough for every busy moment, so `--preload-share` chooses how it's shared out:
 
 - **`benefit`** (the default): the encoder first plans the clip without preload to find the stretches where a picture stays on screen too long, then works out how much smoother each one gets with memory, and gives the memory to those that gain the most per byte. The leftover copies of a frame go in memory too. Converting takes longer (about 75 seconds for `hello_apple.gif`, against 8).
-- **`first`**: the memory goes to the busy frames in order until it's full, and leftover copies go on the line. More frames are shown in all, but mostly early in the clip, so the later wipes stay jerky.
+- **`first`**: the memory goes to the busy frames in order until it's full, and leftover copies go on the line. The early wipes get smoother, but the later ones stay jerky.
 
 For `hello_apple.gif` at 10 frames a second (the longest any picture stays on screen in each wipe: the apple splitting, the iris, the middle, the cloud and the last one):
 
 | | Frames shown | Longest holds |
 |---|---|---|
-| No preload | 259 of 319 | 0.4, 0.7, 0.5, 0.8, 0.8 s |
-| `--preload` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.8, 0.5 s |
-| `--preload-share first` | 286 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
-| `--preload --language-card` (`benefit`) | 286 | 0.4, 0.5, 0.1, 0.5, 0.3 s |
-| `--preload-share first --language-card` | 294 | 0.4, 0.2, 0.1, 0.6, 0.8 s |
+| No preload | 242 of 319 | 0.4, 0.7, 0.5, 0.8, 0.8 s |
+| `--preload` (`benefit`) | 273 | 0.4, 0.5, 0.1, 0.8, 0.7 s |
+| `--preload-share first` | 269 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
+| `--preload --language-card` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.6, 0.3 s |
+| `--preload-share first --language-card` | 292 | 0.4, 0.2, 0.1, 0.8, 0.8 s |
 
 The upload takes about 3 seconds more (4.5 with the card). The summary line says how much is preloaded and for how many frames.
 
