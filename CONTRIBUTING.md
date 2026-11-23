@@ -19,14 +19,14 @@ with Chrome or Chromium to rebuild the PDF docs. See the
 | `make lint` | `ruff` checks the Python for likely bugs | Before committing |
 | `./a2kit test` | The whole suite, about three minutes | Before opening a PR |
 | `python3 -m pip_audit -r requirements-dev.txt` | Known vulnerabilities in the dependencies | When dependencies change |
-| `make test PYTHON=/path/to/python3.10` | The whole suite on the oldest supported Python, from a separate environment with `requirements-dev.txt` (no constraints) | When changing imports or Python features |
+| `make test PYTHON=/path/to/python3.11` | The whole suite on the oldest supported Python, from a separate environment with `requirements-dev.txt` (no constraints) | When changing imports or Python features |
 
 Tests never need an Apple II: they use a 6502 simulator, fake serial ports and
 pseudo-terminals. Anything tried on real hardware goes in the Installation Guide's
 *Tested setup* section.
 
 GitHub runs the same checks on every pull request and every push to `main`
-(`.github/workflows/test.yml`), on Python 3.10 and 3.12: `doctor`, `make lint`, a clean
+(`.github/workflows/test.yml`), on Python 3.11 and 3.12: `doctor`, `make lint`, a clean
 rebuild of the 6502 programs and disks, which must match the committed ones byte for
 byte, and `make test`. A PR shows a tick or a cross for each Python. A cross that
 says the binaries differ means a change in `runtime/` was committed without the files

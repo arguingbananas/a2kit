@@ -1,10 +1,11 @@
 """Colour pictures: the screen model against what MAME showed, the converter on flat
 colours and the colour example, and the `image --colour` and `show` colour options."""
-import os, subprocess, sys, tempfile
+import os, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from PIL import Image
 import a2hdr, imgconv, show
+import testlib
 from testlib import expect, finish
 
 CODE = {(0, 0, 0): ".", (255, 255, 255): "W", imgconv.LORES[3]: "V", imgconv.LORES[12]: "G",
@@ -72,7 +73,7 @@ grey = imgconv.colour_screen(Image.new("RGB", (280, 192), (128, 128, 128)), "thr
 expect(len(set(grey)) <= 3, "threshold: a flat grey is one byte pattern, no dither")
 
 # 4. the command line and show scenes
-TMP = tempfile.mkdtemp(prefix="a2kit-test-")
+TMP = testlib.tempdir()
 src = os.path.join(TMP, "c.png")
 Image.new("RGB", (280, 192), imgconv.LORES[9]).save(src)
 for opt in ("--colour", "--color"):

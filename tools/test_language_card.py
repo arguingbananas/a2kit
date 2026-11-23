@@ -14,7 +14,7 @@
    reading outside the card, and plays a whole clip preloaded into main RAM and
    the card.
 """
-import os, sys, tempfile, wave
+import os, sys, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 sys.path.insert(0, HERE)
@@ -23,6 +23,7 @@ from py65.devices.mpu6502 import MPU as MPU6502
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
 import a2hdr, lcprobe, send, show
+import testlib
 from testlib import expect, finish
 
 ACIA_D, ACIA_S = 0xC0A8, 0xC0A9
@@ -174,7 +175,7 @@ for name in ("receiver.bin", "receiver-19200.bin"):
     expect(m.mpu.pc == RETURN, "%s: with no card, the session still finishes" % name)
 
 # ---------------------------------------------------------------- 3. the sequencer
-tmp = tempfile.mkdtemp()
+tmp = testlib.tempdir()
 
 
 def make_wav(path, seconds):
