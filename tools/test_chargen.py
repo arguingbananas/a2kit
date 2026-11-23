@@ -6,12 +6,13 @@ dot, a blurred brightness signal, single dots coming out as colour (the colour
 carrier is half the dot rate), neighbouring scanlines blended together, and noise.
 The made-up glyphs are random, so nothing here is Apple's.
 """
-import os, sys, tempfile, zlib
+import os, sys, zlib
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import numpy as np
 from py65.devices.mpu6502 import MPU
 from py65.memory import ObservableMemory
 import chargen
+import testlib
 from testlib import expect, finish
 
 # 1. screenhold.bin: shows the screen, waits for a byte on the serial card (or a key), returns
@@ -114,7 +115,7 @@ def simulate(dots, noise=1.0):
     return (img + rng.normal(0, noise, img.shape)).astype(np.float32)
 
 
-tmp = tempfile.mkdtemp(prefix="a2kit-chargen-")
+tmp = testlib.tempdir("a2kit-chargen-")
 for name, _, _ in chargen.screens():
     if name == "geometry":
         imgs = [simulate(dots_hgr(chargen.geometry_rows()))]

@@ -1,13 +1,14 @@
 """Drive the unified `a2kit` command end to end as a user would, in a temp dir."""
-import os, subprocess, sys, tempfile, wave
+import os, subprocess, sys, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLI = [sys.executable, os.path.join(HERE, "a2kit.py")]
 sys.path.insert(0, HERE)
 import numpy as np
 from PIL import Image, ImageDraw
 import a2hdr
+import testlib
 
-tmp = tempfile.mkdtemp()
+tmp = testlib.tempdir()
 P = lambda n: os.path.join(tmp, n)
 fails, total = [], [0]
 
@@ -31,19 +32,6 @@ w.writeframes((0.6 * np.sin(2 * np.pi * 440 * t) * 32767).astype("<i2").tobytes(
 open(P("show.toml"), "w").write('[[scene]]\nimage = "pic.png"\nhold = 1.0\n[[scene]]\naudio = "s.wav"\n')
 
 r = run("--help"); check("help lists commands", r.returncode == 0 and "a2kit video" in r.stdout)
-# Python 3.10 has no tomllib: show.py falls back to tomli. On 3.10 that is the real thing;
-# on newer Pythons, hide tomllib and use it as the stand-in tomli (the same interface).
-show_toml = os.path.join(HERE, "..", "examples", "show.toml")
-if sys.version_info < (3, 11):
-    code = "import sys; sys.path.insert(0, %r); import show; print(show.tomllib.__name__, len(show.build(%r)))" % (HERE, show_toml)
-    want = "tomli"
-else:
-    code = ("import sys, tomllib; sys.modules['tomli'] = tomllib; sys.modules['tomllib'] = None; "
-            "sys.path.insert(0, %r); import show; print(show.tomllib.__name__, len(show.build(%r)))" % (HERE, show_toml))
-    want = "tomllib"                      # the stand-in keeps its own name
-r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-check("show scripts are read through tomli where there is no tomllib (Python 3.10)",
-      r.returncode == 0 and r.stdout.split()[:1] == [want] and int(r.stdout.split()[1]) > 0, r.stderr[-300:])
 r = run("--version"); check("--version prints the version", r.returncode == 0 and r.stdout.strip() == "a2kit " + a2hdr.VERSION)
 r = run("doctor"); check("doctor starts with the version", r.stdout.startswith("a2kit " + a2hdr.VERSION))
 changelog = open(os.path.join(HERE, "..", "CHANGELOG.md")).read()

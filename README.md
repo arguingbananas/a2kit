@@ -24,7 +24,7 @@ Starter assets are in [`examples/`](examples/).
 ## In one minute
 
 ```bash
-python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Python 3.10+)
+python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Python 3.11+)
 ./a2kit doctor                                  # checks the install
 ./a2kit image examples/logo.png -o logo.a2b --preview logo_preview.png
 ```
@@ -54,6 +54,26 @@ python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Pytho
 | `receiver.bin`, `receiver-19200.bin`, `sequencer.bin`, `video.bin`, `boot.bin`, `boot-19200.bin` | Built 6502 programs (rebuild with `./a2kit build`) |
 | `examples/` | Starter assets and `make_examples.py`, which regenerates them |
 | `docs/` | The guides above, the workflow diagram, and `make_pdfs.py` |
+
+## Built with
+
+a2kit stands on these projects; thank you to their authors. None of their code is copied
+into this repository: the Python packages are installed with pip, and the tools are run
+as separate programs.
+
+| Project | Used for | License |
+|---|---|---|
+| [Pillow](https://python-pillow.org) | Images, GIFs, previews | MIT-CMU |
+| [NumPy](https://numpy.org) | Video and audio conversion | BSD-3-Clause (and others for bundled parts) |
+| [pySerial](https://github.com/pyserial/pyserial) | The serial port | BSD |
+| [py65](https://github.com/mnaberez/py65) | The 6502 simulator the tests run on | BSD-3-Clause |
+| [pypdf](https://github.com/py-pdf/pypdf) | Building the PDF guides | BSD-3-Clause |
+| [Ruff](https://github.com/astral-sh/ruff) | Linting (`make lint`) | MIT |
+| [cc65](https://cc65.github.io) (`ca65`, `ld65`) | Assembling and linking the 6502 programs | zlib |
+| [FFmpeg](https://ffmpeg.org) | Optional: reading video files, and `chargen capture` | LGPL-2.1+ or GPL, as built by your system |
+| [pandoc](https://pandoc.org) and [Chrome or Chromium](https://www.chromium.org) | Building the PDF guides | GPL-2.0+; Chromium BSD-3-Clause (Chrome is Google's) |
+| [Liberation Sans](https://github.com/liberationfonts/liberation-fonts), [DejaVu Sans Mono](https://dejavu-fonts.github.io) | Fonts embedded in the PDF guides | SIL OFL 1.1; Bitstream Vera license |
+| [Aileron](https://dotcolon.net/fonts/aileron) (bundled with Pillow) | The lettering in the example pictures | CC0 (per its author) |
 
 ## License
 

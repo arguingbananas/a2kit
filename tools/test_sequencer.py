@@ -1,7 +1,7 @@
 """Build a small show, load it into a py65 6502 simulator with the real
 sequencer.bin, and check scene order, wait timing, and the speaker waveform
 (edge timing is decoded back to the audio nibbles and compared)."""
-import os, sys, tempfile, wave
+import os, sys, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import numpy as np
@@ -10,9 +10,10 @@ from py65.devices.mpu6502 import MPU
 from py65.devices.mpu65c02 import MPU as MPU65C02
 from py65.memory import ObservableMemory
 import show as a2kit, a2hdr, audioconv
+import testlib
 from testlib import expect, finish
 
-tmp = tempfile.mkdtemp()
+tmp = testlib.tempdir()
 for n, shade in (("a.png", "white"), ("b.png", "gray")):
     im = Image.new("RGB", (280, 192), "black"); ImageDraw.Draw(im).ellipse((40, 20, 240, 170), fill=shade); im.save(os.path.join(tmp, n))
 t = np.arange(int(0.3 * 22050)) / 22050

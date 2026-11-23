@@ -867,6 +867,7 @@ def main():
                 flips = done                        # before a last mark shows it
                 if done:
                     p, goal = 1 - p, target
+                    ups.append(N)                   # (one more picture: the last)
                 screens.append(pages[1 - p].copy())
                 draw(goal, budget, 0, flips=flips)
                 done = np.array_equal(pages[p], goal)
@@ -925,7 +926,7 @@ def main():
                     chosen.append((c0, c1, min(u + 256, left)))
                     left -= chosen[-1][2]
             frames, screens, pending, preload, ups, _ = plan(sorted(chosen))
-        shown = len(ups) + 1
+        shown = len(ups)                    # (each picture planned goes on screen, the last at the final mark)
     blob = bytearray(a2hdr.stream_header(a2hdr.TYPE_VIDEO, len(frames)))
     blob.append(a.fps)
     for f in frames:

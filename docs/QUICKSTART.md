@@ -27,7 +27,7 @@ Full details are in the [Installation Guide](INSTALL.md), including the complete
 
 | | |
 |---|---|
-| **Your computer** | Python 3.10 or newer, with `pillow`, `numpy` and `pyserial` (`python3 -m pip install -r requirements.txt`). Optional: `cc65` to rebuild the 6502 programs (the built ones are included), `ffmpeg` to convert video files. |
+| **Your computer** | Python 3.11 or newer, with `pillow`, `numpy` and `pyserial` (`python3 -m pip install -r requirements.txt`). Optional: `cc65` to rebuild the 6502 programs (the built ones are included), `ffmpeg` to convert video files. |
 | **Apple II side** | A 48K Apple II, II+ or IIe at its normal speed, with a **Super Serial Card in slot 2**. To boot the a2kit disk you also need a 16-sector Disk II drive (or a Floppy Emu); if you type the receiver in, no disk is needed. |
 | **Cable** | An **RS-232** serial port on your computer: a built-in one, or a USB-to-RS-232 adapter (not a 3.3 V / 5 V "USB-TTL" board). Plus a DB-9-to-DB-25 cable or adapter, with the null-modem wiring your card needs. Its port name is `/dev/ttyS0` (built-in) or `/dev/ttyUSB0` (USB) on Linux, `/dev/cu.usbserial-…` on macOS, `COM3` (or similar) on Windows. |
 

@@ -9,7 +9,7 @@ or Windows. See README.md, docs/INSTALL.md, docs/QUICKSTART.md, docs/MANUAL.md.
 
 ## Environment
 
-- Python 3.10 or newer (last tested on 3.12; 3.10 needs `tomli`, and not `constraints.txt`). Dependencies: `requirements.txt`
+- Python 3.11 or newer (last tested on 3.12; 3.10 reached end of life in October 2026 and is no longer supported). Dependencies: `requirements.txt`
   (runtime), `requirements-dev.txt` (tests, docs, lint), `constraints.txt` (exact
   tested versions). Use a virtual environment: `.venv/`. `./a2kit` and `make` use it
   by themselves; `.claude/settings.json` activates it for every Claude Code session
@@ -41,7 +41,8 @@ docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md, CHANGELOG.md
 Generated but committed: `*.bin`, `*.dsk`, `video.lbl` (rebuild with `./a2kit build`,
 never edit by hand) and `docs/*.pdf` (rebuild with `docs/make_pdfs.py`).
 CI: `.github/workflows/test.yml` runs doctor, lint, a binaries-match-source check and the
-full suite on Python 3.10 and 3.12 for every PR and push to main. Optional, not present:
+full suite on Python 3.11 and 3.12 for every PR and push to main; main accepts a merge only
+once both checks ("Python 3.11", "Python 3.12") pass. Optional, not present:
 packaging.
 
 ## Rules

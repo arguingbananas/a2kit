@@ -1,0 +1,17 @@
+# Dependabot: weekly pull requests for newer versions of what a2kit depends on.
+# - pip: requirements.txt, requirements-dev.txt and constraints.txt (the exact tested set;
+#   a bump there must still pass ./a2kit test, which CI runs on the PR).
+# - github-actions: the actions in .github/workflows, pinned to commit SHAs.
+# Not covered: cc65, make and ffmpeg come from Ubuntu's archive in CI (pinned only by the
+# runner image, ubuntu-24.04), and pandoc and Chrome only build the PDFs.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

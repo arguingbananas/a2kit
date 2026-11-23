@@ -1,9 +1,11 @@
 """Keep the docs honest. Runs the Quick Start's no-hardware commands against
 the starter assets in a scratch copy of the project, then checks that the docs
 only mention files, commands, options and links that really exist."""
-import os, re, shutil, subprocess, sys, tempfile
+import os, re, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
+sys.path.insert(0, HERE)
+import testlib                                              # noqa: E402
 fails = []
 
 def check(name, cond, detail=""):
@@ -20,7 +22,7 @@ m = re.search(r"<!-- test:no-hardware -->\s*```bash\n(.*?)```", quick, re.S)
 check("Quick Start has a tagged no-hardware block", bool(m))
 lines = [l.strip() for l in m.group(1).splitlines()] if m else []
 cmds = [l for l in lines if l and not l.startswith("#")]
-tmp = tempfile.mkdtemp()
+tmp = testlib.tempdir()
 work = os.path.join(tmp, "a2kit")
 shutil.copytree(ROOT, work, ignore=shutil.ignore_patterns("__pycache__", "out", "*.o"))
 outputs = {}

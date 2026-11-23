@@ -1,7 +1,8 @@
-import os, shutil, subprocess, sys, tempfile, threading
+import os, subprocess, sys, threading
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 from PIL import Image, ImageDraw
 import a2hdr, imgconv, send, serial
+import testlib
 from testlib import expect, finish
 
 # 1. make a test image and convert it
@@ -9,7 +10,7 @@ img = Image.new("RGB", (400, 300), "black")
 d = ImageDraw.Draw(img)
 d.ellipse((50, 30, 350, 270), fill="white")
 d.rectangle((150, 100, 250, 200), fill="gray")
-TMP = tempfile.mkdtemp(prefix="a2kit-test-")       # private to this run
+TMP = testlib.tempdir()       # private to this run
 def T(name): return os.path.join(TMP, name)
 img.save(T("t.png"))
 subprocess.run([sys.executable, os.path.join(HERE, "imgconv.py"), T("t.png"), "-o", T("t.a2b"), "--preview", T("t_prev.png")], check=True)
@@ -94,5 +95,4 @@ pic = send.upload_seconds([8192], 19200)
 starter = send.upload_seconds([332, 8192, 6912, 8192, 2048, 48], 19200)       # show send --install, examples/show.toml
 print("upload model: 8 KB picture %.2f s (measured about 4.8 s), starter show %.1f s (measured about 15 s)" % (pic, starter))
 expect(4.6 < pic < 5.0 and 14.5 < starter < 15.5, "upload-time model matches the real-hardware measurements")
-shutil.rmtree(TMP, ignore_errors=True)
 finish("test_a2kit")

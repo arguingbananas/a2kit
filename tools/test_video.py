@@ -12,7 +12,7 @@ cycles at 19200 baud, counting overruns).
      the same speed, fault and boundary checks for page 2
 Section 2 drives the simulated serial line from stream.plan_stream, the same
 schedule the real host uses, so the host's burst timing is what is tested."""
-import os, re, subprocess, sys, tempfile, wave
+import os, re, subprocess, sys, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import numpy as np
@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw
 from py65.devices.mpu6502 import MPU
 from py65.memory import ObservableMemory
 import a2hdr, imgconv, videoconv, stream as host
+import testlib
 from testlib import expect, finish
 
 ROOT = os.path.join(HERE, "..")
@@ -28,7 +29,7 @@ bits = (rng.random((192, 280)) > 0.5).astype(np.uint8)
 expect(bytes(videoconv.pack_screen(bits)) == imgconv.to_hgr(bits.tolist()), "fast HGR packer matches the reference packer")
 print("pack_screen matches imgconv.to_hgr: checked")
 
-tmp = tempfile.mkdtemp()
+tmp = testlib.tempdir()
 FR = os.path.join(tmp, "frames"); os.makedirs(FR)
 N_MOVE, N_STILL = 24, 20
 for i in range(N_MOVE + N_STILL):
