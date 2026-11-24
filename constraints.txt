@@ -4,7 +4,7 @@
 #   python3 -m pip install -r requirements-dev.txt -c constraints.txt
 # Update it when a newer set has passed ./a2kit test (python3 -m pip freeze shows them).
 pillow==13.0.0
-numpy==2.5.4
+numpy==2.5.5
 pyserial==3.5
 py65==1.2.0
 pypdf==7.0.0
