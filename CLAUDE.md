@@ -9,13 +9,14 @@ or Windows. See README.md, docs/INSTALL.md, docs/QUICKSTART.md, docs/MANUAL.md.
 
 ## Environment
 
-- Python 3.11 or newer (last tested on 3.12; 3.10 reached end of life in October 2026 and is no longer supported). Dependencies: `requirements.txt`
+- Python 3.11 or newer (last tested on 3.12; 3.10 reached end of life in October 2026 and is no longer supported; 3.11 ends in October 2027,
+  and then the minimum moves to 3.12). Dependencies: `requirements.txt`
   (runtime), `requirements-dev.txt` (tests, docs, lint), `constraints.txt` (exact
   tested versions). Use a virtual environment: `.venv/`. `./a2kit` and `make` use it
   by themselves; `.claude/settings.json` activates it for every Claude Code session
   and links it into new worktrees.
 - System tools: cc65 (`ca65`, `ld65`) and make to build the 6502 programs and run the
-  tests; ffmpeg optional for video files; pandoc and Chrome or Chromium to rebuild PDFs.
+  tests; shellcheck for `make lint`; ffmpeg optional for video files; pandoc and Chrome or Chromium to rebuild PDFs.
 - 6502 sources are in `runtime/`; the Python tools are in `tools/`, and `./a2kit` runs
   `tools/a2kit.py`.
 
@@ -24,13 +25,14 @@ or Windows. See README.md, docs/INSTALL.md, docs/QUICKSTART.md, docs/MANUAL.md.
     python3 -m pip install -r requirements-dev.txt -c constraints.txt   # set up
     ./a2kit build            # rebuild the 6502 programs and boot disks (make all)
     ./a2kit doctor           # check the toolchain and built files
-    make smoke               # sanity check after every change, about 10 s
-    make lint                # ruff, correctness rules only (pyproject.toml)
-    ./a2kit test             # full suite (make test), about three minutes
+    make smoke               # sanity check after every change, under 30 s
+    make lint                # ruff, correctness rules only (pyproject.toml); shellcheck on ./a2kit
+    ./a2kit test             # full suite (make test), about 15 minutes (video and examples take most)
     python3 -m pip_audit -r requirements-dev.txt    # dependency vulnerabilities
     python3 docs/make_pdfs.py                       # rebuild the PDFs after changing a guide
 
-There is no formatter; don't reformat files wholesale.
+There is no formatter (CONTRIBUTING.md says why); don't reformat files wholesale.
+`.editorconfig` sets the indentation.
 
 ## Files
 

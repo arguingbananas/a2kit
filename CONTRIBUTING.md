@@ -15,9 +15,9 @@ with Chrome or Chromium to rebuild the PDF docs. See the
 
 | Command | What it does | When |
 |---|---|---|
-| `make smoke` | Audio conversion and the command-line tests, about 10 s | After every change |
-| `make lint` | `ruff` checks the Python for likely bugs | Before committing |
-| `./a2kit test` | The whole suite, about three minutes | Before opening a PR |
+| `make smoke` | Audio conversion and the command-line tests, under 30 s | After every change |
+| `make lint` | `ruff` checks the Python for likely bugs, and `shellcheck` (if installed) the `a2kit` script | Before committing |
+| `./a2kit test` | The whole suite: about 15 minutes on a 2011 desktop, most of it the video and examples tests (a CI job takes about 5) | Before opening a PR |
 | `python3 -m pip_audit -r requirements-dev.txt` | Known vulnerabilities in the dependencies | When dependencies change |
 | `make test PYTHON=/path/to/python3.11` | The whole suite on the oldest supported Python, from a separate environment with `requirements-dev.txt` (no constraints) | When changing imports or Python features |
 
@@ -28,9 +28,17 @@ pseudo-terminals. Anything tried on real hardware goes in the Installation Guide
 GitHub runs the same checks on every pull request and every push to `main`
 (`.github/workflows/test.yml`), on Python 3.11, 3.12, 3.13 and 3.14: `doctor`, `make lint`, a clean
 rebuild of the 6502 programs and disks, which must match the committed ones byte for
-byte, and `make test`. A PR shows a tick or a cross for each Python. A cross that
+byte, and `make test`. The 3.12 job installs exactly `constraints.txt`; the others
+install the newest packages, except ruff, which is pinned in every job so a new ruff
+release can't fail lint by itself. A PR shows a tick or a cross for each Python. A cross that
 says the binaries differ means a change in `runtime/` was committed without the files
 `./a2kit build` makes from it.
+
+There is no code formatter, on purpose: the code is formatted by hand, and `ruff format`
+would rewrite 1,175 of the 8,400 lines, in every one of the 38 Python files (measured
+24 November 2026), mostly hand-aligned comments and hand-wrapped long calls. Don't
+reformat files wholesale; `.editorconfig` sets the indentation for new lines (4 spaces
+in Python, tabs in the Makefile).
 
 ## Branches and pull requests
 

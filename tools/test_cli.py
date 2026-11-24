@@ -159,6 +159,13 @@ r = run("lcprobe")
 check("lcprobe without --port fails cleanly", r.returncode == 2 and "--port" in r.stderr)
 r = subprocess.run(CLI + ["show", "plan", "nope.toml"], capture_output=True, text=True, cwd=tmp, env={**os.environ, "A2KIT_DEBUG": "1"})
 check("A2KIT_DEBUG=1 shows the full traceback", r.returncode != 0 and "Traceback" in r.stderr)
+# an older Python (faked: sys.version_info set to 3.10) gets one clear line, from a2kit and from show.py run on its own
+for script in ("a2kit.py", "show.py"):
+    fake = ("import runpy, sys; sys.version_info = (3, 10, 0, 'final', 0); sys.argv = [%r, '--help']; "
+            "runpy.run_path(%r, run_name='__main__')" % (script, os.path.join(HERE, script)))
+    r = subprocess.run([sys.executable, "-c", fake], capture_output=True, text=True, cwd=tmp)
+    check("Python 3.10: %s says 3.11 or newer is needed" % script,
+          r.returncode == 1 and "needs Python 3.11 or newer (this is 3.10)" in r.stderr and "Traceback" not in r.stderr, r.stderr[-200:])
 
 print("CLI: %s" % ("all %d checks passed" % total[0] if not fails else "FAILED: " + ", ".join(fails)))
 sys.exit(1 if fails else 0)
