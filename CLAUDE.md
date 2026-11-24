@@ -41,8 +41,8 @@ docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md, CHANGELOG.md
 Generated but committed: `*.bin`, `*.dsk`, `video.lbl` (rebuild with `./a2kit build`,
 never edit by hand) and `docs/*.pdf` (rebuild with `docs/make_pdfs.py`).
 CI: `.github/workflows/test.yml` runs doctor, lint, a binaries-match-source check and the
-full suite on Python 3.11 and 3.12 for every PR and push to main; main accepts a merge only
-once both checks ("Python 3.11", "Python 3.12") pass. Optional, not present:
+full suite on Python 3.11, 3.12, 3.13 and 3.14 for every PR and push to main; main accepts a merge only
+once the "Python 3.11" and "Python 3.12" checks pass. Optional, not present:
 packaging.
 
 ## Rules
