@@ -5,6 +5,21 @@
 Turn pictures, animations and sound from a modern computer into things an Apple II
 can show and play, and send them over a Super Serial Card.
 
+![Hello, Apple: an apple splits open, a walker crosses a hill at sunset, birds turn into falling maple leaves](docs/hello_apple_on_apple2.webp)
+
+*An original animation created with a2kit, running on a real 64K Apple ][ plus (48K and a 16K language card), recorded from its video output.*
+
+> [!NOTE]
+> **Made with AI.** This project was built with
+> [Claude Code](https://claude.com/claude-code), Anthropic's AI coding
+> assistant (Claude), working under my direction: the Python tools, the 6502
+> programs, the tests, the example media and the documentation. I directed the
+> work, and did what only a person at the Apple II can: fitted the cards and
+> chips, booted it, pressed the keys, recovered it after crashes, and judged the
+> pictures and sound on the TV. Claude drove the Apple II over the serial link
+> for the hardware tests and analysed recordings of its screen. Commits Claude
+> wrote or co-wrote name it in a `Co-Authored-By` trailer.
+
 **For:** a 48K Apple II, II+ or IIe with a Super Serial Card, and a computer with an RS-232 serial port (built in, or a USB-to-RS-232 adapter) ([hardware requirements](docs/INSTALL.md#hardware)).
 
 **Status:** working on real hardware: a 1979 Apple II+ with a Super Serial Card II, booted from a Floppy Emu, driven from Linux over a built-in serial port ([tested setup and measurements](docs/INSTALL.md#tested-setup)). Every part is also covered by tests in a 6502 simulator.
@@ -75,6 +90,17 @@ as separate programs.
 | [Liberation Sans](https://github.com/liberationfonts/liberation-fonts), [DejaVu Sans Mono](https://dejavu-fonts.github.io) | Fonts embedded in the PDF guides | SIL OFL 1.1; Bitstream Vera license |
 | [Aileron](https://dotcolon.net/fonts/aileron) (bundled with Pillow) | The lettering in the example pictures | CC0 (per its author) |
 
+## Working on this with Claude Code
+
+The project was built with [Claude Code](https://claude.com/claude-code) (see
+the note at the top), and it's set up for you to carry on the same way. Open the
+repository in Claude Code and it reads `CLAUDE.md`: what a2kit is, the commands,
+the rules (tests never need an Apple II, a serial port or the network) and when
+a change is done. `.claude/settings.json` activates the virtual environment for
+each session. Put anything about your own setup (your computer, your serial port,
+your Apple II and its cards) in `CLAUDE.local.md`; Claude Code loads it too, and
+git ignores it.
+
 ## License
 
-MIT; see [LICENSE](LICENSE). The boot disk contains only a2kit's own code (no Apple DOS or ROM), and the example pictures and sounds are generated from scratch by `examples/make_examples.py`, so everything here can be shared under the same terms.
+MIT; see [LICENSE](LICENSE). The boot disk contains only a2kit's own code (no Apple DOS or ROM), and the example pictures and sounds are generated from scratch by `examples/make_examples.py` (the recording at the top is one of them, filmed off the Apple II), so everything here can be shared under the same terms.
