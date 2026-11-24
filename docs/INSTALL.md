@@ -25,6 +25,7 @@ a2kit has two halves:
 | **make** | `./a2kit build`, `./a2kit test` | Only with cc65 | GNU Make 4.3 |
 | **ffmpeg** | Video files such as `.mp4` | Optional (GIFs and frame folders don't need it) | 6.1 |
 | **pandoc** + **Chrome/Chromium** | Rebuilding the PDF docs | Optional | pandoc 3.1, Chrome 153 |
+| **shellcheck** | `make lint` checking the `a2kit` shell script | Optional (lint says when it's missing) | 0.9 |
 | **v4l-utils** (`v4l2-ctl`) + **ffmpeg** | `a2kit chargen capture`, with a USB video grabber (Linux) | Optional | v4l-utils 1.26 |
 
 ### Tested setup
@@ -180,7 +181,7 @@ Check what you have:
 python3 --version
 ```
 
-If it's older than 3.11, or missing, install a current Python (3.10 reached its end of life in October 2026, and a2kit no longer supports it):
+If it's older than 3.11, or missing, install a current Python (3.10 reached its end of life in October 2026, and a2kit no longer supports it; 3.11 ends in October 2027, and a2kit will then need 3.12 or newer):
 
 | System | Command or download |
 |---|---|

@@ -44,6 +44,9 @@ import os
 import sys
 import time
 
+if sys.version_info < (3, 11):      # tomllib is new in 3.11; say so instead of failing to import it
+    sys.exit("a2kit needs Python 3.11 or newer (this is %d.%d); see docs/INSTALL.md" % sys.version_info[:2])
+
 import tomllib
 
 import a2hdr

@@ -32,6 +32,9 @@ import shutil
 import subprocess
 import sys
 
+if sys.version_info < (3, 11):
+    sys.exit("a2kit needs Python 3.11 or newer (this is %d.%d); see docs/INSTALL.md" % sys.version_info[:2])
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)

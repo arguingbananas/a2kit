@@ -10,6 +10,10 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 - Python 3.11 or newer is now required: 3.10 reached its end of life in October
   2026. CI tests 3.11, 3.12, 3.13 and 3.14, and `tomli` is no longer
   needed.
+  On an older Python, `a2kit` (and `tools/show.py` run on its own) now stops
+  at once with one line saying so, instead of a `tomllib` import error. The
+  README's quick start creates a virtual environment first, which recent Linux
+  Pythons require. `make lint` also runs shellcheck on the `a2kit` script.
 - The tests no longer leave their temporary folders behind in the system's temp
   directory. The `video` summary line no longer counts one picture too many.
 - Video without tearing: `video --flip` draws each frame on the hidden hi-res

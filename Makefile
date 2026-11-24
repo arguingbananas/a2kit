@@ -70,11 +70,14 @@ test: all
 	$(PYTHON) tools/test_cli.py
 	$(PYTHON) tools/test_examples.py
 
-# Correctness checks on the Python (settings in pyproject.toml)
+# Correctness checks on the Python (settings in pyproject.toml), and on the a2kit shell
+# script with shellcheck when it's installed (it says so when it isn't)
 lint:
 	$(PYTHON) -m ruff check .
+	@if command -v shellcheck >/dev/null; then shellcheck a2kit && echo "shellcheck: a2kit is clean"; \
+	else echo "shellcheck not installed, so the shell script wasn't checked (Debian/Ubuntu: sudo apt install shellcheck; macOS: brew install shellcheck)"; fi
 
-# A quick check after every change (about 10 s): audio conversion, and every
+# A quick check after every change (under 30 s): audio conversion, and every
 # command's options, error messages and an end-to-end ping. `make test` runs it all.
 smoke: all
 	$(PYTHON) tools/test_audio.py

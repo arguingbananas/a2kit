@@ -1,16 +1,16 @@
 # a2kit Roadmap
 
-Where a2kit stands and what comes next, most urgent first. Last updated 14 November 2026.
+Where a2kit stands and what comes next, most urgent first. Last updated 24 November 2026.
 
 ## Where things stand
 
 | Work | Where | State |
 |---|---|---|
 | Pictures, shows, video and sound at 115200 baud | `main` | Tested on a 1979 Apple II+ ([numbers](INSTALL.md#tested-setup)) |
-| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Reopened** on 11 November: after 48 clean hours with extra cooling, three crashes that day with the RAMCard out, the last a stack wipe 23 minutes into a canary run. Since then clean: a 1-hour and a 12-hour canary run, three days idle, a 12-hour canary with the pattern inverted and a 12-hour busy run (15–16 Nov) |
+| Unexplained crashes on that machine | [Section 1](#1-find-out-why-the-apple-ii-crashes-when-idle) | **Reopened** on 11 November: after 48 clean hours with extra cooling, three crashes that day with the RAMCard out, the last a stack wipe 23 minutes into a canary run. Since then clean: a 1-hour and a 12-hour canary run, three days idle, a 12-hour canary with the pattern inverted and a 12-hour busy run (15–16 Nov). 22 Nov: a stack wipe while idle with the Microsoft RAMCard refitted; 23–24 Nov: 19 h 15 min clean with a Microtek 16K card |
 | Crash reporter, `peek`, `canary` and `ramload` | `main` | Merged ([PR #6](https://github.com/arguingbananas/a2kit/pull/6)); `peek` reads the slot ROMs too ([PR #10](https://github.com/arguingbananas/a2kit/pull/10)) |
 | Clearer speech: `--even-out` for audio, shows and video, and `--gain` for video | `main` | Merged ([PR #3](https://github.com/arguingbananas/a2kit/pull/3)); heard on the Apple II+ |
-| Longer sound using a language card | Branch `feature/language-card` | Works in MAME, show and video (11 Nov); docs written; the real-hardware test waits for a replacement card |
+| Longer sound using a language card | `main` | Merged ([PR #11](https://github.com/arguingbananas/a2kit/pull/11)). On the II+, `lcprobe` reported 16K GOOD and `--language-card` video played cleanly with the Microsoft RAMCard (22 Nov) and a Microtek 16K card (23 Nov); `long_show.toml` not yet played on real hardware |
 | Full memory map for the Manual | `main` | Merged ([PR #2](https://github.com/arguingbananas/a2kit/pull/2)); its 12K error is corrected on `feature/language-card` |
 | Project housekeeping: lint, smoke tests, pinned versions, contributor and security docs | `main` | Merged ([PR #7](https://github.com/arguingbananas/a2kit/pull/7), [#8](https://github.com/arguingbananas/a2kit/pull/8), [#9](https://github.com/arguingbananas/a2kit/pull/9)) |
 
@@ -18,7 +18,7 @@ Where a2kit stands and what comes next, most urgent first. Last updated 14 Novem
 
 **Shelved on 10 November**, with the machine reliable enough to develop on: with extra cooling it ran clean for 48 hours (below). Keep the extra cooling in place. The tests to pick up later are listed under *When this is picked up again*.
 
-The machine has crashed or hung ten times with the receiver waiting and nobody touching it:
+The machine has crashed or hung eleven times with the receiver waiting and nobody touching it:
 
 | When | Last known alive | Screen afterwards | Notes |
 |---|---|---|---|
@@ -32,6 +32,7 @@ The machine has crashed or hung ten times with the receiver waiting and nobody t
 | 11 Nov | After 11:48, the last ROM read | `BD16- …` (a `BRK` at `$BD14`) | RAMCard out, a plain chip back in E3, extra cooling on; receiver from `feature/language-card`. Memory at `$BD00–$BD1F` was all `00`, so it ran into empty RAM. The stacked `P` was `$FA`, so interrupts were enabled and decimal mode on: not the receiver's state. Receiver code intact |
 | 11 Nov | Later the same day | Saved registers `000D- A=00 X=20 Y=00 P=36 S=18` (a `BRK` at `$000B`) | A second crash in zero page, with S down at `$18`, so it ran wild first. Afterwards the receiver stopped answering altogether |
 | 11 Nov | 13:24:25, 23 min into a canary run after a fresh `ramload` | Logged by the canary: `0002- A=5F X=20 Y=CF P=35 S=F1` (a `BRK` at `$0000`) | The stack page was wiped to zero (238 bytes) at 13:24:25, and the receiver crashed 30 s later, as a wiped stack makes it do. Free RAM `$0B00–$BFFF`, `$8000–$BFFF` included, held its pattern at every check before the crash. Receiver code intact; it went on answering |
+| 22 Nov | About 17:40, the last ping after the card video | `0002- A=00 X=20 Y=80 P=77 S=E9`, then `0002- A=00 X=02 Y=8D P=35 S=27` (two `BRK`s at `$0000`) | Microsoft RAMCard refitted (slot 0, cable in E3), extra cooling on. Stack page wiped (about 370 bytes zero); the preload in `$6000–$BFFF`, the ROM and the receiver intact. The wipe most likely came first: with the page all zero, `RTS` and `RTI` land at `$0000` |
 
 Two earlier oddities may be related, but that's unproven: a first picture at 115200 that came up as lo-res blocks with a dead keyboard, and a drop to Applesoft with nothing pressed.
 
@@ -60,6 +61,8 @@ Two earlier oddities may be related, but that's unproven: a first picture at 115
 **15 November: four days held, and a full test run.** A read-only look before anything was sent found the 45 KB of free RAM, E3's bank included, still holding the pattern written at 18:57 on the 11th, apart from where a show had been loaded since, and the stack page intact: four days without a change. Then `ping`, the ROM reads, a picture, the starter show, a video with sound, the Dylan clip and `lcprobe` all ran on the machine (results in the [Installation Guide](INSTALL.md#tested-setup)), followed by a clean 15-minute canary run.
 
 **15–16 November: the inverted pattern, then a day of activity, both clean.** Same setup. From 19:43 on the 15th to 07:43 on the 16th, the canary ran with every bit of its pattern flipped (a small script outside the repo, checked in MAME first): about 350 checks, every one with 0 bytes changed, and no stack wipe, crash or silence. With the 11 November night, every bit of `$0B00–$BFFF`, E3's bank included, has now held both a 0 and a 1 for 12 hours without changing, so a bit stuck at one value is ruled out there. Straight after, from 07:44 to 19:44, the machine was kept busy instead of idle: every 15 minutes it played the starter show and the bouncing ball with sound (both uploaded with `--install`), ran `ping` with its speed test, and checked the crash record, with the receiver checked every minute in between. All 47 rounds passed, the receiver matched this computer's build throughout, and uploads held steady at 8,729–8,833 bytes/s. That makes 24 hours in a row without a fault, idle and busy, but the stack wipes have come and gone before, so the supply measurements below still come first.
+
+**22–24 November: a stack wipe with the RAMCard refitted, then 19 hours clean with a new card.** The Microsoft RAMCard went back in for the language-card video tests (slot 0, its cable in E3). The first canary run stopped answering after about 40 seconds; on the second, bit 0 of 855 bytes in `$8000–$BFFF` read wrong within 4 seconds, and 1,298 a few minutes later: E3's bit, through the card's cable. A third run was clean for 45 minutes, and `lcprobe` and the card video worked. Left idle afterwards, the machine crashed between about 17:40 and 19:14 with two `BRK`s at `$0000`, and the dump showed the stack page wiped again while main RAM, the ROM and the receiver were intact: the signature of 11 November, which came with the card out. On 23 November the RAMCard was swapped for a Microtek 16K card (slot 0, cable in E3). `lcprobe` reported 16K GOOD, a 45-minute canary and the card video were clean, and a canary from 21:45 on the 23rd to 17:00 on the 24th (19 h 15 min, about 230 checks) changed nothing, with no stack wipe, crash or silence. So the Microsoft card's cable looks like the cause of the bit-0 errors, but the stack wipes are still unexplained, and the supply measurements below still come first.
 
 **There may be two faults at once:** a marginal supply and one weak chip. The two symptoms sit in different places: bit 0 alone in `$8000–$BFFF` (one chip, E3) after hours of warm-up, and whole-page stack wipes in `$0100–$01FF` (another bank). One bad chip explains the first but not the second; a bad supply can explain both, but would usually hit more than one bit. They can also feed each other: a slightly low or noisy supply often shows up first in the weakest chip, which would explain why cooling seemed to cure everything for 48 hours and then didn't.
 
@@ -116,7 +119,7 @@ Raises the sound limit from about 6.2 s to about 9.2 s with `--language-card`. M
 
 - [x] Simulator tests pass, using a language-card model
 - [x] In MAME's Apple II+ with its Language Card (11 Nov): `lcprobe` reported 16K GOOD; `examples/long_show.toml` played 9.2 s (6.2 s from main RAM, 3.0 s from the card), and a recording of the sound followed the source WAV just as closely after the hop to the card as before it (envelope correlation 0.94–0.98 per second); a video with 9.1 s of sound in 36 bursts did the same (0.82–0.92). ROM was back and the receiver answering after both
-- [ ] On real hardware, with a replacement card: rerun `a2kit lcprobe`, then play `examples/long_show.toml`, listening for a glitch where the sound reaches the card at 6.2 s
+- [ ] On real hardware, with a replacement card: rerun `a2kit lcprobe` (done: 16K GOOD on the Microtek card, 23 Nov), then play `examples/long_show.toml`, listening for a glitch where the sound reaches the card at 6.2 s
 - [ ] Play the stress clip with long sound (`out/stress_long.a2v` locally, which needs regenerating elsewhere)
 - [x] Update the Manual, Quick Start, Install Guide and README, and rebuild the PDFs (11 Nov)
 - [ ] Once the new card is fitted and tested: list it in the Install Guide's tested setup (the machine is 48K again until then)

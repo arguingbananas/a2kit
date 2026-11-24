@@ -20,3 +20,17 @@ CLAUDE.local.md
 
 # Character ROMs read with a2kit chargen are Apple's: never commit one
 *.chr
+
+# Secrets and keys never belong here
+.env
+.env.*
+*.pem
+*.key
+
+# Editors and operating systems
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

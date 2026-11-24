@@ -34,20 +34,22 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: System tools (cc65, make, ffmpeg)
+      - name: System tools (cc65, make, ffmpeg, shellcheck)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cc65 make ffmpeg
+          sudo apt-get install -y --no-install-recommends cc65 make ffmpeg shellcheck
 
       - name: Python packages
         run: |
           python -m pip install --upgrade pip
-          # 3.12 gets the exact versions in constraints.txt; the others check the loose requirements
+          # 3.12 gets the exact versions in constraints.txt; the others check the loose requirements,
+          # except ruff, pinned everywhere so a new ruff release can't fail lint on its own
           if [ "${{ matrix.python }}" = "3.12" ]; then
             python -m pip install -r requirements-dev.txt -c constraints.txt
           else
-            python -m pip install -r requirements-dev.txt
+            python -m pip install -r requirements-dev.txt "$(grep '^ruff==' constraints.txt)"
           fi
+          python -m ruff --version
 
       - name: Doctor
         run: python tools/a2kit.py doctor

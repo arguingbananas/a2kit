@@ -719,9 +719,9 @@ Assembles the 6502 programs (`receiver.bin` and `receiver-19200.bin`, `sequencer
 
 ### `a2kit test`
 
-Runs the whole test suite: converters, protocol, the receiver, the sequencer, video playback with fault injection, the command line and the examples and Quick Start. Needs cc65 and `py65`. Takes about three minutes.
+Runs the whole test suite: converters, protocol, the receiver, the sequencer, video playback with fault injection, the command line and the examples and Quick Start. Needs cc65 and `py65`. Takes about 15 minutes on a 2011 desktop computer, most of it the video and examples tests.
 
-For a quick check after each change, `make smoke` runs the audio converter's tests and the command-line tests in about 10 seconds. `make lint` checks the Python for likely bugs with `ruff` (from `requirements-dev.txt`; its settings are in `pyproject.toml`).
+For a quick check after each change, `make smoke` runs the audio converter's tests and the command-line tests in under 30 seconds. `make lint` checks the Python for likely bugs with `ruff` (from `requirements-dev.txt`; its settings are in `pyproject.toml`), and the `a2kit` shell script with `shellcheck` if it's installed.
 
 ### `a2kit doctor`
 

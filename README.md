@@ -38,7 +38,10 @@ Starter assets are in [`examples/`](examples/).
 
 ## In one minute
 
+On Linux or macOS (Windows: see the [Installation Guide](docs/INSTALL.md)):
+
 ```bash
+python3 -m venv .venv && source .venv/bin/activate   # a virtual environment, which recent Linux Pythons require
 python3 -m pip install -r requirements.txt      # pillow, numpy, pyserial (Python 3.11+)
 ./a2kit doctor                                  # checks the install
 ./a2kit image examples/logo.png -o logo.a2b --preview logo_preview.png
@@ -84,8 +87,11 @@ as separate programs.
 | [py65](https://github.com/mnaberez/py65) | The 6502 simulator the tests run on | BSD-3-Clause |
 | [pypdf](https://github.com/py-pdf/pypdf) | Building the PDF guides | BSD-3-Clause |
 | [Ruff](https://github.com/astral-sh/ruff) | Linting (`make lint`) | MIT |
+| [ShellCheck](https://www.shellcheck.net) | Linting the `a2kit` shell script (`make lint`) | GPL-3.0+ |
 | [cc65](https://cc65.github.io) (`ca65`, `ld65`) | Assembling and linking the 6502 programs | zlib |
+| [GNU Make](https://www.gnu.org/software/make/) | Running the build and the tests (`./a2kit build`, `test`) | GPL-3.0+ |
 | [FFmpeg](https://ffmpeg.org) | Optional: reading video files, and `chargen capture` | LGPL-2.1+ or GPL, as built by your system |
+| [v4l-utils](https://git.linuxtv.org/v4l-utils.git) (`v4l2-ctl`) | Optional: setting the video grabber's levels for `chargen capture` (Linux) | GPL-2.0 |
 | [pandoc](https://pandoc.org) and [Chrome or Chromium](https://www.chromium.org) | Building the PDF guides | GPL-2.0+; Chromium BSD-3-Clause (Chrome is Google's) |
 | [Liberation Sans](https://github.com/liberationfonts/liberation-fonts), [DejaVu Sans Mono](https://dejavu-fonts.github.io) | Fonts embedded in the PDF guides | SIL OFL 1.1; Bitstream Vera license |
 | [Aileron](https://dotcolon.net/fonts/aileron) (bundled with Pillow) | The lettering in the example pictures | CC0 (per its author) |
