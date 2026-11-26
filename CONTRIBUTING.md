@@ -1,5 +1,8 @@
 # Contributing to a2kit
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+To report a security problem, see [SECURITY.md](SECURITY.md); please don't open a public issue.
+
 ## Set up
 
 ```bash

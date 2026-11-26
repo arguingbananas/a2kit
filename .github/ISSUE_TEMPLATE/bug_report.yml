@@ -1,0 +1,50 @@
+name: Bug report
+description: A command fails, or something looks or sounds wrong on the Apple II
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: The a2kit command you ran and everything it printed. Please remove anything personal (usernames, paths, hostnames) before pasting.
+      render: text
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`./a2kit doctor` output"
+      description: Shows your a2kit version, Python, packages and built files.
+      render: text
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - On the computer only (converting, building, tests)
+        - On a real Apple II
+        - In an emulator
+    validations:
+      required: true
+  - type: input
+    id: computer
+    attributes:
+      label: Computer
+      description: Operating system, and serial port or adapter if you were sending.
+      placeholder: e.g. Ubuntu 24.04, FTDI FT232R USB adapter
+  - type: input
+    id: apple
+    attributes:
+      label: Apple II setup
+      description: Model, memory, serial card and slot, line speed, how it booted.
+      placeholder: e.g. Apple II+ 48K, Super Serial Card II in slot 2, 115200 baud, a2kit-boot.dsk on a Floppy Emu
+  - type: textarea
+    id: files
+    attributes:
+      label: Input files
+      description: If a conversion goes wrong, attach the file (or a small one that shows the same problem) if you're free to share it.
