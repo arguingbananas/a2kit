@@ -46,8 +46,10 @@ in Python, tabs in the Makefile).
 ## Branches and pull requests
 
 - Work on a branch off `main`: `feature/<name>` for code, `docs/<name>` for docs only.
-- Open a pull request into `main`. PRs are merged with a merge commit, not squashed or rebased.
-- Before opening a PR on a long-lived branch, merge `main` into it and rerun the tests there.
+- Open a pull request into `main`. PRs are merged with **Rebase and merge**, the only method
+  `main` allows, so each commit keeps its author and `main` has no merge commits.
+- Before opening a PR on a long-lived branch, rebase it onto `main` (`git rebase origin/main`)
+  and rerun the tests there. Don't merge `main` into it.
 
 ## Commits
 
