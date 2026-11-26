@@ -52,7 +52,8 @@ def chrome():
     sys.exit("need google-chrome or chromium on PATH")
 
 
-DOCS_URL = "https://github.com/arguingbananas/a2kit/blob/main/docs"
+REPO_URL = "https://github.com/arguingbananas/a2kit/blob/main"
+DOCS_URL = REPO_URL + "/docs"
 
 
 def relativise_links(path):
@@ -73,6 +74,16 @@ def relativise_links(path):
                     NameObject("/F"): TextStringObject(os.path.basename(str(uri))),
                     NameObject("/D"): ArrayObject([NumberObject(0), NameObject("/Fit")]),
                 })
+    # any other file:// link would be dead for readers and would publish this machine's paths
+    left = []
+    for page in writer.pages:
+        for ref in page.get("/Annots") or []:
+            act = ref.get_object().get("/A")
+            uri = act.get("/URI") if act is not None else None
+            if uri and str(uri).startswith("file://"):
+                left.append(str(uri))
+    if left:
+        sys.exit("%s: local file links left (link them to GitHub in main()): %s" % (path, ", ".join(left)))
     with open(path, "wb") as f:
         writer.write(f)
 
@@ -93,6 +104,7 @@ def main():
         text = re.sub(r"\((QUICKSTART|MANUAL|INSTALL)\.md(#[\w-]+)?\)", relink, text)
         text = re.sub(r"\[([^\]]+)\]\(workflow\.svg\)", r"\1 (in the docs folder)", text)
         text = text.replace("(ROADMAP.md)", "(%s/ROADMAP.md)" % DOCS_URL)     # no PDF of it, so link to GitHub
+        text = re.sub(r"\(\.\./([^)\s]+)\)", lambda m: "(%s/%s)" % (REPO_URL, m.group(1)), text)  # repo files too
         md = os.path.join(HERE, "." + stem + ".pdfbuild.md")      # next to the images so relative paths work
         html = os.path.join(HERE, "." + stem + ".pdfbuild.html")
         try:
