@@ -17,7 +17,7 @@ a2kit has two halves:
 | Item | Needed for | Required? | Tested with |
 |---|---|---|---|
 | **Python 3.11 or newer** | Everything | **Yes** | 3.11, 3.12, 3.13, 3.14 |
-| **pillow** 10.1+ | Images, GIFs, previews | **Yes** | 12.3, 13.0 |
+| **pillow** 13.0+ | Images, GIFs, previews | **Yes** | 13.0 |
 | **numpy** | Video and audio conversion | **Yes** | 2.4, 2.5 |
 | **pyserial** | Sending to the Apple II | **Yes** (for sending) | 3.5 |
 | **py65** | Running the tests | Only for `./a2kit test` | 1.2 |
