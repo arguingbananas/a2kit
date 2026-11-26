@@ -37,6 +37,7 @@ There is no formatter (CONTRIBUTING.md says why); don't reformat files wholesale
 ## Files
 
 Required, and kept current: README.md, LICENSE (MIT), SECURITY.md, CONTRIBUTING.md,
+CODE_OF_CONDUCT.md, the issue forms and PR template in .github/,
 requirements*.txt, constraints.txt, pyproject.toml, Makefile, docs/INSTALL.md,
 docs/QUICKSTART.md, docs/MANUAL.md and their PDFs, docs/ROADMAP.md, CHANGELOG.md
 (with `VERSION` in `tools/a2hdr.py`; see CONTRIBUTING.md).
