@@ -3,7 +3,8 @@
 ## Reporting a vulnerability
 
 Please report security problems privately, not in a public issue: on GitHub, open the
-repository's **Security** tab and choose **Report a vulnerability**. Include what you
+repository's **Security** tab and choose **Report a vulnerability**
+(<https://github.com/arguingbananas/a2kit/security/advisories/new>). Include what you
 found, how to reproduce it, and which commit or version you used.
 
 ## Scope
