@@ -9,6 +9,8 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
 
 - Pillow 13.0 or newer is now required (it was 10.1): older versions have
   known security problems that 13.0 fixes.
+- The User Manual PDF's link to the changelog works: it pointed at a file on
+  the computer that built the PDF, and now goes to GitHub.
 - Python 3.11 or newer is now required: 3.10 reached its end of life in October
   2026. CI tests 3.11, 3.12, 3.13 and 3.14, and `tomli` is no longer
   needed.
