@@ -161,7 +161,13 @@ def frame_audio_pages(frame):
 # that changes page, c = n ^ OP_BLOCK sends a fast block of 2n bytes, which the
 # player stores while it waits for the vertical blank and draws after the flip.
 # $7F l c h with c = l ^ OP_PRELOAD draws the block preloaded at preload_addr(l, h).
-OP_AUDIO, OP_BLOCK, OP_PRELOAD = 0x55, 0x2A, 0x3C
+# $7F n c l h, 2n bytes, x with c = n ^ OP_STORE stores the 2n bytes at
+# preload_addr(l, h) without drawing anything (x: the xor of the bytes, and
+# BLOCK_END): memory a preloaded block was drawn from is refilled during play
+# with blocks for later frames.
+OP_AUDIO, OP_BLOCK, OP_PRELOAD, OP_STORE = 0x55, 0x2A, 0x3C, 0x66
+STORE_MAX = 252                 # bytes in one store op (a multiple of 4, so each starts on one)
+STORE_OVERHEAD = 6              # its other bytes on the line
 FBUF = 0x1300                   # where the player stores a fast block (video.s FBUF)
 BLOCK_END = 0xA5                # the last byte of a block after a page change (video.s SENT)
 PRELOAD_START = 0x6000          # preloaded blocks: main RAM after the sound, to $BFFF,
@@ -215,10 +221,30 @@ def preload_op(addr):
     return bytes([0x7F, lo, lo ^ OP_PRELOAD, hi])
 
 
+def store_ops(addr, data):
+    """Store ops that put data (its length even) at addr (a multiple of 4) on."""
+    out = bytearray()
+    for k in range(0, len(data), STORE_MAX):
+        part = data[k:k + STORE_MAX]
+        off = (addr + k - PRELOAD_START) // 4
+        lo, hi, n = off & 0x7F, off >> 7, len(part) // 2
+        x = BLOCK_END
+        for b in part:
+            x ^= b
+        out += bytes([0x7F, n, n ^ OP_STORE, lo, hi]) + part + bytes([x])
+    return bytes(out)
+
+
+def store_ok(addr, n):
+    """Whether the player stores n bytes at addr: all of them in main RAM from
+    $6000 to $BFFF, or all in the language card's $D000-$FEFF."""
+    return (PRELOAD_START <= addr and addr + n <= PRELOAD_END) or (CARD_START <= addr and addr + n <= CARD_END)
+
+
 def walk_ops(frame):
     """(kind, value, index after the op) for each op in a frame: "mark" (page),
     "audio" (pages), "block" (bytes, which follow the op), "preload" (address),
-    "run" (bytes), "skip" (bytes), "pal"."""
+    "store" ((address, bytes)), "run" (bytes), "skip" (bytes), "pal"."""
     i = 0
     while i < len(frame):
         b = frame[i]
@@ -233,6 +259,10 @@ def walk_ops(frame):
             elif c == n ^ OP_PRELOAD and i + 2 < len(frame):
                 i += 3
                 yield "preload", preload_addr(n, frame[i - 1]), i
+            elif c == n ^ OP_STORE and i + 4 + 2 * n < len(frame):
+                at, data = preload_addr(frame[i + 2], frame[i + 3]), frame[i + 4:i + 4 + 2 * n]
+                i += 5 + 2 * n
+                yield "store", (at, data), i
             else:
                 i += 2
                 yield "audio", n, i
@@ -440,8 +470,10 @@ def frame_waits(frame, page, mem=None):
     """Where the host must go quiet inside this frame because the player is
     drawing a fast block, and for how long: ([(index, seconds)], page after).
     `page` is the page drawn before the frame; `mem` holds the preloaded
-    blocks. A page change without a block (a stream from before blocks) gets
-    the plain vertical-blank wait after the mark and the byte it reads next."""
+    blocks; the frame's store ops are written into it, so pass the same `mem`
+    for each frame in turn. A page change without a block (a stream from
+    before blocks) gets the plain vertical-blank wait after the mark and the
+    byte it reads next."""
     cuts, ptr, top = [], 0x2000, 0x40
     ops = list(walk_ops(frame))
     for k, (kind, v, end) in enumerate(ops):
@@ -465,6 +497,10 @@ def frame_waits(frame, page, mem=None):
             cuts.append((end, (cyc + preload_overhead(v)) / CPU_HZ + FAST_MARGIN))
             if ptr is None:
                 ptr = 0x2000 * page
+        elif kind == "store":
+            at, data = v
+            if mem is not None and store_ok(at, len(data)):
+                mem[at:at + len(data)] = data
         elif kind == "run":
             ptr += v
         elif kind == "skip":

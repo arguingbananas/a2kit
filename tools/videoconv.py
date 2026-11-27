@@ -577,6 +577,110 @@ def preload_span(shown, target, budgets, mark, block, rate, addr, room, other=No
     return plan(lo)
 
 
+class Refill:
+    """--refill: preload memory used again once the frames drawing from it are
+    past. Blocks go in the fresh memory first (uploaded before playing); when
+    it's full, the next block goes where the oldest ones were (a ring over the
+    regions), and its bytes are sent in store ops added to the frames between
+    the last use of what was there and the frame that draws it, in each
+    frame's spare line time (what its own bytes and quiet gaps leave)."""
+    SAFETY = 8                          # bytes of each frame's budget left unused
+
+    def __init__(self, regions, budget, rate):
+        self.regions, self.budget, self.rate = list(regions), budget, rate
+        self.allocs = []                # [start, end, last frame drawing from it]
+        self.avail = []                 # spare line bytes left in each frame planned so far
+        self.page = 1
+        self.mem = bytearray(0x10000)   # the preload memory as the frames planned so far leave it
+        self.cursor = None
+
+    def fresh(self, addr, data, last):
+        self.allocs.append([addr, addr + len(data), last])
+        self.mem[addr:addr + len(data)] = data
+
+    def track(self, frames, bursts):    # the spare time of frames just planned
+        for f in range(len(self.avail), len(frames)):
+            cuts, self.page = a2hdr.frame_waits(frames[f], self.page, self.mem)
+            quiet = int(np.ceil(sum(s_ for _, s_ in cuts) * self.rate))
+            spare = self.budget - len(frames[f]) - quiet - self.SAFETY
+            self.avail.append(0 if bursts.get(f) else max(0, spare))
+
+    @staticmethod
+    def usable(spare):                  # store bytes (a multiple of 4) that fit in this many line bytes
+        t = max(0, spare - a2hdr.STORE_OVERHEAD) & ~3
+        while t > 0 and t + a2hdr.STORE_OVERHEAD * -(-t // a2hdr.STORE_MAX) > spare:
+            t -= 4
+        return t
+
+    def cap(self, last, i):             # store bytes frames last+1 .. i-1 can still carry
+        return self.pre[i] - self.pre[last + 1]
+
+    def _at(self, c, e, i, share):      # the most a block from c (below e) can hold, and the frame it must wait for
+        best, best_last, last, x = 0, -1, -1, c
+        for s_, e_, l_ in sorted(o for o in self.allocs if o[1] > c and o[0] < e):
+            if s_ > x:
+                size = min(s_ - c, self.cap(last, i), share)
+                if size > best:
+                    best, best_last = size, last
+            if l_ >= i - 1:             # still to be drawn (or no frame left to send it in)
+                return best & ~3, best_last
+            last, x = max(last, l_), max(x, e_)
+            size = min(min(x, e) - c, self.cap(last, i), share)
+            if size > best:
+                best, best_last = size, last
+        size = min(e - c, self.cap(last, i), share)
+        if size > best:
+            best, best_last = size, last
+        return best & ~3, best_last
+
+    def place(self, i, share):
+        """Where a block for frame i can go: (address, most bytes, the last
+        frame drawing from what's there now), trying the ring position, then
+        each region's start."""
+        self.pre = np.concatenate([[0], np.cumsum([self.usable(s_) for s_ in self.avail])]).astype(int)
+        if len(self.pre) <= i:
+            self.pre = np.concatenate([self.pre, [self.pre[-1]] * (i + 1 - len(self.pre))])
+        tries = {s_ for s_, _e in self.regions} | {o[1] for o in self.allocs} | {o[0] for o in self.allocs}
+        best = (0, 0, -1)
+        for c in sorted(tries):
+            e = next((e_ for s_, e_ in self.regions if s_ <= c < e_), None)
+            if e is None or c % 4:
+                continue
+            size, last = self._at(c, e, i, share)
+            if size > best[1] or (size == best[1] and size and last < best[2]):
+                best = (c, size, last)
+        return best if best[1] >= 256 else (0, 0, -1)
+
+    def fill(self, frames, at, data, last, i, last_use):
+        """Put a block at `at`, for frames i .. last_use, sending its bytes in
+        frames last+1 .. i-1."""
+        end = at + len(data)
+        keep = []
+        for o in self.allocs:           # what was there is past
+            if o[1] <= at or o[0] >= end:
+                keep.append(o)
+            else:
+                if o[0] < at:
+                    keep.append([o[0], at, o[2]])
+                if o[1] > end:
+                    keep.append([end, o[1], o[2]])
+        self.allocs = keep + [[at, end, last_use]]
+        self.mem[at:end] = data
+        self.cursor = end
+        off = 0
+        for f in range(last + 1, i):
+            if off >= len(data):
+                break
+            t = min(self.usable(self.avail[f]), len(data) - off)
+            if t <= 0:
+                continue
+            ops = a2hdr.store_ops(at + off, data[off:off + t])
+            frames[f] = frames[f] + ops
+            self.avail[f] -= len(ops)
+            off += t
+        assert off >= len(data), "refill: not enough spare time to send a block"
+
+
 def block_quiet(blk, page, rate, ptr=0):
     """Bytes' worth of line time the host stays quiet while the player runs
     the block blk (stored at FBUF) from screen offset ptr."""
@@ -677,6 +781,9 @@ def main():
     ap.add_argument("--preload-share", choices=["benefit", "first"], default="benefit",
                     help="with --preload: how the memory is shared out. benefit (default): to the busy stretches "
                          "it smooths the most per byte (slower to convert); first: to the busy frames in order, until it's full")
+    ap.add_argument("--refill", action="store_true",
+                    help="with --preload: when the memory is full, reuse what earlier frames have drawn from, "
+                         "sending later frames' blocks into it in the line's spare time while it plays")
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
@@ -726,6 +833,8 @@ def main():
         sys.exit("--preload works with --flip")
     if a.preload and a.scrub:
         sys.exit("--preload and --scrub can't be used together")
+    if a.refill and not a.preload:
+        sys.exit("--refill works with --preload")
     # free memory after the sound: main RAM to $BFFF, then with --language-card the card's
     # $D000-$FEFF. The preload is laid out like sound (hopping $C000-$CFFF), no block across the hop.
     pl_start = a2hdr.audio_addr(-(-len(audio) // 256) * 256)
@@ -777,6 +886,7 @@ def main():
             cursors[:] = [0, 0]
             frames.clear(); screens.clear(); pending.clear()     # (draw appends to frames)
             regions = [[s_, e, bytearray()] for s_, e in pl_regions]
+            refill = Refill(pl_regions, budget - a.scrub - 3, rate) if a.refill else None
             queue = []                      # frames of a picture spread over several, still to send
             goal, done, held = None, True, 0
             used = [0] * len(caps or [])
@@ -832,6 +942,18 @@ def main():
                                                        copies_in_memory=caps is not None)
                                 if pre:
                                     break
+                            recyc = None
+                            if not pre and refill and share > 0:    # memory full: reuse what's been drawn from
+                                at_, limit, last = refill.place(i, share)
+                                if limit > 0 and k == 1:
+                                    r_ = preload_frame(pages[p], tgt, budget - (3 if n else 0), mark_, block, rate, at_, limit,
+                                                       other=pages[1 - p], copies_in_memory=caps is not None)
+                                    pre = ([r_[0]], r_[1]) if r_ else None
+                                elif limit > 0:
+                                    pre = preload_span(pages[p], tgt, [budget - (3 if bursts.get(i + f, 0) else 0) for f in range(k)],
+                                                       mark_, block, rate, at_, limit, other=pages[1 - p],
+                                                       copies_in_memory=caps is not None)
+                                recyc = (at_, last) if pre else None
                             if pre:
                                 if w >= 0:
                                     used[w] += len(pre[1]) + (-len(pre[1]) % 4)
@@ -842,7 +964,12 @@ def main():
                     screens.append(pages[1 - p].copy())
                     if pre:
                         fl, blob = pre
-                        reg[2] += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
+                        if recyc:                   # sent in earlier frames' spare time, into memory they're done with
+                            refill.fill(frames, recyc[0], blob + bytes(-len(blob) % 4), recyc[1], i, i + k - 1)
+                        else:
+                            if refill:
+                                refill.fresh(reg[0] + len(reg[2]), blob + bytes(-len(blob) % 4), i + k - 1)
+                            reg[2] += blob + bytes(-len(blob) % 4)     # blocks start on a multiple of 4
                         frames.append(fl[0] + (bytes([0x7F, n, n ^ 0x55]) if n else b""))
                         queue[:] = fl[1:]           # the frames that finish it
                         if not queue:
@@ -862,6 +989,8 @@ def main():
                         draw(goal, budget, n)
                 done = np.array_equal(pages[p], goal)
                 pending.append(int(np.count_nonzero(pages[p] != targets[i])))
+                if refill:
+                    refill.track(frames, bursts)
             target = targets[-1]
             while not (done and np.array_equal(goal, target)):    # finish the last page, and then the last frame,
                 flips = done                        # before a last mark shows it
@@ -913,7 +1042,7 @@ def main():
                 cuts = [c0 + (c1 - c0) * j // n_ for j in range(n_ + 1)]
                 pieces += [[x0, x1] for x0, x1 in zip(cuts, cuts[1:])]
             spans = pieces
-            mem = pl_total
+            mem = pl_total * 4 if a.refill else pl_total     # (with --refill, memory comes back as it plays)
             offers = []
             for c0, c1 in spans:
                 _, _, _, _, ups_w, used_w = plan([(c0, c1, mem)])

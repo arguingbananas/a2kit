@@ -30,6 +30,13 @@
 ;              it isn't drawn, and the player discards until the next mark
 ;   $7F l c h  with c = l xor $3C: draw the fast block preloaded at
 ;              $6000 + 4 * (l + 128 * h), then carry on with the line
+;   $7F n c l h, 2n bytes, x   with c = n xor $66: store the 2n bytes at
+;              $6000 + 4 * (l + 128 * h) without drawing anything, all in
+;              $6000-$BFFF or all in a language card's $D000-$FEFF (written
+;              with ROM still read); x is the xor of the bytes and $A5. A bad
+;              x (a byte lost or damaged) discards until the next mark. The
+;              host refills memory a preloaded block was drawn from this way
+;              with blocks for later frames (videoconv --refill)
 ;   $81-$FA    skip (b & $7F) bytes, 1-122
 ;   $FC        palette bit off for the literal bytes that follow (the default
 ;              at each frame start, so a black and white stream never sends it)
@@ -323,6 +330,8 @@ burst:  jsr getb                ; page count, or the block's address (low part)
         beq preop
         cmp #$2A
         beq lblock
+        cmp #$66
+        beq storej
         cmp #$55
         bne lost2               ; neither: not a real op
         lda apages
@@ -343,6 +352,7 @@ bplay:  sta apages              ; (Z set for A)
 
 ctl2:   jmp ctl                 ; (out of branch range from here)
 lost2:  jmp lost
+storej: jmp store
 
 lblock: lda apages              ; a block mid-frame: receive it, then run it
         asl a
@@ -918,3 +928,81 @@ pcard:  cmp #$D0
 @bad:   jmp lost
 
 lcon:   .byte 0                 ; $80 while the card is read
+
+; $7F n c l h, 2n bytes, x: store the bytes at $6000 + 4 * (l + 128 * h).
+; Each byte takes about 50 cycles from one getb to the next (one comes every
+; 88.6 at 115200), so the line can run straight on.
+store:  lda apages
+        bne @go
+@bad0:  jmp lost                ; an empty store isn't sent
+@ctl0:  jmp ctl
+@go:    asl a
+        sta want
+        jsr getb                ; l
+        bmi @ctl0
+        asl a
+        sta bp                  ; (l < $80: carry = 0)
+        jsr getb                ; h
+        bmi @ctl0
+        asl a                   ; 4 * 128 * h = $200 * h
+        adc #PRELOAD
+        bcs @bad0               ; past $FFFF
+        sta bp+1
+        asl bp                  ; 4 * l: bit 6 of l into the high byte
+        bcc @n1
+        inc bp+1
+@n1:    lda bp+1                ; the last byte's page: where the store ends
+        sta tmp2
+        lda bp
+        clc
+        adc want
+        bcc @n2
+        inc tmp2                ; (an end exactly on a page is fine below)
+        beq @bad                ; wrapped past $FFFF
+@n2:    sta tmp
+        lda bp+1
+        cmp #$C0
+        bcs @card
+        lda tmp2                ; main RAM: it must end by $C000
+        cmp #$C0
+        bcc @main
+        bne @bad
+        lda tmp
+        bne @bad
+        beq @main               ; (always)
+@card:  cmp #$D0
+        bcc @bad                ; $C000-$CFFF is I/O
+        lda tmp2                ; the card: it must end by $FF00
+        cmp #$FF
+        bcc @wr
+        bne @bad
+        lda tmp
+        bne @bad
+@wr:    bit LC_WR               ; twice: write the card's RAM, read ROM
+        bit LC_WR
+        lda #$80
+        sta lcon
+@main:  lda #SENT
+        sta tmp
+        ldy #0
+@byte:  jsr getb                ; any byte: these aren't screen data
+        sta (bp),y
+        eor tmp
+        sta tmp
+        iny
+        cpy want
+        bne @byte
+        jsr getb                ; x
+        cmp tmp
+        php
+        bit lcon                ; the card: writes off again
+        bpl @off
+        bit LC_ROM
+        lda #0
+        sta lcon
+@off:   plp
+        bne @bad
+        jmp vop
+@ctl:   jmp ctl
+@bad:   jmp lost
+

@@ -75,6 +75,7 @@ play:   ldy #0
 ; switches. The hop costs a few dozen cycles once, less than one 128-cycle sample.
 LC_RAM  = $C080                 ; read card RAM, bank 2; no writes
 LC_ROM  = $C082                 ; read ROM; no writes
+LC_WR   = $C081                 ; read ROM, write card RAM bank 2 (after two reads in a row)
 
 splay:  lda aptr+1
         cmp #$C0
