@@ -490,15 +490,16 @@ last_im = cur
 saved = sys.argv, a2hdr.PRELOAD_END, a2hdr.AUDIO_MAIN_END, a2hdr.CARD_END
 a2hdr.PRELOAD_END = a2hdr.AUDIO_MAIN_END = 0x6200           # (512 bytes of main RAM and 512 of card)
 a2hdr.CARD_END = 0xD200
-shown_ = {}
-for refill in ([], ["--refill"]):
+shown_, raws = {}, {}
+for refill in ("--no-refill", None, "--refill"):           # (None: the default, which is --refill)
     sys.argv = ["videoconv.py", clip, "-o", a2v, "--fps", "10", "--flip", "--preload", "--preload-share", "first",
-                "--language-card", "--budget", "600"] + refill
+                "--language-card", "--budget", "600"] + ([refill] if refill else [])
     err = io.StringIO()
     with contextlib.redirect_stderr(err):
         videoconv.main()
-    shown_[bool(refill)] = int(err.getvalue().split(" frames shown")[0].split(";")[-1].split(" of ")[0])
-raw = open(a2v, "rb").read()
+    shown_[refill != "--no-refill"] = int(err.getvalue().split(" frames shown")[0].split(";")[-1].split(" of ")[0])
+    raws[refill] = open(a2v, "rb").read()
+raw = raws["--refill"]
 _fps, vfr, _ = a2hdr.parse_stream(raw)
 pre = a2hdr.parse_preload(raw)
 stores = [v for f in vfr for k, v, _i in a2hdr.walk_ops(f) if k == "store"]
@@ -511,6 +512,7 @@ print("refill: %d of 36 frames shown (%d without), %d preloaded blocks drawn, %d
 last = videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(
     np.asarray(__import__("imgconv").prepare(last_im, False, False), dtype=np.float64), "ordered")))
 expect(shown_[True] > shown_[False], "--refill shows more of a clip than the memory alone allows")
+expect(raws[None] == raws["--refill"] != raws["--no-refill"], "--preload refills by default, and --no-refill turns it off")
 expect(stores and any(a_ >= a2hdr.CARD_START for a_, _d in stores) and any(a_ < a2hdr.CARD_START for a_, _d in stores),
        "with too little memory, --refill sends later blocks into main RAM and the card during play")
 expect(over == 0 and bytes(last) in pg, "a refilled clip plays on the host's schedule with no overruns, to its last frame exactly")

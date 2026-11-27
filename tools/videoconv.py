@@ -781,9 +781,10 @@ def main():
     ap.add_argument("--preload-share", choices=["benefit", "first"], default="benefit",
                     help="with --preload: how the memory is shared out. benefit (default): to the busy stretches "
                          "it smooths the most per byte (slower to convert); first: to the busy frames in order, until it's full")
-    ap.add_argument("--refill", action="store_true",
-                    help="with --preload: when the memory is full, reuse what earlier frames have drawn from, "
-                         "sending later frames' blocks into it in the line's spare time while it plays")
+    ap.add_argument("--refill", action=argparse.BooleanOptionalAction, default=None,
+                    help="with --preload (on by default): when the memory is full, reuse what earlier frames have drawn from, "
+                         "sending later frames' blocks into it in the line's spare time while it plays; "
+                         "--no-refill keeps each preloaded block where it was uploaded")
     ap.add_argument("--scrub", type=int, default=0, help="screen bytes re-sent every frame as a rotating refresh (default 0 = off)")
     ap.add_argument("--audio", help="WAV file, played in bursts between frames")
     ap.add_argument("--burst-pages", type=int, default=1, help="64 ms pages of audio per burst (default 1)")
@@ -835,6 +836,8 @@ def main():
         sys.exit("--preload and --scrub can't be used together")
     if a.refill and not a.preload:
         sys.exit("--refill works with --preload")
+    if a.refill is None:
+        a.refill = a.preload            # (on by default with --preload)
     # free memory after the sound: main RAM to $BFFF, then with --language-card the card's
     # $D000-$FEFF. The preload is laid out like sound (hopping $C000-$CFFF), no block across the hop.
     pl_start = a2hdr.audio_addr(-(-len(audio) // 256) * 256)

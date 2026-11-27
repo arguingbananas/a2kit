@@ -104,6 +104,9 @@ def ref_decode(stream, screen, written=None, mem=None):
             elif c == n ^ a2hdr.OP_PRELOAD:
                 a_ = a2hdr.preload_addr(n, stream[i + 2]); p_ = fast_decode(mem, a_, pos, screen, written); i += 3
                 pos = pos if a2hdr.is_copy(mem[a_ + 1]) else p_     # (a copy leaves the line where it was)
+            elif c == n ^ a2hdr.OP_STORE:                       # --refill: bytes into preload memory, nothing drawn
+                a_ = a2hdr.preload_addr(stream[i + 2], stream[i + 3])
+                mem[a_:a_ + 2 * n] = stream[i + 4:i + 4 + 2 * n]; i += 5 + 2 * n
             else: i += 2
         elif b == 0xFF: pos += stream[i] + 128 * stream[i + 1]; i += 2
         elif b in (0xFC, 0xFD): pal = 0x80 if b == 0xFD else 0
@@ -765,7 +768,8 @@ used = sum(any(k == "preload" for k, _v, _i in a2hdr.walk_ops(f)) for f in lfr)
 print("preload %d bytes at $%04X for %d frames; pictures shown: %d with preload, %d without" % (len(pl[1]), pl[0], used, changes(lfr) - 1, changes(nfr) - 1))
 expect(pl[0] == a2hdr.PRELOAD_START and used > 0 and changes(lfr) > changes(nfr), "preload is used, and more pictures are shown with it")
 lref = np.concatenate([videoconv.blank()] * 2)
-for f in lfr: ref_decode(f, lref, mem=lmem)
+dmem = bytearray(lmem)                  # (the decoder writes any store ops into its own copy)
+for f in lfr: ref_decode(f, lref, mem=dmem)
 sched, total = host.plan_stream(lfr, lfps, FAST, mem=lmem)
 r = run_6502(from_plan(sched, FAST), pre={pl[0]: pl[1]})
 fl = r["flip_lines"][:len(r["flip_lines"]) - (lfr[-1][0] == 0xFE)]
@@ -779,7 +783,8 @@ ffps, ffr, _ = convert(["--flip", "--preload", "--preload-share", "first", "--ba
 fpl = a2hdr.parse_preload(open(os.path.join(tmp, "clip.a2v"), "rb").read())
 fmem = a2hdr.preload_mem(fpl)
 fref = np.concatenate([videoconv.blank()] * 2)
-for f in ffr: ref_decode(f, fref, mem=fmem)
+dmem = bytearray(fmem)
+for f in ffr: ref_decode(f, fref, mem=dmem)
 fsched, ftotal = host.plan_stream(ffr, ffps, FAST, mem=fmem)
 r = run_6502(from_plan(fsched, FAST), pre={fpl[0]: fpl[1]})
 fl = r["flip_lines"][:len(r["flip_lines"]) - (ffr[-1][0] == 0xFE)]

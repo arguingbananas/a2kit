@@ -18,13 +18,15 @@ same version. How to add an entry: see [CONTRIBUTING.md](CONTRIBUTING.md#version
   at once with one line saying so, instead of a `tomllib` import error. The
   README's quick start creates a virtual environment first, which recent Linux
   Pythons require. `make lint` also runs shellcheck on the `a2kit` script.
-- Smoother busy moments in preloaded video: `video --flip --preload --refill`
+- Smoother busy moments in preloaded video: `video --flip --preload` now
   reuses memory that blocks already drawn have finished with, sending blocks for
   later frames into it in the line's spare time while the clip plays (a new
   store op; `video.bin` is rebuilt, and `stream --install` uploads it).
   `hello_apple.gif` at 10 frames a second: 310 of 319 pictures without a
   language card (273 before) and 311 with one (280), the longest hold in the
-  cloud wipe 0.1 s instead of 0.8 s (0.6 s with the card).
+  cloud wipe 0.1 s instead of 0.8 s (0.6 s with the card). Checked on the
+  Apple II+ through a video grabber. It's on by default with `--preload`
+  (`--refill`); `--no-refill` turns it off.
 - The tests no longer leave their temporary folders behind in the system's temp
   directory. The `video` summary line no longer counts one picture too many.
 - Video without tearing: `video --flip` draws each frame on the hidden hi-res
