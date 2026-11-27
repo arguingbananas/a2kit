@@ -306,16 +306,16 @@ For `hello_apple.gif` at 10 frames a second (the longest any picture stays on sc
 | | Frames shown | Longest holds |
 |---|---|---|
 | No preload | 242 of 319 | 0.4, 0.7, 0.5, 0.8, 0.8 s |
-| `--preload` (`benefit`) | 273 | 0.4, 0.5, 0.1, 0.8, 0.7 s |
-| `--preload-share first` | 269 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
-| `--preload --language-card` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.6, 0.3 s |
-| `--preload-share first --language-card` | 292 | 0.4, 0.2, 0.1, 0.8, 0.8 s |
-| `--preload --refill` (`benefit`) | 310 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
-| `--preload --refill --language-card` (`benefit`) | 311 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
+| `--preload --no-refill` (`benefit`) | 273 | 0.4, 0.5, 0.1, 0.8, 0.7 s |
+| `--preload-share first --no-refill` | 269 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
+| `--preload --no-refill --language-card` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.6, 0.3 s |
+| `--preload-share first --no-refill --language-card` | 292 | 0.4, 0.2, 0.1, 0.8, 0.8 s |
+| `--preload` (`benefit`, refilling) | 310 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
+| `--preload --language-card` (`benefit`, refilling) | 311 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
 
 The upload takes about 3 seconds more (4.5 with the card). The summary line says how much is preloaded and for how many frames.
 
-**Refilling the memory while it plays.** Once a preloaded block has been drawn, its memory is free again, and in calm moments the line has time to spare (in `hello_apple.gif`, about 99 KB of it over the clip). With `--refill`, when the memory is full the encoder puts the next block where blocks already drawn were, and sends its bytes in those spare moments beforehand, in store ops the player writes to memory without drawing anything. So the 24 KB (36 KB with a card) does the work of much more: in `hello_apple.gif` about 27 KB more is sent this way, and the busy stretches get what they need. Each block's bytes still arrive before the frame that draws it; the frames that carry them only get longer, never later. What's left is the iris wipe, which is limited by how fast the 6502 can draw from memory, not by memory. A store damaged on the line is detected by its check byte and the rest of that frame discarded, but its bytes may already be in memory: a picture drawn from them later can show the damage until the screen is redrawn there. `--refill` needs `--preload`.
+**Refilling the memory while it plays.** Once a preloaded block has been drawn, its memory is free again, and in calm moments the line has time to spare (in `hello_apple.gif`, about 99 KB of it over the clip). With `--preload` (or `--refill`, the same thing), when the memory is full the encoder puts the next block where blocks already drawn were, and sends its bytes in those spare moments beforehand, in store ops the player writes to memory without drawing anything. So the 24 KB (36 KB with a card) does the work of much more: in `hello_apple.gif` about 27 KB more is sent this way, and the busy stretches get what they need. Each block's bytes still arrive before the frame that draws it; the frames that carry them only get longer, never later. What's left is the iris wipe, which is limited by how fast the 6502 can draw from memory, not by memory. A store damaged on the line is detected by its check byte and the rest of that frame discarded, but its bytes may already be in memory: a picture drawn from them later can show the damage until the screen is redrawn there. On the II+ through a video grabber, `hello_apple.gif` played this way with no tearing and the holds as planned. `--no-refill` turns it off, so each preloaded block stays where it was uploaded.
 
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
@@ -332,7 +332,7 @@ The upload takes about 3 seconds more (4.5 with the card). The summary line says
 | `--max-seconds N` | Use only the first N seconds. |
 | `--flip` | Draw each frame on the hidden page and flip to it in the vertical blank once it's complete, so you only ever see whole frames (see *Without tearing* above). Needs up to twice the bytes; frames are skipped while a page catches up. |
 | `--preload` | Only with `--flip`. Upload part of the busiest frames' work into free memory before playing, so fewer frames are skipped (see *Preloading the busiest moments* above). Stream the clip with `--install`. Can't be used with `--scrub`. |
-| `--refill` | With `--preload`: when the memory is full, reuse what earlier frames have drawn from, sending later blocks into it in the line's spare time (see *Refilling the memory while it plays* above). |
+| `--refill` / `--no-refill` | With `--preload`, refilling is on by default: when the memory is full, reuse what earlier frames have drawn from, sending later blocks into it in the line's spare time (see *Refilling the memory while it plays* above). `--no-refill` turns it off. |
 | `--preload-share benefit` / `first` | With `--preload`: share the memory out where it smooths playback the most per byte (`benefit`, the default; slower to convert), or to the busy frames in order (`first`). See *Preloading the busiest moments* above. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
