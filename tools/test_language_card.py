@@ -13,6 +13,9 @@
    read only around each one, refuses blocks in I/O, on the vectors' page or
    reading outside the card, and plays a whole clip preloaded into main RAM and
    the card.
+6. Store ops (--refill) put bytes in main RAM and the card without drawing,
+   refuse a bad check byte or an address outside preload memory, and a clip
+   with far too little memory refills it during play with no overruns.
 """
 import os, sys, wave
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -396,47 +399,122 @@ print("clip into the card: %d preloaded blocks, %d of them in the card; pieces %
     len(ops), len(in_card), ", ".join("$%04X+%d" % (a, len(d)) for a, d in pcs)))
 expect(in_card and [a for a, _ in pcs] == [0x6000, a2hdr.CARD_START],
        "the encoder fills main RAM, then carries the preload on into the card, as sound does")
-m = Machine()
-for addr, blob in pcs:
-    if addr >= a2hdr.CARD_START:
-        card_put(m, addr, blob)
-    else:
-        m.load(addr, blob)
-# the bytes arrive when the host sends them (stream.plan_stream: quiet while each block is drawn),
-# one every 10/115200 s; one that arrives while the last is still unread is an overrun (lost)
+def play_host(vfr, fps, pcs):
+    """Play a stream on the host's schedule (stream.plan_stream: quiet while each
+    block is drawn), a byte every 10/115200 s; a byte that arrives while the
+    last is still unread is an overrun (lost). pcs: the preload's (address,
+    bytes) pieces. Returns (machine, overruns, pages)."""
+    m = Machine()
+    mem = bytearray(0x10000)
+    for addr, blob in pcs:
+        mem[addr:addr + len(blob)] = blob
+    for addr, blob in pcs:
+        if addr >= a2hdr.CARD_START:
+            card_put(m, addr, blob)
+        else:
+            m.load(addr, blob)
+    sched, _total = host.plan_stream(vfr, fps, 115200, mem=mem)
+    START = 400_000                                         # (the player clears both pages first)
+    arr = [(b, START + int((t + (k + 1) * 10 / 115200) * a2hdr.CPU_HZ)) for t, data, _kind in sched for k, b in enumerate(data)]
+    arr += [(b, arr[-1][1] + 100 * (j + 1)) for j, b in enumerate(END)]
+    st = {"i": 0, "over": 0}
+
+    def ready(a):
+        now, i = m.mpu.processorCycles, st["i"]
+        return 0x10 | (0x08 if i < len(arr) and arr[i][1] <= now else 0)
+
+    def take(a):
+        now, i = m.mpu.processorCycles, st["i"]
+        while i + 1 < len(arr) and arr[i + 1][1] <= now:      # a newer byte overwrote this one
+            st["over"] += 1
+            i += 1
+        st["i"] = i + 1
+        return arr[i][0] if i < len(arr) else 0
+    m.mem.subscribe_to_read([ACIA_S], ready)
+    m.mem.subscribe_to_read([ACIA_D], take)
+    for io_ in (0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057):
+        m.mem.subscribe_to_read([io_], lambda a: 0)
+    m.load(0x0E00, binary("video.bin"))
+    m.run(0x0E00, limit=400_000_000)
+    pg = [bytes(m.mem[base + i] for i in range(0x2000)) for base in (0x2000, 0x4000)]     # (it shows page 1 again as it quits)
+    return m, st["over"], pg
+
+
 import stream as host                                       # noqa: E402
-sched, _total = host.plan_stream(vfr, _fps, 115200, mem=a2hdr.preload_mem(pre))
-START = 400_000                                             # (the player clears both pages first)
-arr = [(b, START + int((t + (k + 1) * 10 / 115200) * a2hdr.CPU_HZ)) for t, data, _kind in sched for k, b in enumerate(data)]
-arr += [(b, arr[-1][1] + 100 * (j + 1)) for j, b in enumerate(END)]
-st = {"i": 0, "over": 0}
-
-
-def ready(a):
-    now, i = m.mpu.processorCycles, st["i"]
-    return 0x10 | (0x08 if i < len(arr) and arr[i][1] <= now else 0)
-
-
-def take(a):
-    now, i = m.mpu.processorCycles, st["i"]
-    while i + 1 < len(arr) and arr[i + 1][1] <= now:          # a newer byte overwrote this one
-        st["over"] += 1
-        i += 1
-    st["i"] = i + 1
-    return arr[i][0] if i < len(arr) else 0
-m.mem.subscribe_to_read([ACIA_S], ready)
-m.mem.subscribe_to_read([ACIA_D], take)
-for io_ in (0xC000, 0xC010, 0xC030, 0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC057):
-    m.mem.subscribe_to_read([io_], lambda a: 0)
-m.load(0x0E00, binary("video.bin"))
-m.run(0x0E00, limit=200_000_000)
+m, over, pg = play_host(vfr, _fps, pcs)
 last = videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(
     np.asarray(__import__("imgconv").prepare(frames_[-1], False, False), dtype=np.float64), "ordered")))
-pg = [bytes(m.mem[base + i] for i in range(0x2000)) for base in (0x2000, 0x4000)]     # (it shows page 1 again as it quits)
+st = {"over": over}
 print("clip into the card, on the host's schedule: %d overruns" % st["over"])
 expect(st["over"] == 0 and bytes(last) in pg,
        "a clip preloaded into main RAM and the card plays on the host's schedule with no overruns, to its last frame exactly")
 expect(m.switches == [0xC080, 0xC082] * len(in_card) and not m.read_ram, "the card is switched in only around each block in it")
+
+# ---------------------------------------------------------------- 6. stores: memory refilled during play (--refill)
+data = bytes(rng.integers(0, 256, 100, dtype=np.uint8).tolist())
+m = play_pre(b"\xFE" + a2hdr.store_ops(0x7000, data) + FR + END)
+expect(bytes(m.mem[0x7000 + i] for i in range(100)) == data and m.switches == [] and m.mem[0x2000] == 0x33,
+       "a store puts its bytes in main RAM, draws nothing, and the line carries on")
+big = bytes(rng.integers(0, 256, 600, dtype=np.uint8).tolist())
+m = play_pre(b"\xFE" + a2hdr.store_ops(0xD000, big) + FR + END)
+got = bytes(m._where(0xD000 + i)[0][m._where(0xD000 + i)[1]] for i in range(600))
+expect(got == big and m.switches == [0xC081, 0xC081, 0xC082] * 3 and not m.write_ram and not m.read_ram and m.mem[0x2000] == 0x33,
+       "stores into the card write its RAM (ROM still read) in three ops, and turn writing off after each")
+bad = bytearray(a2hdr.store_ops(0x7000, data))
+bad[-1] ^= 1
+m = play_pre(b"\xFE" + bytes(bad) + b"\x01\x44" + FR + END)
+expect(m.mem[0x2000] == 0x33 and m.switches == [], "a store with a bad check byte discards the rest of the frame, then recovers at the next mark")
+for name, at, n in (("ending past $BFFF", 0xBFF0, 32), ("into $C000-$CFFF", 0xC800, 32),
+                    ("ending on the top page", 0xFEF0, 32), ("from below $6000", 0x5FF0, 32)):
+    op = bytearray(a2hdr.store_ops(max(at, 0x6000), bytes(n)))
+    if at < 0x6000:                 # (store_ops can't address it; the player sees h past $FFFF instead)
+        op[4] = 0x7F
+    else:
+        off = (at - 0x6000) // 4
+        op[3], op[4] = off & 0x7F, off >> 7
+    m = play_pre(b"\xFE" + bytes(op) + FR + END)
+    expect(m.mem[0x2000] == 0x33 and not m.write_ram and all(m.mem[a] == 0 for a in range(0xBFF0, 0xC000)),
+           "a store %s is refused and the stream recovers" % name)
+# a clip whose preload memory is far too small: blocks go into memory earlier frames are done with
+clip = os.path.join(tmp, "patches")
+os.makedirs(clip, exist_ok=True)
+rs = np.random.default_rng(7)
+cur = Image.new("RGB", (280, 192), "black")
+for k in range(36):                                         # every third frame a patch of noise somewhere new; calm in between
+    if k % 3 == 0:
+        cur = cur.copy()
+        x, y = int(rs.integers(0, 200)), int(rs.integers(0, 140))
+        cur.paste(Image.fromarray((rs.random((48, 72)) > 0.5).astype(np.uint8) * 255).convert("RGB"), (x, y))
+    cur.save(os.path.join(clip, "f%03d.png" % k))
+last_im = cur
+saved = sys.argv, a2hdr.PRELOAD_END, a2hdr.AUDIO_MAIN_END, a2hdr.CARD_END
+a2hdr.PRELOAD_END = a2hdr.AUDIO_MAIN_END = 0x6200           # (512 bytes of main RAM and 512 of card)
+a2hdr.CARD_END = 0xD200
+shown_ = {}
+for refill in ([], ["--refill"]):
+    sys.argv = ["videoconv.py", clip, "-o", a2v, "--fps", "10", "--flip", "--preload", "--preload-share", "first",
+                "--language-card", "--budget", "600"] + refill
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        videoconv.main()
+    shown_[bool(refill)] = int(err.getvalue().split(" frames shown")[0].split(";")[-1].split(" of ")[0])
+raw = open(a2v, "rb").read()
+_fps, vfr, _ = a2hdr.parse_stream(raw)
+pre = a2hdr.parse_preload(raw)
+stores = [v for f in vfr for k, v, _i in a2hdr.walk_ops(f) if k == "store"]
+draws = [v for f in vfr for k, v, _i in a2hdr.walk_ops(f) if k == "preload"]
+m, over, pg = play_host(vfr, _fps, a2hdr.preload_pieces(pre))
+sys.argv, a2hdr.PRELOAD_END, a2hdr.AUDIO_MAIN_END, a2hdr.CARD_END = saved
+print("refill: %d of 36 frames shown (%d without), %d preloaded blocks drawn, %d stores (%d bytes, %d into the card), %d overruns" % (
+    shown_[True], shown_[False], len(draws), len(stores), sum(len(d) for _a, d in stores),
+    sum(1 for a_, _d in stores if a_ >= a2hdr.CARD_START), over))
+last = videoconv.with_holes(videoconv.pack_screen(videoconv.to_bits(
+    np.asarray(__import__("imgconv").prepare(last_im, False, False), dtype=np.float64), "ordered")))
+expect(shown_[True] > shown_[False], "--refill shows more of a clip than the memory alone allows")
+expect(stores and any(a_ >= a2hdr.CARD_START for a_, _d in stores) and any(a_ < a2hdr.CARD_START for a_, _d in stores),
+       "with too little memory, --refill sends later blocks into main RAM and the card during play")
+expect(over == 0 and bytes(last) in pg, "a refilled clip plays on the host's schedule with no overruns, to its last frame exactly")
+expect(not m.write_ram and not m.read_ram, "after a refilled clip, the card is neither read nor written")
 
 # ---------------------------------------------------------------- the host's bookkeeping
 pieces = a2hdr.audio_pieces(0, bytes(a2hdr.AUDIO_PAGES_CARD * 256))

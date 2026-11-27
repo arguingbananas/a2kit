@@ -310,8 +310,12 @@ For `hello_apple.gif` at 10 frames a second (the longest any picture stays on sc
 | `--preload-share first` | 269 | 0.4, 0.2, 0.4, 0.8, 0.8 s |
 | `--preload --language-card` (`benefit`) | 280 | 0.4, 0.5, 0.1, 0.6, 0.3 s |
 | `--preload-share first --language-card` | 292 | 0.4, 0.2, 0.1, 0.8, 0.8 s |
+| `--preload --refill` (`benefit`) | 310 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
+| `--preload --refill --language-card` (`benefit`) | 311 | 0.3, 0.5, 0.1, 0.1, 0.2 s |
 
 The upload takes about 3 seconds more (4.5 with the card). The summary line says how much is preloaded and for how many frames.
+
+**Refilling the memory while it plays.** Once a preloaded block has been drawn, its memory is free again, and in calm moments the line has time to spare (in `hello_apple.gif`, about 99 KB of it over the clip). With `--refill`, when the memory is full the encoder puts the next block where blocks already drawn were, and sends its bytes in those spare moments beforehand, in store ops the player writes to memory without drawing anything. So the 24 KB (36 KB with a card) does the work of much more: in `hello_apple.gif` about 27 KB more is sent this way, and the busy stretches get what they need. Each block's bytes still arrive before the frame that draws it; the frames that carry them only get longer, never later. What's left is the iris wipe, which is limited by how fast the 6502 can draw from memory, not by memory. A store damaged on the line is detected by its check byte and the rest of that frame discarded, but its bytes may already be in memory: a picture drawn from them later can show the damage until the screen is redrawn there. `--refill` needs `--preload`.
 
 **Usage:** `./a2kit video INPUT -o OUTPUT [options]` where INPUT is a folder, a GIF or a video file.
 
@@ -328,6 +332,7 @@ The upload takes about 3 seconds more (4.5 with the card). The summary line says
 | `--max-seconds N` | Use only the first N seconds. |
 | `--flip` | Draw each frame on the hidden page and flip to it in the vertical blank once it's complete, so you only ever see whole frames (see *Without tearing* above). Needs up to twice the bytes; frames are skipped while a page catches up. |
 | `--preload` | Only with `--flip`. Upload part of the busiest frames' work into free memory before playing, so fewer frames are skipped (see *Preloading the busiest moments* above). Stream the clip with `--install`. Can't be used with `--scrub`. |
+| `--refill` | With `--preload`: when the memory is full, reuse what earlier frames have drawn from, sending later blocks into it in the line's spare time (see *Refilling the memory while it plays* above). |
 | `--preload-share benefit` / `first` | With `--preload`: share the memory out where it smooths playback the most per byte (`benefit`, the default; slower to convert), or to the busy frames in order (`first`). See *Preloading the busiest moments* above. |
 | `--scrub N` | Re-send N screen bytes every frame in a rotating sweep, which repairs damage after a lost byte (a full sweep takes 8192÷N frames). Off by default; 8–16 is cheap insurance on a shaky link. |
 | `--audio FILE.wav` | Add sound, played in bursts between frames. |
@@ -790,6 +795,7 @@ If the cause isn't clear, narrow it down in order: `./a2kit doctor` (your comput
 | `$7F n c` | Play n sound pages (c = n xor `$55` as a check) |
 | `$7F n c` + 2n bytes | With c = n xor `$2A`: a fast block of 2n bytes, the last one `$A5`. Right after a frame mark that changes page it can copy and draw; elsewhere in a frame it only copies |
 | `$7F l c h` | With c = l xor `$3C`: draw the fast block preloaded at `$6000` + 4×(l + 128×h), in main RAM up to `$BFFF` or in a language card's `$D000–$FEFF` (read only while it's drawn; its bytes must be there too) |
+| `$7F n c l h` + 2n bytes + x | With c = n xor `$66`: store the 2n bytes at `$6000` + 4×(l + 128×h) without drawing (`video --refill`), all of them in main RAM up to `$BFFF` or all in a language card's `$D000–$FEFF` (written with ROM still read). x is the xor of the bytes and `$A5`; a wrong one discards until the next mark. Anything else is refused |
 | `$80 $80` | End of video |
 
 **Fast blocks** are drawn from memory, about six times faster than the line brings bytes, and so have a format of their own. A block has one or two *parts*, each a run of screen bytes followed by its *control part*: a 2-byte address, then entries of two bytes, *s* and *j*. The address is where the part's screen bytes start, or, if it's `$2000–$3FFF` (screen memory, never where a block's bytes are kept), says the part is a *copy*: it has no screen bytes and copies from the page on screen to the same place on the page being drawn, starting at offset address − `$2000`. Each entry moves on *s* bytes, then *j* says what to do: *j* = 250 − 5*n* (*n* = 1–49) writes the next *n* bytes, 250 only moves on, 253 ends the part (a draw part leaves the frame's position there), and 0 goes on to the next page of screen bytes after a page's last one. Every entry is checked to stay on the frame's page. A block received over the line ends with three bytes: where its copy part's and its draw part's control parts start, and `$A5`. A copy only covers bytes the page on screen already has right, so a copied stretch is always right, whatever order the parts run in. The computer stays quiet while a block is drawn, for a time it works out to the cycle from the block (`fast_cycles` and `block_cycles` in `tools/a2hdr.py`, checked against the player in the tests).
@@ -817,7 +823,7 @@ A frame mark that changes page first shows the page the frame before it was draw
 | `$1080–$11DE` | Video player, continued: sound bursts, page changes and the fast block's wait |
 | `$1200–$12C9` | Video player: the start of fast block drawing and the vertical-blank wait |
 | `$1300–$13FF` | Video player: the fast block after a page change |
-| `$1400–$155D` | Video player: fast blocks, continued (copies, preloaded blocks, the language card) |
+| `$1400–$15F7` | Video player: fast blocks, continued (copies, preloaded blocks, the language card, stores) |
 | `$1600–$18F3` | Video player: fast block drawing, its tables and its code (each on a page of its own, so the timing never changes) |
 | `$1900–$1FFF` | **Free** (1.75K; `lcprobe` uses `$1200–$148D` and `chargen capture` `$1200–$1230`, over the video player, which `--install` uploads again) |
 | `$2000–$3FFF` | Hi-res page 1 (the video player puts `$9B` in its screen holes) |
