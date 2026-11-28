@@ -438,7 +438,7 @@ Each `[[scene]]` has exactly one of `image`, `audio` or `wait`, and only the key
 | `--port PORT` | Serial port (required), e.g. `/dev/ttyUSB0`, `COM3`. |
 | `--baud N` | Line speed: must match the receiver, 115200 (default) or 19200 with `a2kit-boot-19200.dsk`. If it doesn't, `send` says which to use. `A2KIT_BAUD` sets the default. |
 | `--addr A` | Load address, like `0x2000`. Optional for picture blocks (they load to `$2000`); required for anything else. |
-| `--exec A` | When the upload finishes, run the code at this address. The default, 0, instead shows hi-res page 1 until a key is pressed. |
+| `--exec A` | When the upload finishes, run the code at this address. The default, 0, instead shows hi-res page 1 until a key is pressed. The code is called with `JSR`: end it with `CLC` and `RTS` so the boot disk's receiver listens again. Returning with carry set means "a key was pressed" to the receiver, which then drops to the Monitor (`980G` restarts it). |
 | `--raw` | Send the file as-is, with no a2kit header (needs `--addr`). |
 | `--keep-header` | Also send the 8-byte a2kit header. |
 | `--chunk N` | Bytes per packet, 1–255 (default 128). Smaller packets recover faster on a noisy link. |
